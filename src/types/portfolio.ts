@@ -1,5 +1,14 @@
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash';
 
+export interface HoldingInput {
+  symbol: string;
+  name: string;
+  assetType: AssetType;
+  quantity: number;
+  costBasis: number;
+  currency: string;
+}
+
 export interface Holding {
   id: string;
   symbol: string;
