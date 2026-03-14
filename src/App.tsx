@@ -7,7 +7,7 @@ import { Performance } from './components/Performance';
 import { StressTest } from './components/StressTest';
 import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
-import { usePortfolio } from './hooks/usePortfolio';
+import { PortfolioProvider, usePortfolio } from './hooks/usePortfolio';
 import { useConfig } from './hooks/useConfig';
 import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
@@ -90,9 +90,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <ToastProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <PortfolioProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </PortfolioProvider>
     </ToastProvider>
   );
 }
