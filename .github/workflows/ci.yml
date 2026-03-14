@@ -12,7 +12,7 @@ env:
   RUST_TOOLCHAIN: stable
 
 jobs:
-  # ── Frontend: Lint + Type Check + Build + Test ──────────────
+  # ── Frontend: Lint + Type Check + Format + Test + Build ────
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -32,16 +32,16 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npx eslint src/ --ext .ts,.tsx --max-warnings 0
+        run: npm run lint
 
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Format check
-        run: npx prettier --check "src/**/*.{ts,tsx,css}"
+        run: npm run format:check
 
       - name: Test
-        run: npx vitest run --coverage
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
