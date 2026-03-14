@@ -47,6 +47,7 @@ function CenterLabel({ text }: { text: string }) {
 
 export function Dashboard({ portfolio, loading }: DashboardProps) {
   const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
+  const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const filteredHoldings = useMemo(() => {
     if (!portfolio) return [];
     return accountFilter === 'all'
@@ -154,7 +155,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           overflow: 'hidden',
         }}
       >
-        <div style={LABEL}>Portfolio Value</div>
+        <div style={LABEL}>Portfolio Value ({baseCurrency})</div>
         <div style={{ width: 180, marginBottom: 12 }}>
           <Select
             value={accountFilter}
@@ -175,7 +176,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             letterSpacing: '-0.02em',
           }}
         >
-          {portfolio ? formatCurrency(totals.totalValue) : '—'}
+          {portfolio ? formatCurrency(totals.totalValue, baseCurrency) : '—'}
         </div>
         <div style={{ display: 'flex', gap: 24, marginTop: 10, alignItems: 'baseline' }}>
           <span
@@ -187,7 +188,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             }}
           >
             {portfolio
-              ? `${totals.dailyPnl >= 0 ? '+' : ''}${formatCurrency(totals.dailyPnl)}`
+              ? `${totals.dailyPnl >= 0 ? '+' : ''}${formatCurrency(totals.dailyPnl, baseCurrency)}`
               : '—'}
           </span>
           {portfolio && (
@@ -212,7 +213,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           }}
         >
           <div>
-            <div style={{ ...LABEL, marginBottom: 2 }}>Cost Basis</div>
+            <div style={{ ...LABEL, marginBottom: 2 }}>Cost Basis ({baseCurrency})</div>
             <div
               style={{
                 fontFamily: 'var(--font-mono)',
@@ -220,11 +221,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 color: 'var(--text-secondary)',
               }}
             >
-              {portfolio ? formatCurrency(totals.totalCost) : '—'}
+              {portfolio ? formatCurrency(totals.totalCost, baseCurrency) : '—'}
             </div>
           </div>
           <div>
-            <div style={{ ...LABEL, marginBottom: 2 }}>Total Gain/Loss</div>
+            <div style={{ ...LABEL, marginBottom: 2 }}>Total Gain/Loss ({baseCurrency})</div>
             <div
               style={{
                 fontFamily: 'var(--font-mono)',
@@ -233,7 +234,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               }}
             >
               {portfolio
-                ? `${totals.totalGainLoss >= 0 ? '+' : ''}${formatCurrency(totals.totalGainLoss)} (${formatPercent(totals.totalGainLossPercent)})`
+                ? `${totals.totalGainLoss >= 0 ? '+' : ''}${formatCurrency(totals.totalGainLoss, baseCurrency)} (${formatPercent(totals.totalGainLossPercent)})`
                 : '—'}
             </div>
           </div>
@@ -251,7 +252,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           overflow: 'hidden',
         }}
       >
-        <div style={{ ...LABEL, flexShrink: 0 }}>Allocation</div>
+        <div style={{ ...LABEL, flexShrink: 0 }}>Allocation ({baseCurrency})</div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -277,7 +278,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   fontSize: 12,
                   fontFamily: 'var(--font-mono)',
                 }}
-                formatter={(v: unknown) => [formatCompact(Number(v)), '']}
+                formatter={(v: unknown) => [formatCurrency(Number(v), baseCurrency), '']}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -316,7 +317,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 {d.name}
               </span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-                {d.pct.toFixed(1)}% · {formatCompact(d.value)}
+                {d.pct.toFixed(1)}% · {formatCurrency(d.value, baseCurrency)}
               </span>
             </div>
           ))}
@@ -340,7 +341,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr>
-                {['Symbol', 'Name', 'Change %', 'Change $'].map((col) => (
+                {['Symbol', 'Name', 'Change %', `Change (${baseCurrency})`].map((col) => (
                   <th
                     key={col}
                     style={{
@@ -398,7 +399,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                       }}
                     >
                       {dailyChange >= 0 ? '+' : ''}
-                      {formatCurrency(dailyChange)}
+                      {formatCurrency(dailyChange, baseCurrency)}
                     </td>
                   </tr>
                 );
@@ -419,7 +420,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           overflow: 'hidden',
         }}
       >
-        <div style={{ ...LABEL, flexShrink: 0 }}>Currency</div>
+        <div style={{ ...LABEL, flexShrink: 0 }}>Currency Exposure ({baseCurrency} base)</div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -445,7 +446,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   fontSize: 12,
                   fontFamily: 'var(--font-mono)',
                 }}
-                formatter={(v: unknown) => [formatCompact(Number(v)), '']}
+                formatter={(v: unknown) => [formatCurrency(Number(v), baseCurrency), '']}
               />
             </PieChart>
           </ResponsiveContainer>

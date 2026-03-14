@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { PortfolioSnapshot, StressResult, StressScenario } from '../types/portfolio';
+import { fxShockKey } from '../lib/constants';
 
 // Tauri v2 always sets window.__TAURI_INTERNALS__ inside the webview.
 // window.__TAURI__ is only present when app.withGlobalTauri is true — don't use it.
@@ -15,8 +16,11 @@ function computeLocally(snapshot: PortfolioSnapshot, scenario: StressScenario): 
 
   const holdingBreakdown = snapshot.holdings.map((h) => {
     const assetShock = scenario.shocks[h.assetType] ?? 0;
-    const fxKey = `fx_${h.currency.toLowerCase()}_cad`;
-    const fxShock = h.currency.toUpperCase() === 'CAD' ? 0 : (scenario.shocks[fxKey] ?? 0);
+    const fxKey = fxShockKey(h.currency, snapshot.baseCurrency);
+    const fxShock =
+      h.currency.toUpperCase() === snapshot.baseCurrency.toUpperCase()
+        ? 0
+        : (scenario.shocks[fxKey] ?? 0);
 
     const currentValue = h.marketValueCad;
     const stressedValue = currentValue * (1 + assetShock) * (1 + fxShock);

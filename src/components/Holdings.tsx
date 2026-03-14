@@ -31,20 +31,6 @@ interface SortState {
   dir: 'asc' | 'desc';
 }
 
-const COLUMNS: { key: SortKey; label: string; align: 'left' | 'right' }[] = [
-  { key: 'symbol', label: 'Symbol', align: 'left' },
-  { key: 'name', label: 'Name', align: 'left' },
-  { key: 'assetType', label: 'Type', align: 'left' },
-  { key: 'account', label: 'Account', align: 'left' },
-  { key: 'quantity', label: 'Qty', align: 'right' },
-  { key: 'costBasis', label: 'Cost Basis', align: 'right' },
-  { key: 'currentPrice', label: 'Price', align: 'right' },
-  { key: 'marketValueCad', label: 'Mkt Value (CAD)', align: 'right' },
-  { key: 'gainLoss', label: 'Gain/Loss', align: 'right' },
-  { key: 'gainLossPercent', label: 'G/L %', align: 'right' },
-  { key: 'weight', label: 'Weight', align: 'right' },
-];
-
 const TH: React.CSSProperties = {
   padding: '8px 10px',
   fontSize: 10,
@@ -88,6 +74,23 @@ export function Holdings() {
   const [editing, setEditing] = useState<Holding | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
+  const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
+    () => [
+      { key: 'symbol', label: 'Symbol', align: 'left' },
+      { key: 'name', label: 'Name', align: 'left' },
+      { key: 'assetType', label: 'Type', align: 'left' },
+      { key: 'account', label: 'Account', align: 'left' },
+      { key: 'quantity', label: 'Qty', align: 'right' },
+      { key: 'costBasis', label: 'Cost Basis', align: 'right' },
+      { key: 'currentPrice', label: 'Price', align: 'right' },
+      { key: 'marketValueCad', label: `Mkt Value (${baseCurrency})`, align: 'right' },
+      { key: 'gainLoss', label: `Gain/Loss (${baseCurrency})`, align: 'right' },
+      { key: 'gainLossPercent', label: 'G/L %', align: 'right' },
+      { key: 'weight', label: 'Weight', align: 'right' },
+    ],
+    [baseCurrency]
+  );
 
   const rows: HoldingWithPrice[] = useMemo(() => {
     const source = portfolio?.holdings ?? [];
@@ -346,7 +349,7 @@ export function Holdings() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr>
-                {COLUMNS.map(({ key, label, align }) => (
+                {columns.map(({ key, label, align }) => (
                   <th key={key} onClick={() => toggleSort(key)} style={{ ...TH, textAlign: align }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                       {label}
@@ -465,7 +468,7 @@ export function Holdings() {
                         fontWeight: 600,
                       }}
                     >
-                      {formatCurrency(h.marketValueCad)}
+                      {formatCurrency(h.marketValueCad, baseCurrency)}
                     </td>
                     <td
                       style={{
@@ -477,7 +480,7 @@ export function Holdings() {
                     >
                       {h.assetType === 'cash'
                         ? '—'
-                        : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss)}`}
+                        : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss, baseCurrency)}`}
                     </td>
                     <td
                       style={{
@@ -618,7 +621,7 @@ export function Holdings() {
                     fontSize: 13,
                   }}
                 >
-                  {formatCurrency(totals.marketValueCad)}
+                  {formatCurrency(totals.marketValueCad, baseCurrency)}
                 </td>
                 <td
                   style={{
@@ -631,7 +634,7 @@ export function Holdings() {
                   }}
                 >
                   {totals.gainLoss >= 0 ? '+' : ''}
-                  {formatCurrency(totals.gainLoss)}
+                  {formatCurrency(totals.gainLoss, baseCurrency)}
                 </td>
                 <td
                   style={{

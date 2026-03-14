@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useStressTest } from '../hooks/useStressTest';
-import { PRESET_SCENARIOS, ASSET_TYPE_CONFIG } from '../lib/constants';
+import { createPresetScenarios, fxShockKey, ASSET_TYPE_CONFIG } from '../lib/constants';
 import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
@@ -28,20 +28,10 @@ const ASSET_SLIDERS: { key: string; label: string }[] = [
   { key: 'crypto', label: 'Crypto' },
 ];
 
-const FX_SLIDERS: { key: string; label: string }[] = [
-  { key: 'fx_usd_cad', label: 'USD/CAD' },
-  { key: 'fx_eur_cad', label: 'EUR/CAD' },
-  { key: 'fx_gbp_cad', label: 'GBP/CAD' },
-];
-
-const ALL_PRESET_NAMES = [...PRESET_SCENARIOS.map((s) => s.name), 'Custom'];
 const ZERO_SHOCKS: ShockMap = {
   stock: 0,
   etf: 0,
   crypto: 0,
-  fx_usd_cad: 0,
-  fx_eur_cad: 0,
-  fx_gbp_cad: 0,
 };
 
 const PANEL: React.CSSProperties = {
@@ -136,8 +126,16 @@ function ShockSlider({
 }
 
 // ─── Comparison chart ─────────────────────────────────────────────────────────
-function ComparisonChart({ totalValue }: { totalValue: number }) {
-  const data = PRESET_SCENARIOS.map((s) => {
+function ComparisonChart({
+  totalValue,
+  currency,
+  scenarios,
+}: {
+  totalValue: number;
+  currency: string;
+  scenarios: StressScenario[];
+}) {
+  const data = scenarios.map((s) => {
     let stressed = 0;
     // crude estimate: no holdings breakdown, use asset shock weighted avg
     const avg =
@@ -176,7 +174,7 @@ function ComparisonChart({ totalValue }: { totalValue: number }) {
               fontSize: 11,
               fontFamily: 'var(--font-mono)',
             }}
-            formatter={(v: unknown) => [formatCurrency(Number(v)), 'Impact']}
+            formatter={(v: unknown) => [formatCurrency(Number(v), currency), 'Impact']}
             labelStyle={{ color: 'var(--text-secondary)' }}
           />
           <Bar dataKey="impact" maxBarSize={40}>
@@ -194,23 +192,35 @@ function ComparisonChart({ totalValue }: { totalValue: number }) {
 export function StressTest() {
   const { portfolio, holdings } = usePortfolio();
   const { result, loading, runTest } = useStressTest();
+  const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
+  const presetScenarios = useMemo(() => createPresetScenarios(baseCurrency), [baseCurrency]);
+  const presetNames = useMemo(
+    () => [...presetScenarios.map((s) => s.name), 'Custom'],
+    [presetScenarios]
+  );
   const [presetName, setPresetName] = useState<string>('Mild Correction');
-  const [shocks, setShocks] = useState<ShockMap>({
-    ...PRESET_SCENARIOS[0].shocks,
-    ...ZERO_SHOCKS,
-    ...PRESET_SCENARIOS[0].shocks,
-  });
+  const [shocks, setShocks] = useState<ShockMap>(ZERO_SHOCKS);
   const [showComparison, setShowComparison] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Detect which FX sliders are relevant to held currencies
   const activeFxSliders = useMemo(() => {
     const currencies = new Set((portfolio?.holdings ?? []).map((h) => h.currency.toUpperCase()));
-    return FX_SLIDERS.filter((s) => {
-      const ccy = s.key.replace('fx_', '').replace('_cad', '').toUpperCase();
-      return currencies.has(ccy);
-    });
-  }, [portfolio]);
+    return [...currencies]
+      .filter((currency) => currency.toUpperCase() !== baseCurrency.toUpperCase())
+      .sort()
+      .map((currency) => ({
+        key: fxShockKey(currency, baseCurrency),
+        label: `${currency}/${baseCurrency}`,
+      }));
+  }, [portfolio, baseCurrency]);
+
+  useEffect(() => {
+    if (presetName === 'Custom') return;
+    const preset =
+      presetScenarios.find((scenario) => scenario.name === presetName) ?? presetScenarios[0];
+    setShocks({ ...ZERO_SHOCKS, ...preset.shocks });
+  }, [presetName, presetScenarios]);
 
   // Run stress test whenever shocks change (debounced 150ms)
   const scheduleRun = useCallback(
@@ -235,7 +245,7 @@ export function StressTest() {
 
   function handlePresetChange(name: string) {
     setPresetName(name);
-    const preset = PRESET_SCENARIOS.find((s) => s.name === name);
+    const preset = presetScenarios.find((s) => s.name === name);
     const next: ShockMap = { ...ZERO_SHOCKS, ...(preset?.shocks ?? {}) };
     setShocks(next);
     scheduleRun(next);
@@ -281,7 +291,13 @@ export function StressTest() {
         </button>
       </div>
 
-      {showComparison && <ComparisonChart totalValue={portfolio?.totalValue ?? 0} />}
+      {showComparison && (
+        <ComparisonChart
+          totalValue={portfolio?.totalValue ?? 0}
+          currency={baseCurrency}
+          scenarios={presetScenarios}
+        />
+      )}
 
       {/* Main two-column layout */}
       <div
@@ -308,7 +324,7 @@ export function StressTest() {
             <Select
               value={presetName}
               onChange={handlePresetChange}
-              options={ALL_PRESET_NAMES.map((n) => ({ value: n, label: n }))}
+              options={presetNames.map((n) => ({ value: n, label: n }))}
             />
           </div>
 
@@ -337,7 +353,7 @@ export function StressTest() {
                   marginBottom: 10,
                 }}
               >
-                Positive = CAD weakens (foreign assets worth more in CAD)
+                Positive = {baseCurrency} weakens (foreign assets worth more in {baseCurrency})
               </div>
               {activeFxSliders.map(({ key, label }) => (
                 <ShockSlider
@@ -423,7 +439,7 @@ export function StressTest() {
                         marginBottom: 4,
                       }}
                     >
-                      Current
+                      Current ({baseCurrency})
                     </div>
                     <div
                       style={{
@@ -433,7 +449,7 @@ export function StressTest() {
                         color: 'var(--text-primary)',
                       }}
                     >
-                      {formatCurrency(result.currentValue)}
+                      {formatCurrency(result.currentValue, baseCurrency)}
                     </div>
                   </div>
                   <div style={{ fontSize: 18, color: 'var(--text-muted)' }}>→</div>
@@ -448,7 +464,7 @@ export function StressTest() {
                         marginBottom: 4,
                       }}
                     >
-                      Stressed
+                      Stressed ({baseCurrency})
                     </div>
                     <div
                       style={{
@@ -458,7 +474,7 @@ export function StressTest() {
                         color: pnlColor(result.totalImpact),
                       }}
                     >
-                      {formatCurrency(result.stressedValue)}
+                      {formatCurrency(result.stressedValue, baseCurrency)}
                     </div>
                   </div>
                 </div>
@@ -472,7 +488,7 @@ export function StressTest() {
                     }}
                   >
                     {result.totalImpact >= 0 ? '+' : ''}
-                    {formatCurrency(result.totalImpact)}
+                    {formatCurrency(result.totalImpact, baseCurrency)}
                   </span>
                   <span
                     style={{
@@ -560,17 +576,17 @@ export function StressTest() {
                             {d.symbol} — {d.name}
                           </div>
                           <div style={{ color: 'var(--text-secondary)' }}>
-                            Current: {formatCurrency(d.currentValue)}
+                            Current: {formatCurrency(d.currentValue, baseCurrency)}
                           </div>
                           <div style={{ color: pnlColor(d.stressedValue - d.currentValue) }}>
-                            Stressed: {formatCurrency(d.stressedValue)}
+                            Stressed: {formatCurrency(d.stressedValue, baseCurrency)}
                           </div>
                           <div style={{ color: 'var(--text-muted)' }}>
                             Shock: {formatPercent(d.shockApplied * 100)}
                           </div>
                           <div style={{ color: pnlColor(d.impact), fontWeight: 600, marginTop: 4 }}>
                             Impact: {d.impact >= 0 ? '+' : ''}
-                            {formatCurrency(d.impact)}
+                            {formatCurrency(d.impact, baseCurrency)}
                           </div>
                         </div>
                       );
@@ -599,10 +615,10 @@ export function StressTest() {
                     {[
                       'Symbol',
                       'Type',
-                      'Current Value',
+                      `Current Value (${baseCurrency})`,
                       'Shock',
-                      'Stressed Value',
-                      'Impact ($)',
+                      `Stressed Value (${baseCurrency})`,
+                      `Impact (${baseCurrency})`,
                       'Impact (%)',
                     ].map((col) => (
                       <th
@@ -655,7 +671,7 @@ export function StressTest() {
                               color: 'var(--text-secondary)',
                             }}
                           >
-                            {formatCurrency(h.currentValue)}
+                            {formatCurrency(h.currentValue, baseCurrency)}
                           </td>
                           <td
                             style={{
@@ -675,7 +691,7 @@ export function StressTest() {
                               color: pnlColor(h.impact),
                             }}
                           >
-                            {formatCurrency(h.stressedValue)}
+                            {formatCurrency(h.stressedValue, baseCurrency)}
                           </td>
                           <td
                             style={{
@@ -687,7 +703,7 @@ export function StressTest() {
                             }}
                           >
                             {h.impact !== 0
-                              ? `${h.impact >= 0 ? '+' : ''}${formatCurrency(h.impact)}`
+                              ? `${h.impact >= 0 ? '+' : ''}${formatCurrency(h.impact, baseCurrency)}`
                               : '—'}
                           </td>
                           <td

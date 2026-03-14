@@ -55,10 +55,12 @@ function CustomTooltip({
   active,
   payload,
   label,
+  currency,
 }: {
   active?: boolean;
   payload?: Array<{ value: number; payload: { dailyReturn: number } }>;
   label?: string;
+  currency: string;
 }) {
   if (!active || !payload?.length) return null;
   const val = payload[0].value;
@@ -74,7 +76,9 @@ function CustomTooltip({
       }}
     >
       <div style={{ color: 'var(--text-secondary)', marginBottom: 6 }}>{label}</div>
-      <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatCurrency(val)}</div>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+        {formatCurrency(val, currency)}
+      </div>
       <div style={{ color: pnlColor(daily), marginTop: 2 }}>{formatPercent(daily)} daily</div>
     </div>
   );
@@ -83,6 +87,7 @@ function CustomTooltip({
 export function Performance({ portfolio }: PerformanceProps) {
   const [range, setRange] = useState<Range>('1Y');
   const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
+  const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
 
   const accountShare = useMemo(() => {
     if (!portfolio || portfolio.totalValue === 0 || accountFilter === 'all') return 1;
@@ -189,7 +194,7 @@ export function Performance({ portfolio }: PerformanceProps) {
               width={62}
             />
             <Tooltip
-              content={<CustomTooltip />}
+              content={<CustomTooltip currency={baseCurrency} />}
               cursor={{ stroke: 'var(--text-muted)', strokeWidth: 1, strokeDasharray: '4 2' }}
             />
             <Area
@@ -271,7 +276,7 @@ export function Performance({ portfolio }: PerformanceProps) {
           {[
             {
               label: 'Total Return',
-              value: `${stats.totalReturn >= 0 ? '+' : ''}${formatCurrency(stats.totalReturn)}`,
+              value: `${stats.totalReturn >= 0 ? '+' : ''}${formatCurrency(stats.totalReturn, baseCurrency)}`,
               sub: formatPercent(stats.totalReturnPct),
               color: pnlColor(stats.totalReturn),
             },
@@ -313,8 +318,8 @@ export function Performance({ portfolio }: PerformanceProps) {
             },
             {
               label: 'Current Value',
-              value: formatCurrency(data[data.length - 1]?.value ?? 0),
-              sub: 'as of last data point',
+              value: formatCurrency(data[data.length - 1]?.value ?? 0, baseCurrency),
+              sub: `as of last data point · ${baseCurrency}`,
               color: 'var(--text-primary)',
             },
           ].map((s, i) => (

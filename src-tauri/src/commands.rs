@@ -282,38 +282,27 @@ async fn validate_symbol(
 
     Ok(result)
 }
-#[tauri::command]
-pub async fn get_portfolio(
-    db: State<'_, DbState>,
-    _client: State<'_, HttpClient>,
-) -> Result<PortfolioSnapshot, String> {
-    let base_currency = get_base_currency(&db);
 
-    let holdings = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
-    };
-
+fn build_portfolio_snapshot(
+    holdings: &[Holding],
+    cached_prices: &[PriceData],
+    cached_fx: &[FxRate],
+    base_currency: &str,
+    last_updated: String,
+) -> PortfolioSnapshot {
     if holdings.is_empty() {
-        return Ok(PortfolioSnapshot {
+        return PortfolioSnapshot {
             holdings: vec![],
             total_value: 0.0,
             total_cost: 0.0,
             total_gain_loss: 0.0,
             total_gain_loss_percent: 0.0,
             daily_pnl: 0.0,
-            last_updated: Utc::now().to_rfc3339(),
-            base_currency,
-        });
+            last_updated,
+            base_currency: base_currency.to_string(),
+        };
     }
 
-    // Get cached prices and FX rates
-    let (cached_prices, cached_fx) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
-    };
-
-    // Build lookup maps
     let price_map: std::collections::HashMap<String, &PriceData> = cached_prices
         .iter()
         .map(|p| (p.symbol.clone(), p))
@@ -327,7 +316,7 @@ pub async fn get_portfolio(
     let mut total_cost = 0.0f64;
     let mut daily_pnl = 0.0f64;
 
-    for holding in &holdings {
+    for holding in holdings {
         let (current_price, change_percent) = if holding.asset_type.as_str() == "cash" {
             (1.0f64, 0.0f64)
         } else {
@@ -337,17 +326,16 @@ pub async fn get_portfolio(
                 .unwrap_or((holding.cost_basis, 0.0))
         };
 
-        // Look up the FX rate from holding currency → base currency
         let fx_pair = format!(
             "{}{}",
             holding.currency.to_uppercase(),
             base_currency.to_uppercase()
         );
-        let fx_rate = if holding.currency.to_uppercase() == base_currency.to_uppercase() {
+        let fx_rate = if holding.currency.eq_ignore_ascii_case(base_currency) {
             1.0
         } else {
             fx_map.get(&fx_pair).map(|r| r.rate).unwrap_or_else(|| {
-                convert_to_base(1.0, &holding.currency, &base_currency, &cached_fx)
+                convert_to_base(1.0, &holding.currency, base_currency, cached_fx)
             })
         };
 
@@ -382,15 +370,14 @@ pub async fn get_portfolio(
             cost_value_cad,
             gain_loss,
             gain_loss_percent,
-            weight: 0.0, // filled below
+            weight: 0.0,
             daily_change_percent: change_percent,
         });
     }
 
-    // Back-fill weights now that we have total_value
-    for h in &mut holdings_with_price {
-        h.weight = if total_value != 0.0 {
-            (h.market_value_cad / total_value) * 100.0
+    for holding in &mut holdings_with_price {
+        holding.weight = if total_value != 0.0 {
+            (holding.market_value_cad / total_value) * 100.0
         } else {
             0.0
         };
@@ -403,16 +390,41 @@ pub async fn get_portfolio(
         0.0
     };
 
-    Ok(PortfolioSnapshot {
+    PortfolioSnapshot {
         holdings: holdings_with_price,
         total_value,
         total_cost,
         total_gain_loss,
         total_gain_loss_percent,
         daily_pnl,
-        last_updated: Utc::now().to_rfc3339(),
-        base_currency,
-    })
+        last_updated,
+        base_currency: base_currency.to_string(),
+    }
+}
+#[tauri::command]
+pub async fn get_portfolio(
+    db: State<'_, DbState>,
+    _client: State<'_, HttpClient>,
+) -> Result<PortfolioSnapshot, String> {
+    let base_currency = get_base_currency(&db);
+
+    let holdings = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_all_holdings(&conn)?
+    };
+
+    let (cached_prices, cached_fx) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
+    };
+
+    Ok(build_portfolio_snapshot(
+        &holdings,
+        &cached_prices,
+        &cached_fx,
+        &base_currency,
+        Utc::now().to_rfc3339(),
+    ))
 }
 
 #[tauri::command]
@@ -543,6 +555,19 @@ pub async fn import_holdings_csv(
                 continue;
             }
         };
+
+        if !validated.currency.eq_ignore_ascii_case(&row.currency) {
+            skipped.push(ImportError {
+                row: row.row,
+                symbol: row.symbol,
+                reason: format!(
+                    "currency_mismatch:{}_expected_{}",
+                    row.currency,
+                    validated.currency.to_uppercase()
+                ),
+            });
+            continue;
+        }
 
         seen_symbols.insert(validated.symbol.to_uppercase());
         pending_inputs.push(HoldingInput {
@@ -844,6 +869,28 @@ pub async fn get_performance(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
+
+    fn make_holding(
+        symbol: &str,
+        asset_type: AssetType,
+        quantity: f64,
+        cost_basis: f64,
+        currency: &str,
+    ) -> Holding {
+        Holding {
+            id: symbol.to_string(),
+            symbol: symbol.to_string(),
+            name: symbol.to_string(),
+            asset_type,
+            account: AccountType::Taxable,
+            quantity,
+            cost_basis,
+            currency: currency.to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
 
     #[test]
     fn normalize_symbol_strips_country_suffix() {
@@ -903,5 +950,98 @@ mod tests {
         let error = parse_import_rows(csv).expect_err("missing cost_basis should fail");
 
         assert!(error.contains("Missing required column: cost_basis"));
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_converts_mixed_currency_holdings_into_base_currency() {
+        let holdings = vec![
+            make_holding("SHOP.TO", AssetType::Stock, 10.0, 100.0, "CAD"),
+            make_holding("AAPL", AssetType::Stock, 5.0, 100.0, "USD"),
+        ];
+        let prices = vec![
+            PriceData {
+                symbol: "SHOP.TO".to_string(),
+                price: 120.0,
+                currency: "CAD".to_string(),
+                change: 1.0,
+                change_percent: 2.0,
+                updated_at: Utc::now().to_rfc3339(),
+            },
+            PriceData {
+                symbol: "AAPL".to_string(),
+                price: 110.0,
+                currency: "USD".to_string(),
+                change: 1.0,
+                change_percent: 10.0,
+                updated_at: Utc::now().to_rfc3339(),
+            },
+        ];
+        let fx = vec![FxRate {
+            pair: "USDCAD".to_string(),
+            rate: 1.25,
+            updated_at: Utc::now().to_rfc3339(),
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &holdings,
+            &prices,
+            &fx,
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+        );
+
+        assert_eq!(snapshot.base_currency, "CAD");
+        assert!((snapshot.holdings[0].market_value_cad - 1200.0).abs() < 0.001);
+        assert!((snapshot.holdings[1].market_value_cad - 687.5).abs() < 0.001);
+        assert!((snapshot.holdings[1].cost_value_cad - 625.0).abs() < 0.001);
+        assert!((snapshot.total_value - 1887.5).abs() < 0.001);
+        assert!((snapshot.total_cost - 1625.0).abs() < 0.001);
+        assert!((snapshot.daily_pnl - 92.75).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_supports_non_cad_base_currency() {
+        let holdings = vec![
+            make_holding("RY.TO", AssetType::Stock, 2.0, 100.0, "CAD"),
+            make_holding("MSFT", AssetType::Stock, 1.0, 200.0, "USD"),
+        ];
+        let prices = vec![
+            PriceData {
+                symbol: "RY.TO".to_string(),
+                price: 110.0,
+                currency: "CAD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+            },
+            PriceData {
+                symbol: "MSFT".to_string(),
+                price: 220.0,
+                currency: "USD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+            },
+        ];
+        let fx = vec![FxRate {
+            pair: "CADUSD".to_string(),
+            rate: 0.8,
+            updated_at: Utc::now().to_rfc3339(),
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &holdings,
+            &prices,
+            &fx,
+            "USD",
+            "2024-01-01T00:00:00Z".to_string(),
+        );
+
+        assert_eq!(snapshot.base_currency, "USD");
+        assert!((snapshot.holdings[0].market_value_cad - 176.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].cost_value_cad - 160.0).abs() < 0.001);
+        assert!((snapshot.holdings[1].market_value_cad - 220.0).abs() < 0.001);
+        assert!((snapshot.total_value - 396.0).abs() < 0.001);
+        assert!((snapshot.total_cost - 360.0).abs() < 0.001);
     }
 }
