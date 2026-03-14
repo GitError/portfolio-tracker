@@ -40,6 +40,8 @@ export interface PortfolioSnapshot {
   totalGainLossPercent: number;
   dailyPnl: number;
   lastUpdated: string; // ISO 8601
+  /** The currency all values are expressed in. Defaults to "CAD". */
+  baseCurrency: string;
 }
 
 export interface PriceData {
@@ -81,6 +83,26 @@ export interface StressResult {
   holdingBreakdown: StressHoldingResult[];
 }
 
+export interface ImportError {
+  row: number;
+  symbol: string;
+  reason: string;
+}
+
+export interface ImportResult {
+  imported: Holding[];
+  skipped: ImportError[];
+  totalRows: number;
+}
+
+export interface SymbolResult {
+  symbol: string;
+  name: string;
+  assetType: AssetType;
+  exchange: string;
+  currency: string;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
@@ -91,3 +113,5 @@ export interface StressResult {
 // invoke('refresh_prices')          → PriceData[]
 // invoke('get_performance', { range }) → { date: string; value: number }[]
 // invoke('run_stress_test_cmd', { scenario }) → StressResult
+// invoke('search_symbols', { query }) → SymbolResult[]
+// invoke('get_symbol_price', { symbol }) → PriceData

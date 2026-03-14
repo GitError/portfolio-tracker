@@ -3,7 +3,7 @@ use rusqlite::{params, Connection};
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::types::{AssetType, FxRate, Holding, HoldingInput, PriceData};
+use crate::types::{AssetType, FxRate, Holding, HoldingInput, PriceData, SymbolResult};
 
 pub fn init_db(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
@@ -34,9 +34,45 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             rate        REAL NOT NULL,
             updated_at  TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS symbol_cache (
+            symbol      TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            asset_type  TEXT NOT NULL,
+            exchange    TEXT NOT NULL DEFAULT '',
+            currency    TEXT NOT NULL DEFAULT 'USD',
+            updated_at  TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS app_config (
+            key     TEXT PRIMARY KEY,
+            value   TEXT NOT NULL
+        );
         ",
     )
     .map_err(|e| e.to_string())
+}
+
+pub fn get_config(conn: &Connection, key: &str) -> Result<Option<String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT value FROM app_config WHERE key=?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query(params![key]).map_err(|e| e.to_string())?;
+    match rows.next().map_err(|e| e.to_string())? {
+        Some(row) => Ok(Some(row.get(0).map_err(|e| e.to_string())?)),
+        None => Ok(None),
+    }
+}
+
+#[allow(dead_code)]
+pub fn set_config(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO app_config (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        params![key, value],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding, String> {
@@ -242,6 +278,108 @@ pub fn get_fx_rates(conn: &Connection) -> Result<Vec<FxRate>, String> {
     Ok(rates)
 }
 
+pub fn upsert_symbol(conn: &Connection, result: &SymbolResult) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         ON CONFLICT(symbol) DO UPDATE SET
+           name=excluded.name, asset_type=excluded.asset_type,
+           exchange=excluded.exchange, currency=excluded.currency,
+           updated_at=excluded.updated_at",
+        params![
+            result.symbol,
+            result.name,
+            result.asset_type.as_str(),
+            result.exchange,
+            result.currency,
+            now
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn search_symbol_cache(conn: &Connection, query: &str) -> Result<Vec<SymbolResult>, String> {
+    let pattern = format!("%{}%", query.to_lowercase());
+    let sym_prefix = format!("{}%", query.to_uppercase());
+    let mut stmt = conn
+        .prepare(
+            "SELECT symbol, name, asset_type, exchange, currency FROM symbol_cache
+             WHERE symbol LIKE ?1 OR LOWER(name) LIKE ?2
+             ORDER BY CASE WHEN symbol LIKE ?1 THEN 0 ELSE 1 END
+             LIMIT 8",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let results = stmt
+        .query_map(params![sym_prefix, pattern], |row| {
+            let asset_type_str: String = row.get(2)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                asset_type_str,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .map(|(symbol, name, asset_type_str, exchange, currency)| {
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+            SymbolResult {
+                symbol,
+                name,
+                asset_type,
+                exchange,
+                currency,
+            }
+        })
+        .collect();
+
+    Ok(results)
+}
+
+pub fn get_symbol_cache_exact(
+    conn: &Connection,
+    symbol: &str,
+) -> Result<Option<SymbolResult>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT symbol, name, asset_type, exchange, currency
+             FROM symbol_cache
+             WHERE UPPER(symbol) = UPPER(?1)
+             LIMIT 1",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut rows = stmt.query(params![symbol]).map_err(|e| e.to_string())?;
+    let Some(row) = rows.next().map_err(|e| e.to_string())? else {
+        return Ok(None);
+    };
+
+    let asset_type_str: String = row.get(2).map_err(|e| e.to_string())?;
+    let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+
+    Ok(Some(SymbolResult {
+        symbol: row.get(0).map_err(|e| e.to_string())?,
+        name: row.get(1).map_err(|e| e.to_string())?,
+        asset_type,
+        exchange: row.get(3).map_err(|e| e.to_string())?,
+        currency: row.get(4).map_err(|e| e.to_string())?,
+    }))
+}
+
+#[allow(dead_code)]
+pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
+    let mut stmt = conn
+        .prepare("SELECT 1 FROM holdings WHERE UPPER(symbol) = UPPER(?1) LIMIT 1")
+        .map_err(|e| e.to_string())?;
+
+    let mut rows = stmt.query(params![symbol]).map_err(|e| e.to_string())?;
+    Ok(rows.next().map_err(|e| e.to_string())?.is_some())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -335,5 +473,32 @@ mod tests {
         let rates = get_fx_rates(&conn).expect("get fx rates");
         assert_eq!(rates.len(), 1);
         assert!((rates[0].rate - 1.37).abs() < 0.001);
+    }
+
+    #[test]
+    fn get_symbol_cache_exact_finds_symbol_case_insensitively() {
+        let conn = open_test_db();
+        let symbol = SymbolResult {
+            symbol: "AAPL".to_string(),
+            name: "Apple Inc.".to_string(),
+            asset_type: AssetType::Stock,
+            exchange: "NMS".to_string(),
+            currency: "USD".to_string(),
+        };
+
+        upsert_symbol(&conn, &symbol).expect("upsert symbol");
+
+        let cached = get_symbol_cache_exact(&conn, "aapl").expect("query exact");
+        assert!(cached.is_some());
+        assert_eq!(cached.expect("cached").name, "Apple Inc.");
+    }
+
+    #[test]
+    fn holding_exists_matches_case_insensitively() {
+        let conn = open_test_db();
+        insert_holding(&conn, make_input("MSFT")).expect("insert");
+
+        assert!(holding_exists(&conn, "msft").expect("holding exists"));
+        assert!(!holding_exists(&conn, "nvda").expect("holding exists"));
     }
 }

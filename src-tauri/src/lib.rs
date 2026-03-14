@@ -2,10 +2,11 @@ mod commands;
 mod db;
 mod fx;
 mod price;
+mod search;
 mod stress;
 mod types;
 
-use commands::{DbState, HttpClient};
+use commands::{DbState, HttpClient, SearchCacheState};
 use rusqlite::Connection;
 use std::sync::Mutex;
 use tauri::Manager;
@@ -34,6 +35,7 @@ pub fn run() {
 
             app.manage(DbState(Mutex::new(conn)));
             app.manage(HttpClient(http_client));
+            app.manage(SearchCacheState::new());
 
             Ok(())
         })
@@ -43,9 +45,12 @@ pub fn run() {
             commands::add_holding,
             commands::update_holding,
             commands::delete_holding,
+            commands::import_holdings_csv,
             commands::refresh_prices,
             commands::run_stress_test_cmd,
             commands::get_performance,
+            commands::search_symbols,
+            commands::get_symbol_price,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
