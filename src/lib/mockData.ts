@@ -3,7 +3,12 @@ import type { Holding, HoldingWithPrice, PortfolioSnapshot } from '../types/port
 const USD_CAD = 1.36;
 const EUR_CAD = 1.47;
 
-const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }> = [
+type MockHolding = Omit<
+  HoldingWithPrice,
+  'weight' | 'targetValue' | 'targetDeltaValue' | 'targetDeltaPercent'
+>;
+
+const RAW_HOLDINGS: MockHolding[] = [
   // Stocks
   {
     id: '1',
@@ -21,7 +26,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 50 * (189.84 - 155.0) * USD_CAD,
     gainLossPercent: ((189.84 - 155.0) / 155.0) * 100,
     dailyChangePercent: 1.24,
-    weight: 0,
+    targetWeight: 12,
     createdAt: '2023-01-15T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -41,7 +46,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 30 * (415.52 - 310.0) * USD_CAD,
     gainLossPercent: ((415.52 - 310.0) / 310.0) * 100,
     dailyChangePercent: -0.83,
-    weight: 0,
+    targetWeight: 10,
     createdAt: '2023-02-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -61,7 +66,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 25 * (875.4 - 420.0) * USD_CAD,
     gainLossPercent: ((875.4 - 420.0) / 420.0) * 100,
     dailyChangePercent: 3.47,
-    weight: 0,
+    targetWeight: 8,
     createdAt: '2023-03-10T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -81,7 +86,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 150 * (81.24 - 85.0),
     gainLossPercent: ((81.24 - 85.0) / 85.0) * 100,
     dailyChangePercent: -0.42,
-    weight: 0,
+    targetWeight: 8,
     createdAt: '2022-11-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -101,7 +106,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 80 * (135.88 - 120.0),
     gainLossPercent: ((135.88 - 120.0) / 120.0) * 100,
     dailyChangePercent: 0.61,
-    weight: 0,
+    targetWeight: 8,
     createdAt: '2022-12-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -122,7 +127,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 40 * (481.55 - 380.0) * USD_CAD,
     gainLossPercent: ((481.55 - 380.0) / 380.0) * 100,
     dailyChangePercent: 0.95,
-    weight: 0,
+    targetWeight: 14,
     createdAt: '2022-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -142,7 +147,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 200 * (112.4 - 88.0),
     gainLossPercent: ((112.4 - 88.0) / 88.0) * 100,
     dailyChangePercent: 1.02,
-    weight: 0,
+    targetWeight: 12,
     createdAt: '2022-07-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -163,7 +168,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 0.85 * (87450.0 - 42000.0),
     gainLossPercent: ((87450.0 - 42000.0) / 42000.0) * 100,
     dailyChangePercent: 4.82,
-    weight: 0,
+    targetWeight: 6,
     createdAt: '2023-01-20T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -183,7 +188,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 5.0 * (4380.0 - 2200.0),
     gainLossPercent: ((4380.0 - 2200.0) / 2200.0) * 100,
     dailyChangePercent: -2.14,
-    weight: 0,
+    targetWeight: 4,
     createdAt: '2023-02-10T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -204,7 +209,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 0,
     gainLossPercent: 0,
     dailyChangePercent: 0,
-    weight: 0,
+    targetWeight: 6,
     createdAt: '2023-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -224,7 +229,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 0,
     gainLossPercent: 0,
     dailyChangePercent: 0,
-    weight: 0,
+    targetWeight: 2,
     createdAt: '2023-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -244,7 +249,7 @@ const RAW_HOLDINGS: Array<Omit<HoldingWithPrice, 'weight'> & { weight: number }>
     gainLoss: 0,
     gainLossPercent: 0,
     dailyChangePercent: 0,
-    weight: 0,
+    targetWeight: 10,
     createdAt: '2023-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
   },
@@ -257,6 +262,9 @@ function buildSnapshot(): PortfolioSnapshot {
   const holdings: HoldingWithPrice[] = RAW_HOLDINGS.map((h) => ({
     ...h,
     weight: (h.marketValueCad / totalValue) * 100,
+    targetValue: totalValue * (h.targetWeight / 100),
+    targetDeltaValue: totalValue * (h.targetWeight / 100) - h.marketValueCad,
+    targetDeltaPercent: h.targetWeight - (h.marketValueCad / totalValue) * 100,
   }));
 
   const totalGainLoss = totalValue - totalCost;
@@ -276,6 +284,10 @@ function buildSnapshot(): PortfolioSnapshot {
     dailyPnl,
     lastUpdated: new Date().toISOString(),
     baseCurrency: 'CAD',
+    totalTargetWeight: holdings.reduce((sum, h) => sum + h.targetWeight, 0),
+    targetCashDelta: holdings
+      .filter((holding) => holding.assetType === 'cash')
+      .reduce((sum, holding) => sum + (holding.marketValueCad - holding.targetValue), 0),
   };
 }
 
@@ -289,8 +301,7 @@ export const MOCK_HOLDINGS: Holding[] = RAW_HOLDINGS.map(
     costValueCad: _4,
     gainLoss: _5,
     gainLossPercent: _6,
-    weight: _7,
-    dailyChangePercent: _8,
+    dailyChangePercent: _7,
     ...h
   }) => h
 );

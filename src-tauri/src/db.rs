@@ -36,6 +36,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             quantity    REAL NOT NULL,
             cost_basis  REAL NOT NULL,
             currency    TEXT NOT NULL,
+            target_weight REAL NOT NULL DEFAULT 0,
             created_at  TEXT NOT NULL,
             updated_at  TEXT NOT NULL
         );
@@ -80,6 +81,14 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
+    if !table_has_column(conn, "holdings", "target_weight")? {
+        conn.execute(
+            "ALTER TABLE holdings ADD COLUMN target_weight REAL NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     conn.execute(
         "UPDATE holdings SET account='cash' WHERE asset_type='cash' AND account='taxable'",
         [],
@@ -117,8 +126,8 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
     let asset_type_str = input.asset_type.as_str();
 
     conn.execute(
-        "INSERT INTO holdings (id, symbol, name, asset_type, account, quantity, cost_basis, currency, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO holdings (id, symbol, name, asset_type, account, quantity, cost_basis, currency, target_weight, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             id,
             input.symbol,
@@ -128,6 +137,7 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
             input.quantity,
             input.cost_basis,
             input.currency,
+            input.target_weight,
             now,
             now
         ],
@@ -143,6 +153,7 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
         quantity: input.quantity,
         cost_basis: input.cost_basis,
         currency: input.currency,
+        target_weight: input.target_weight,
         created_at: now.clone(),
         updated_at: now,
     })
@@ -154,8 +165,8 @@ pub fn update_holding(conn: &Connection, holding: Holding) -> Result<Holding, St
 
     let rows = conn
         .execute(
-            "UPDATE holdings SET symbol=?1, name=?2, asset_type=?3, account=?4, quantity=?5, cost_basis=?6, currency=?7, updated_at=?8
-             WHERE id=?9",
+            "UPDATE holdings SET symbol=?1, name=?2, asset_type=?3, account=?4, quantity=?5, cost_basis=?6, currency=?7, target_weight=?8, updated_at=?9
+             WHERE id=?10",
             params![
                 holding.symbol,
                 holding.name,
@@ -164,6 +175,7 @@ pub fn update_holding(conn: &Connection, holding: Holding) -> Result<Holding, St
                 holding.quantity,
                 holding.cost_basis,
                 holding.currency,
+                holding.target_weight,
                 now,
                 holding.id
             ],
@@ -190,7 +202,7 @@ pub fn delete_holding(conn: &Connection, id: &str) -> Result<bool, String> {
 pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, symbol, name, asset_type, account, quantity, cost_basis, currency, created_at, updated_at
+            "SELECT id, symbol, name, asset_type, account, quantity, cost_basis, currency, target_weight, created_at, updated_at
              FROM holdings ORDER BY created_at ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -207,8 +219,9 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 row.get::<_, f64>(5)?,
                 row.get::<_, f64>(6)?,
                 row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
+                row.get::<_, f64>(8)?,
                 row.get::<_, String>(9)?,
+                row.get::<_, String>(10)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -223,6 +236,7 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 quantity,
                 cost_basis,
                 currency,
+                target_weight,
                 created_at,
                 updated_at,
             )| {
@@ -237,6 +251,7 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                     quantity,
                     cost_basis,
                     currency,
+                    target_weight,
                     created_at,
                     updated_at,
                 }
@@ -442,6 +457,7 @@ mod tests {
             quantity: 10.0,
             cost_basis: 100.0,
             currency: "CAD".to_string(),
+            target_weight: 0.0,
         }
     }
 
@@ -474,11 +490,13 @@ mod tests {
         let updated_holding = Holding {
             quantity: 20.0,
             cost_basis: 150.0,
+            target_weight: 12.5,
             ..inserted
         };
         let updated = update_holding(&conn, updated_holding).expect("update");
         assert!((updated.quantity - 20.0).abs() < 0.001);
         assert!((updated.cost_basis - 150.0).abs() < 0.001);
+        assert!((updated.target_weight - 12.5).abs() < 0.001);
     }
 
     #[test]

@@ -69,6 +69,7 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       quantity: Number(cells[columnIndex('quantity')]),
       costBasis: Number(cells[columnIndex('cost_basis')]),
       currency,
+      targetWeight: 0,
     };
   });
 }

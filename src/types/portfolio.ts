@@ -9,6 +9,7 @@ export interface HoldingInput {
   quantity: number;
   costBasis: number;
   currency: string;
+  targetWeight: number;
 }
 
 export interface Holding {
@@ -20,6 +21,7 @@ export interface Holding {
   quantity: number;
   costBasis: number; // per unit, in original currency
   currency: string; // ISO currency code
+  targetWeight: number; // desired % of total portfolio value
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
 }
@@ -32,6 +34,9 @@ export interface HoldingWithPrice extends Holding {
   gainLoss: number; // marketValueCad - costValueCad
   gainLossPercent: number; // gainLoss / costValueCad
   weight: number; // marketValueCad / totalPortfolioValue
+  targetValue: number; // desired value in base currency
+  targetDeltaValue: number; // targetValue - marketValueCad
+  targetDeltaPercent: number; // targetWeight - weight
   dailyChangePercent: number;
 }
 
@@ -45,6 +50,8 @@ export interface PortfolioSnapshot {
   lastUpdated: string; // ISO 8601
   /** The currency all values are expressed in. Defaults to "CAD". */
   baseCurrency: string;
+  totalTargetWeight: number;
+  targetCashDelta: number;
 }
 
 export interface PriceData {

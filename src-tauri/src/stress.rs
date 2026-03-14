@@ -98,6 +98,7 @@ mod tests {
             quantity: 1.0,
             cost_basis: value,
             currency: currency.to_string(),
+            target_weight: 0.0,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
             current_price: value,
@@ -107,6 +108,9 @@ mod tests {
             gain_loss: 0.0,
             gain_loss_percent: 0.0,
             weight: 1.0,
+            target_value: 0.0,
+            target_delta_value: 0.0,
+            target_delta_percent: 0.0,
             daily_change_percent: 0.0,
         }
     }
@@ -122,6 +126,8 @@ mod tests {
             daily_pnl: 0.0,
             last_updated: "2024-01-01T00:00:00Z".to_string(),
             base_currency: "CAD".to_string(),
+            total_target_weight: 0.0,
+            target_cash_delta: 0.0,
         }
     }
 
