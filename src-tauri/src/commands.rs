@@ -1,17 +1,19 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use csv::{ReaderBuilder, StringRecord, Trim};
 use tauri::State;
 
 use crate::db;
-use crate::fx::fetch_all_fx_rates;
+use crate::fx::{convert_to_base, fetch_all_fx_rates};
 use crate::price::{fetch_all_prices, fetch_price};
+use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError, ImportResult,
-    PortfolioSnapshot, PriceData, StressResult, StressScenario,
+    PortfolioSnapshot, PriceData, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -19,6 +21,67 @@ const MAX_IMPORT_ROWS: usize = 500;
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 pub struct HttpClient(pub reqwest::Client);
 
+fn get_base_currency(db: &State<'_, DbState>) -> String {
+    db.0.lock()
+        .ok()
+        .and_then(|conn| db::get_config(&conn, "base_currency").ok().flatten())
+        .unwrap_or_else(|| "CAD".to_string())
+}
+
+#[allow(dead_code)]
+#[tauri::command]
+pub async fn get_config_cmd(db: State<'_, DbState>, key: String) -> Result<Option<String>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::get_config(&conn, &key)
+}
+
+#[allow(dead_code)]
+#[tauri::command]
+pub async fn set_config_cmd(
+    db: State<'_, DbState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::set_config(&conn, &key, &value)
+}
+
+pub(crate) struct SearchCacheEntry {
+    results: Vec<SymbolResult>,
+    cached_at: Instant,
+}
+
+pub struct SearchCacheState(pub Mutex<HashMap<String, SearchCacheEntry>>);
+
+impl SearchCacheState {
+    pub fn new() -> Self {
+        SearchCacheState(Mutex::new(HashMap::new()))
+    }
+
+    fn get(&self, key: &str) -> Option<Vec<SymbolResult>> {
+        let cache = self.0.lock().ok()?;
+        let entry = cache.get(key)?;
+        if entry.cached_at.elapsed() > Duration::from_secs(300) {
+            return None;
+        }
+        Some(entry.results.clone())
+    }
+
+    fn set(&self, key: String, results: Vec<SymbolResult>) {
+        if let Ok(mut cache) = self.0.lock() {
+            if cache.len() >= 200 {
+                cache.clear();
+            }
+            cache.insert(
+                key,
+                SearchCacheEntry {
+                    results,
+                    cached_at: Instant::now(),
+                },
+            );
+        }
+    }
+}
 #[derive(Debug)]
 struct ParsedImportRow {
     row: usize,
@@ -156,11 +219,37 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
     Ok(rows)
 }
 
+async fn validate_symbol(
+    db: &State<'_, DbState>,
+    client: &State<'_, HttpClient>,
+    symbol: &str,
+) -> Result<Option<SymbolResult>, String> {
+    if let Some(cached) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_symbol_cache_exact(&conn, symbol)?
+    } {
+        return Ok(Some(cached));
+    }
+
+    let result = search_symbols_yahoo(&client.0, symbol)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.symbol.eq_ignore_ascii_case(symbol));
+
+    if let Some(ref symbol_result) = result {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let _ = db::upsert_symbol(&conn, symbol_result);
+    }
+
+    Ok(result)
+}
 #[tauri::command]
 pub async fn get_portfolio(
     db: State<'_, DbState>,
     _client: State<'_, HttpClient>,
 ) -> Result<PortfolioSnapshot, String> {
+    let base_currency = get_base_currency(&db);
+
     let holdings = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
@@ -175,6 +264,7 @@ pub async fn get_portfolio(
             total_gain_loss_percent: 0.0,
             daily_pnl: 0.0,
             last_updated: Utc::now().to_rfc3339(),
+            base_currency,
         });
     }
 
@@ -208,11 +298,18 @@ pub async fn get_portfolio(
                 .unwrap_or((holding.cost_basis, 0.0))
         };
 
-        let fx_pair = format!("{}CAD", holding.currency.to_uppercase());
-        let fx_rate = if holding.currency.to_uppercase() == "CAD" {
+        // Look up the FX rate from holding currency → base currency
+        let fx_pair = format!(
+            "{}{}",
+            holding.currency.to_uppercase(),
+            base_currency.to_uppercase()
+        );
+        let fx_rate = if holding.currency.to_uppercase() == base_currency.to_uppercase() {
             1.0
         } else {
-            fx_map.get(&fx_pair).map(|r| r.rate).unwrap_or(1.0)
+            fx_map.get(&fx_pair).map(|r| r.rate).unwrap_or_else(|| {
+                convert_to_base(1.0, &holding.currency, &base_currency, &cached_fx)
+            })
         };
 
         let current_price_cad = current_price * fx_rate;
@@ -274,6 +371,7 @@ pub async fn get_portfolio(
         total_gain_loss_percent,
         daily_pnl,
         last_updated: Utc::now().to_rfc3339(),
+        base_currency,
     })
 }
 
@@ -308,7 +406,7 @@ pub async fn import_holdings_csv(
     csv_content: String,
 ) -> Result<ImportResult, String> {
     let parsed_rows = parse_import_rows(&csv_content)?;
-    let mut seen_symbols = {
+    let existing_symbols = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
             .into_iter()
@@ -316,6 +414,7 @@ pub async fn import_holdings_csv(
             .collect::<HashSet<_>>()
     };
 
+    let mut seen_symbols = existing_symbols;
     let mut pending_inputs = Vec::new();
     let mut skipped = Vec::new();
 
@@ -329,32 +428,51 @@ pub async fn import_holdings_csv(
             continue;
         }
 
-        if !matches!(row.asset_type, AssetType::Cash)
-            && fetch_price(&client.0, &row.symbol).await.is_err()
-        {
-            skipped.push(ImportError {
-                row: row.row,
+        if matches!(row.asset_type, AssetType::Cash) {
+            seen_symbols.insert(row.symbol.clone());
+            pending_inputs.push(HoldingInput {
                 symbol: row.symbol,
-                reason: "invalid_symbol".to_string(),
+                name: if row.name.is_empty() {
+                    format!("{} Cash", row.currency)
+                } else {
+                    row.name
+                },
+                asset_type: row.asset_type,
+                quantity: row.quantity,
+                cost_basis: row.cost_basis,
+                currency: row.currency,
             });
             continue;
         }
 
-        let symbol = row.symbol.to_uppercase();
-        let name = if row.name.is_empty() {
-            if matches!(row.asset_type, AssetType::Cash) {
-                format!("{} Cash", row.currency)
-            } else {
-                symbol.clone()
+        let validated = match validate_symbol(&db, &client, &row.symbol).await {
+            Ok(Some(result)) => result,
+            Ok(None) => {
+                skipped.push(ImportError {
+                    row: row.row,
+                    symbol: row.symbol,
+                    reason: "invalid_symbol".to_string(),
+                });
+                continue;
             }
-        } else {
-            row.name
+            Err(_) => {
+                skipped.push(ImportError {
+                    row: row.row,
+                    symbol: row.symbol,
+                    reason: "validation_failed".to_string(),
+                });
+                continue;
+            }
         };
 
-        seen_symbols.insert(symbol.clone());
+        seen_symbols.insert(validated.symbol.to_uppercase());
         pending_inputs.push(HoldingInput {
-            symbol,
-            name,
+            symbol: validated.symbol,
+            name: if row.name.is_empty() {
+                validated.name
+            } else {
+                row.name
+            },
             asset_type: row.asset_type,
             quantity: row.quantity,
             cost_basis: row.cost_basis,
@@ -370,12 +488,10 @@ pub async fn import_holdings_csv(
         }
     }
 
-    let total_rows = imported.len() + skipped.len();
-
     Ok(ImportResult {
+        total_rows: imported.len() + skipped.len(),
         imported,
         skipped,
-        total_rows,
     })
 }
 
@@ -384,6 +500,8 @@ pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
 ) -> Result<Vec<PriceData>, String> {
+    let base_currency = get_base_currency(&db);
+
     let holdings = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
@@ -398,18 +516,17 @@ pub async fn refresh_prices(
         .into_iter()
         .collect();
 
-    // Collect unique non-CAD currencies
+    // Collect all unique currencies; fetch_all_fx_rates will filter out the base
     let currencies: Vec<String> = holdings
         .iter()
         .map(|h| h.currency.clone())
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
-        .filter(|c| c.to_uppercase() != "CAD")
         .collect();
 
     let (prices, fx_rates) = tokio::join!(
         fetch_all_prices(&client.0, symbols),
-        fetch_all_fx_rates(&client.0, currencies)
+        fetch_all_fx_rates(&client.0, currencies, &base_currency)
     );
 
     // Persist to cache
@@ -434,6 +551,59 @@ pub async fn run_stress_test_cmd(
 ) -> Result<StressResult, String> {
     let snapshot = get_portfolio(db, client).await?;
     Ok(run_stress_test(&snapshot, &scenario))
+}
+
+#[tauri::command]
+pub async fn search_symbols(
+    query: String,
+    client: State<'_, HttpClient>,
+    cache: State<'_, SearchCacheState>,
+    db: State<'_, DbState>,
+) -> Result<Vec<SymbolResult>, String> {
+    if query.trim().len() < 2 {
+        return Ok(vec![]);
+    }
+
+    let key = query.trim().to_lowercase();
+
+    // 1. In-memory cache (5-minute TTL)
+    if let Some(cached) = cache.get(&key) {
+        return Ok(cached);
+    }
+
+    // 2. SQLite persistent cache
+    let db_results = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::search_symbol_cache(&conn, &key).unwrap_or_default()
+    };
+
+    // 3. Yahoo Finance API
+    let results = match search_symbols_yahoo(&client.0, &query).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("Symbol search API failed: {}", e);
+            return Ok(db_results);
+        }
+    };
+
+    // Persist new results to SQLite and in-memory cache
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        for r in &results {
+            let _ = db::upsert_symbol(&conn, r);
+        }
+    }
+    cache.set(key, results.clone());
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn get_symbol_price(
+    symbol: String,
+    client: State<'_, HttpClient>,
+) -> Result<PriceData, String> {
+    fetch_price(&client.0, &symbol).await
 }
 
 #[tauri::command]

@@ -263,6 +263,7 @@ function buildSnapshot(): PortfolioSnapshot {
     totalGainLossPercent,
     dailyPnl,
     lastUpdated: new Date().toISOString(),
+    baseCurrency: 'CAD',
   };
 }
 

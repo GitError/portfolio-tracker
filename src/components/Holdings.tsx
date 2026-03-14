@@ -134,9 +134,12 @@ export function Holdings() {
 
   async function handleImport(csvContent: string) {
     const result = await importHoldingsCsv(csvContent);
-    if (result.imported.length > 0)
+    if (result.imported.length > 0) {
       showToast(`Imported ${result.imported.length} holdings`, 'success');
-    if (result.skipped.length > 0) showToast(`Skipped ${result.skipped.length} rows`, 'info');
+    }
+    if (result.skipped.length > 0) {
+      showToast(`Skipped ${result.skipped.length} rows`, 'info');
+    }
     return result;
   }
 
