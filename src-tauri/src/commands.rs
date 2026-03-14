@@ -13,7 +13,8 @@ use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PortfolioSnapshot, PriceData, StressResult, StressScenario, SymbolResult,
+    ImportResult, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData, StressResult,
+    StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -133,6 +134,28 @@ fn parse_optional_field(record: &StringRecord, index: Option<usize>) -> String {
         .to_string()
 }
 
+/// Convert `SYMBOL:COUNTRY` notation to a Yahoo Finance symbol.
+/// Plain symbols are returned unchanged (uppercased).
+/// Examples: `BMO:CA` → `BMO.TO`, `AAPL:US` → `AAPL`, `BARC:GB` → `BARC.L`
+fn normalize_symbol_for_import(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if let Some((sym, country)) = trimmed.split_once(':') {
+        let sym = sym.trim().to_uppercase();
+        match country.trim().to_uppercase().as_str() {
+            "CA" => format!("{}.TO", sym),
+            "GB" => format!("{}.L", sym),
+            "AU" => format!("{}.AX", sym),
+            "DE" => format!("{}.DE", sym),
+            "FR" => format!("{}.PA", sym),
+            "JP" => format!("{}.T", sym),
+            "HK" => format!("{}.HK", sym),
+            _ => sym, // US or unrecognised: no exchange suffix
+        }
+    } else {
+        trimmed.to_uppercase()
+    }
+}
+
 fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> {
     let content = csv_content.trim_start_matches('\u{feff}');
     let mut reader = ReaderBuilder::new()
@@ -194,12 +217,12 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             if raw_symbol.is_empty() || raw_symbol.eq_ignore_ascii_case("CASH") {
                 format!("{}-CASH", currency)
             } else {
-                raw_symbol.to_uppercase()
+                normalize_symbol_for_import(&raw_symbol)
             }
         } else if raw_symbol.is_empty() {
             return Err(format!("Row {}: missing_symbol", row));
         } else {
-            raw_symbol.to_uppercase()
+            normalize_symbol_for_import(&raw_symbol)
         };
 
         let quantity = parse_required_field(&record, quantity_index, row, "quantity")?
@@ -553,6 +576,125 @@ pub async fn import_holdings_csv(
 }
 
 #[tauri::command]
+pub async fn preview_import_csv(
+    db: State<'_, DbState>,
+    client: State<'_, HttpClient>,
+    csv_content: String,
+) -> Result<PreviewImportResult, String> {
+    let parsed_rows = parse_import_rows(&csv_content)?;
+    let existing_symbols: HashSet<String> = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_all_holdings(&conn)?
+            .into_iter()
+            .map(|h| h.symbol.to_uppercase())
+            .collect()
+    };
+
+    let mut preview_rows: Vec<PreviewRow> = Vec::new();
+    let mut seen: HashSet<String> = existing_symbols;
+
+    for row in parsed_rows {
+        let sym_upper = row.symbol.to_uppercase();
+
+        if seen.contains(&sym_upper) {
+            preview_rows.push(PreviewRow {
+                row: row.row,
+                original_symbol: row.symbol.clone(),
+                resolved_symbol: row.symbol.clone(),
+                name: row.name,
+                asset_type: row.asset_type.as_str().to_string(),
+                currency: row.currency,
+                exchange: String::new(),
+                quantity: row.quantity,
+                cost_basis: row.cost_basis,
+                status: "duplicate".to_string(),
+            });
+            continue;
+        }
+
+        if matches!(row.asset_type, AssetType::Cash) {
+            seen.insert(sym_upper);
+            preview_rows.push(PreviewRow {
+                row: row.row,
+                original_symbol: row.symbol.clone(),
+                resolved_symbol: row.symbol.clone(),
+                name: if row.name.is_empty() {
+                    format!("{} Cash", row.currency)
+                } else {
+                    row.name
+                },
+                asset_type: "cash".to_string(),
+                currency: row.currency,
+                exchange: String::new(),
+                quantity: row.quantity,
+                cost_basis: row.cost_basis,
+                status: "ready".to_string(),
+            });
+            continue;
+        }
+
+        match validate_symbol(&db, &client, &row.symbol).await {
+            Ok(Some(result)) => {
+                seen.insert(result.symbol.to_uppercase());
+                preview_rows.push(PreviewRow {
+                    row: row.row,
+                    original_symbol: row.symbol,
+                    resolved_symbol: result.symbol,
+                    name: if row.name.is_empty() {
+                        result.name
+                    } else {
+                        row.name
+                    },
+                    asset_type: result.asset_type.as_str().to_string(),
+                    currency: result.currency,
+                    exchange: result.exchange,
+                    quantity: row.quantity,
+                    cost_basis: row.cost_basis,
+                    status: "ready".to_string(),
+                });
+            }
+            Ok(None) => {
+                preview_rows.push(PreviewRow {
+                    row: row.row,
+                    original_symbol: row.symbol.clone(),
+                    resolved_symbol: String::new(),
+                    name: row.name,
+                    asset_type: row.asset_type.as_str().to_string(),
+                    currency: row.currency,
+                    exchange: String::new(),
+                    quantity: row.quantity,
+                    cost_basis: row.cost_basis,
+                    status: "invalid_symbol".to_string(),
+                });
+            }
+            Err(_) => {
+                preview_rows.push(PreviewRow {
+                    row: row.row,
+                    original_symbol: row.symbol.clone(),
+                    resolved_symbol: String::new(),
+                    name: row.name,
+                    asset_type: row.asset_type.as_str().to_string(),
+                    currency: row.currency,
+                    exchange: String::new(),
+                    quantity: row.quantity,
+                    cost_basis: row.cost_basis,
+                    status: "validation_failed".to_string(),
+                });
+            }
+        }
+    }
+
+    let ready_count = preview_rows.iter().filter(|r| r.status == "ready").count();
+    let skip_count = preview_rows.len() - ready_count;
+
+    Ok(PreviewImportResult {
+        rows: preview_rows,
+        ready_count,
+        skip_count,
+    })
+}
+
+#[tauri::command]
 pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
@@ -702,6 +844,36 @@ pub async fn get_performance(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_symbol_strips_country_suffix() {
+        assert_eq!(normalize_symbol_for_import("BMO:CA"), "BMO.TO");
+        assert_eq!(normalize_symbol_for_import("AAPL:US"), "AAPL");
+        assert_eq!(normalize_symbol_for_import("BARC:GB"), "BARC.L");
+        assert_eq!(normalize_symbol_for_import("CBA:AU"), "CBA.AX");
+        assert_eq!(normalize_symbol_for_import("SAP:DE"), "SAP.DE");
+        assert_eq!(normalize_symbol_for_import("AIR:FR"), "AIR.PA");
+        assert_eq!(normalize_symbol_for_import("7203:JP"), "7203.T");
+        assert_eq!(normalize_symbol_for_import("0700:HK"), "0700.HK");
+    }
+
+    #[test]
+    fn normalize_symbol_passes_through_plain_symbols() {
+        assert_eq!(normalize_symbol_for_import("AAPL"), "AAPL");
+        assert_eq!(normalize_symbol_for_import("BMO.TO"), "BMO.TO");
+        assert_eq!(normalize_symbol_for_import("bmo"), "BMO");
+        assert_eq!(normalize_symbol_for_import(" MSFT "), "MSFT");
+    }
+
+    #[test]
+    fn parse_import_rows_normalizes_country_suffix() {
+        let csv =
+            "symbol,name,type,quantity,cost_basis,currency\nBMO:CA,Bank of Montreal,stock,10,80,CAD\n";
+        let rows = parse_import_rows(csv).expect("parse csv");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].symbol, "BMO.TO");
+    }
 
     #[test]
     fn parse_import_rows_supports_cash_defaults() {

@@ -105,6 +105,26 @@ export interface SymbolResult {
   exchange: string;
   currency: string;
 }
+
+export interface PreviewRow {
+  row: number;
+  originalSymbol: string;
+  resolvedSymbol: string;
+  name: string;
+  assetType: string;
+  currency: string;
+  exchange: string;
+  quantity: number;
+  costBasis: number;
+  /** "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed" */
+  status: string;
+}
+
+export interface PreviewImportResult {
+  rows: PreviewRow[];
+  readyCount: number;
+  skipCount: number;
+}
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot

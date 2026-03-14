@@ -76,6 +76,7 @@ export function Holdings() {
     updateHolding,
     deleteHolding,
     importHoldingsCsv,
+    previewImportCsv,
     exportHoldingsCsv,
   } = usePortfolio();
   const { showToast } = useToast();
@@ -660,6 +661,7 @@ export function Holdings() {
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
         onImport={handleImport}
+        onPreview={previewImportCsv}
       />
     </div>
   );
