@@ -207,3 +207,29 @@ pub struct StressResult {
     pub total_impact_percent: f64,
     pub holding_breakdown: Vec<StressHoldingResult>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewRow {
+    pub row: usize,
+    /// Symbol as written in the CSV (e.g. "BMO:CA")
+    pub original_symbol: String,
+    /// Resolved Yahoo Finance symbol (e.g. "BMO.TO"), empty when unresolvable
+    pub resolved_symbol: String,
+    pub name: String,
+    pub asset_type: String,
+    pub currency: String,
+    pub exchange: String,
+    pub quantity: f64,
+    pub cost_basis: f64,
+    /// "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed"
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewImportResult {
+    pub rows: Vec<PreviewRow>,
+    pub ready_count: usize,
+    pub skip_count: usize,
+}

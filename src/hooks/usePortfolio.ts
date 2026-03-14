@@ -5,6 +5,7 @@ import type {
   HoldingInput,
   ImportResult,
   PortfolioSnapshot,
+  PreviewImportResult,
 } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 
@@ -27,6 +28,7 @@ export interface UsePortfolioReturn {
   updateHolding: (holding: Holding) => Promise<Holding>;
   deleteHolding: (id: string) => Promise<void>;
   importHoldingsCsv: (csvContent: string) => Promise<ImportResult>;
+  previewImportCsv: (csvContent: string) => Promise<PreviewImportResult>;
   exportHoldingsCsv: () => Promise<string>;
 }
 
@@ -179,6 +181,30 @@ export function usePortfolio(): UsePortfolioReturn {
     [loadPortfolio]
   );
 
+  const previewImportCsv = useCallback(async (csvContent: string): Promise<PreviewImportResult> => {
+    if (isTauri()) {
+      return tauriInvoke<PreviewImportResult>('preview_import_csv', { csvContent });
+    }
+    // Browser mock: parse the CSV and return a basic preview
+    const imported = parseMockCsv(csvContent);
+    return {
+      rows: imported.map((input, index) => ({
+        row: index + 2,
+        originalSymbol: input.symbol,
+        resolvedSymbol: input.symbol,
+        name: input.name,
+        assetType: input.assetType,
+        currency: input.currency,
+        exchange: '',
+        quantity: input.quantity,
+        costBasis: input.costBasis,
+        status: 'ready',
+      })),
+      readyCount: imported.length,
+      skipCount: 0,
+    };
+  }, []);
+
   const exportHoldingsCsv = useCallback(async (): Promise<string> => {
     if (isTauri()) {
       return tauriInvoke<string>('export_holdings_csv');
@@ -209,6 +235,7 @@ export function usePortfolio(): UsePortfolioReturn {
     updateHolding,
     deleteHolding,
     importHoldingsCsv,
+    previewImportCsv,
     exportHoldingsCsv,
   };
 }
