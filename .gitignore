@@ -1,5 +1,8 @@
-# Node
+# Dependencies
 node_modules/
+.npm
+
+# Build output
 dist/
 
 # Rust / Cargo
@@ -7,17 +10,35 @@ src-tauri/target/
 
 # Tauri generated
 src-tauri/gen/
+src-tauri/WixTools/
+
+# Environment
+.env
+.env.*
+.env.local
+.env.*.local
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Env
-.env
-.env.local
-.env.*.local
-
 # Editor
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+
+# Test / coverage
+coverage/
+*.lcov
+
+# One-time scaffolding scripts (never committed)
+create_issues.sh
+create_ci_issues.sh
+run_agents.sh
+ci-cd/
+
+# Logs
+*.log
+npm-debug.log*
