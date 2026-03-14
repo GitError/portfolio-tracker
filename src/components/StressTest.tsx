@@ -16,6 +16,7 @@ import { PRESET_SCENARIOS, ASSET_TYPE_CONFIG } from '../lib/constants';
 import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
+import { Select } from './ui/Select';
 import type { StressScenario } from '../types/portfolio';
 
 // ─── Shock state keyed as the scenario.shocks keys ───────────────────────────
@@ -304,28 +305,11 @@ export function StressTest() {
           {/* Preset selector */}
           <div style={{ marginBottom: 20 }}>
             <div style={SECTION_TITLE}>Preset Scenario</div>
-            <select
+            <Select
               value={presetName}
-              onChange={(e) => handlePresetChange(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border-primary)',
-                color: 'var(--text-primary)',
-                padding: '7px 10px',
-                fontSize: 13,
-                fontFamily: 'var(--font-mono)',
-                borderRadius: '2px',
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {ALL_PRESET_NAMES.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
+              onChange={handlePresetChange}
+              options={ALL_PRESET_NAMES.map((n) => ({ value: n, label: n }))}
+            />
           </div>
 
           {/* Asset class shocks */}
