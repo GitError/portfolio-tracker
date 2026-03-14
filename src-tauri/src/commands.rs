@@ -28,12 +28,14 @@ fn get_base_currency(db: &State<'_, DbState>) -> String {
         .unwrap_or_else(|| "CAD".to_string())
 }
 
+#[allow(dead_code)]
 #[tauri::command]
 pub async fn get_config_cmd(db: State<'_, DbState>, key: String) -> Result<Option<String>, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::get_config(&conn, &key)
 }
 
+#[allow(dead_code)]
 #[tauri::command]
 pub async fn set_config_cmd(
     db: State<'_, DbState>,
