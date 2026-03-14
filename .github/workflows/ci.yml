@@ -3,8 +3,26 @@ name: CI
 on:
   push:
     branches: [main, dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'agent-prompts/**'
+      - '.githooks/**'
+      - '*.sh'
+      - '.github/dependabot.yml'
   pull_request:
     branches: [main, dev]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
+      - 'agent-prompts/**'
+      - '.githooks/**'
+      - '*.sh'
+      - '.github/dependabot.yml'
 
 env:
   CARGO_TERM_COLOR: always
@@ -12,9 +30,37 @@ env:
   RUST_TOOLCHAIN: stable
 
 jobs:
+  # ── Detect which parts of the codebase changed ──────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'src/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'tsconfig.json'
+              - 'vite.config.ts'
+              - 'vitest.config.ts'
+              - 'eslint.config.js'
+              - '.prettierrc'
+              - 'index.html'
+            backend:
+              - 'src-tauri/**'
+
   # ── Frontend: Lint + Type Check + Format + Test + Build ────
   frontend:
     name: Frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -49,6 +95,8 @@ jobs:
   # ── Backend: Lint + Build + Test ────────────────────────────
   backend:
     name: Backend (Rust)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -88,3 +136,18 @@ jobs:
 
       - name: Build
         run: cargo build
+
+  # ── Roll-up: single required status check for branch protection ──
+  ci-status:
+    name: CI Status
+    if: always()
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        run: |
+          if [[ "${{ needs.frontend.result }}" == "failure" || "${{ needs.backend.result }}" == "failure" ]]; then
+            echo "One or more CI jobs failed."
+            exit 1
+          fi
+          echo "CI passed (skipped jobs count as success)."
