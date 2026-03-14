@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { RefreshCw, ChevronDown } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { formatCurrency, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
+import { SUPPORTED_CURRENCIES } from '../lib/currencyContext';
 import type { PortfolioSnapshot } from '../types/portfolio';
 
 interface TopBarProps {
   portfolio: PortfolioSnapshot | null;
   loading: boolean;
   onRefresh: () => void;
+  baseCurrency: string;
+  onBaseCurrencyChange: (currency: string) => void;
 }
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -19,7 +22,7 @@ const ROUTE_TITLES: Record<string, string> = {
 };
 
 function useRelativeTime(isoDate: string | null): string {
-  const [label, setLabel] = useState('—');
+  const [label, setLabel] = useState('\u2014');
 
   useEffect(() => {
     if (!isoDate) return;
@@ -37,7 +40,100 @@ function useRelativeTime(isoDate: string | null): string {
   return label;
 }
 
-export function TopBar({ portfolio, loading, onRefresh }: TopBarProps) {
+interface CurrencyPickerProps {
+  value: string;
+  onChange: (currency: string) => void;
+}
+
+function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen((prev) => !prev)}
+        title="Change base currency"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: '5px 10px',
+          background: 'transparent',
+          border: '1px solid var(--border-primary)',
+          color: 'var(--text-secondary)',
+          borderRadius: '2px',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontFamily: 'var(--font-mono)',
+          letterSpacing: '0.04em',
+        }}
+      >
+        {value}
+        <ChevronDown size={11} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 4px)',
+            right: 0,
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-primary)',
+            borderRadius: '2px',
+            zIndex: 20,
+            minWidth: 90,
+            overflow: 'hidden',
+          }}
+        >
+          {SUPPORTED_CURRENCIES.map((curr) => (
+            <button
+              key={curr}
+              onClick={() => {
+                onChange(curr);
+                setOpen(false);
+              }}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '7px 12px',
+                background: curr === value ? 'var(--bg-surface-hover)' : 'transparent',
+                color: curr === value ? 'var(--text-primary)' : 'var(--text-secondary)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                letterSpacing: '0.04em',
+              }}
+            >
+              {curr}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TopBar({
+  portfolio,
+  loading,
+  onRefresh,
+  baseCurrency,
+  onBaseCurrencyChange,
+}: TopBarProps) {
   const { pathname } = useLocation();
   const title = ROUTE_TITLES[pathname] ?? 'Portfolio Tracker';
   const updatedLabel = useRelativeTime(portfolio?.lastUpdated ?? null);
@@ -87,7 +183,7 @@ export function TopBar({ portfolio, loading, onRefresh }: TopBarProps) {
             }}
           >
             {dailyPnl >= 0 ? '+' : ''}
-            {formatCurrency(dailyPnl)} ({formatPercent(dailyPct)})
+            {formatCurrency(dailyPnl, baseCurrency)} ({formatPercent(dailyPct)})
           </span>
         )}
 
@@ -101,6 +197,9 @@ export function TopBar({ portfolio, loading, onRefresh }: TopBarProps) {
         >
           {loading ? 'Refreshing...' : `Updated ${updatedLabel}`}
         </span>
+
+        {/* Currency picker */}
+        <CurrencyPicker value={baseCurrency} onChange={onBaseCurrencyChange} />
 
         {/* Refresh button */}
         <button

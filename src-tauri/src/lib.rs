@@ -51,6 +51,8 @@ pub fn run() {
             commands::get_performance,
             commands::search_symbols,
             commands::get_symbol_price,
+            commands::get_config_cmd,
+            commands::set_config_cmd,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
