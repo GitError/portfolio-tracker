@@ -18,8 +18,12 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
     for holding in &snapshot.holdings {
         let asset_type_key = holding.asset_type.as_str().to_string();
 
-        // Asset-level shock (e.g., "stock", "etf", "crypto", "cash")
-        let asset_shock = scenario.shocks.get(&asset_type_key).copied().unwrap_or(0.0);
+        // Asset-level shock: cash is excluded — only FX shocks may affect cash positions
+        let asset_shock = if asset_type_key == "cash" {
+            0.0
+        } else {
+            scenario.shocks.get(&asset_type_key).copied().unwrap_or(0.0)
+        };
 
         // FX shock: apply if holding is not in the portfolio base currency.
         let fx_shock = if !holding
@@ -217,6 +221,38 @@ mod tests {
 
         assert!((result.holding_breakdown[0].stressed_value - 7_200.0).abs() < 0.001);
         assert!((result.holding_breakdown[1].stressed_value - 8_000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn cash_ignores_asset_shock_but_applies_fx_shock() {
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![
+            make_holding("USD-CASH", AssetType::Cash, "USD", value),
+            make_holding("CAD-CASH", AssetType::Cash, "CAD", value),
+        ]);
+        let mut shocks = HashMap::new();
+        shocks.insert("cash".to_string(), -0.50);
+        shocks.insert("fx_usd_cad".to_string(), 0.10);
+        let scenario = StressScenario {
+            name: "Cash test".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        let usd = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "USD-CASH")
+            .unwrap();
+        let cad = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "CAD-CASH")
+            .unwrap();
+
+        assert!((usd.stressed_value - 11_000.0).abs() < 0.001);
+        assert!((cad.stressed_value - value).abs() < 0.001);
     }
 
     #[test]
