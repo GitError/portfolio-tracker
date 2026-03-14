@@ -142,3 +142,19 @@ pub struct StressResult {
     pub total_impact_percent: f64,
     pub holding_breakdown: Vec<StressHoldingResult>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportError {
+    pub row: usize,
+    pub symbol: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub imported: Vec<Holding>,
+    pub skipped: Vec<ImportError>,
+    pub total_rows: usize,
+}

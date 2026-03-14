@@ -336,4 +336,5 @@ mod tests {
         assert_eq!(rates.len(), 1);
         assert!((rates[0].rate - 1.37).abs() < 0.001);
     }
+
 }

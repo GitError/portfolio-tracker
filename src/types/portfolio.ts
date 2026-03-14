@@ -81,6 +81,18 @@ export interface StressResult {
   holdingBreakdown: StressHoldingResult[];
 }
 
+export interface ImportError {
+  row: number;
+  symbol: string;
+  reason: string;
+}
+
+export interface ImportResult {
+  imported: Holding[];
+  skipped: ImportError[];
+  totalRows: number;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
