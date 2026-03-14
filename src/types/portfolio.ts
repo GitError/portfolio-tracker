@@ -1,9 +1,11 @@
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash';
+export type AccountType = 'tfsa' | 'rrsp' | 'taxable' | 'cash';
 
 export interface HoldingInput {
   symbol: string;
   name: string;
   assetType: AssetType;
+  account: AccountType;
   quantity: number;
   costBasis: number;
   currency: string;
@@ -14,6 +16,7 @@ export interface Holding {
   symbol: string;
   name: string;
   assetType: AssetType;
+  account: AccountType;
   quantity: number;
   costBasis: number; // per unit, in original currency
   currency: string; // ISO currency code

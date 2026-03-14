@@ -1,10 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
-import { ASSET_TYPE_CONFIG, CURRENCY_COLORS } from '../lib/constants';
+import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG, CURRENCY_COLORS } from '../lib/constants';
 import { EmptyState } from './ui/EmptyState';
-import type { PortfolioSnapshot } from '../types/portfolio';
+import { Select } from './ui/Select';
+import type { AccountType, PortfolioSnapshot } from '../types/portfolio';
 
 interface DashboardProps {
   portfolio: PortfolioSnapshot | null;
@@ -45,45 +46,73 @@ function CenterLabel({ text }: { text: string }) {
 }
 
 export function Dashboard({ portfolio, loading }: DashboardProps) {
-  const allocationData = useMemo(() => {
+  const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
+  const filteredHoldings = useMemo(() => {
     if (!portfolio) return [];
+    return accountFilter === 'all'
+      ? portfolio.holdings
+      : portfolio.holdings.filter((holding) => holding.account === accountFilter);
+  }, [portfolio, accountFilter]);
+
+  const totals = useMemo(() => {
+    const totalValue = filteredHoldings.reduce((sum, holding) => sum + holding.marketValueCad, 0);
+    const totalCost = filteredHoldings.reduce((sum, holding) => sum + holding.costValueCad, 0);
+    const totalGainLoss = totalValue - totalCost;
+    return {
+      totalValue,
+      totalCost,
+      totalGainLoss,
+      totalGainLossPercent: totalCost > 0 ? (totalGainLoss / totalCost) * 100 : 0,
+      dailyPnl: filteredHoldings.reduce(
+        (sum, holding) => sum + holding.marketValueCad * (holding.dailyChangePercent / 100),
+        0
+      ),
+    };
+  }, [filteredHoldings]);
+
+  const allocationData = useMemo(() => {
+    if (!portfolio || totals.totalValue === 0) return [];
     const byType: Record<string, number> = {};
-    for (const h of portfolio.holdings) {
+    for (const h of filteredHoldings) {
       byType[h.assetType] = (byType[h.assetType] ?? 0) + h.marketValueCad;
     }
     return Object.entries(byType).map(([type, value]) => ({
       name: ASSET_TYPE_CONFIG[type as keyof typeof ASSET_TYPE_CONFIG]?.label ?? type,
       value: Math.round(value * 100) / 100,
       color: ASSET_TYPE_CONFIG[type as keyof typeof ASSET_TYPE_CONFIG]?.color ?? '#888',
-      pct: (value / portfolio.totalValue) * 100,
+      pct: (value / totals.totalValue) * 100,
     }));
-  }, [portfolio]);
+  }, [filteredHoldings, portfolio, totals]);
 
   const currencyData = useMemo(() => {
-    if (!portfolio) return [];
+    if (!portfolio || totals.totalValue === 0) return [];
     const byCcy: Record<string, number> = {};
-    for (const h of portfolio.holdings) {
+    for (const h of filteredHoldings) {
       byCcy[h.currency] = (byCcy[h.currency] ?? 0) + h.marketValueCad;
     }
     return Object.entries(byCcy).map(([ccy, value]) => ({
       name: ccy,
       value: Math.round(value * 100) / 100,
       color: CURRENCY_COLORS[ccy] ?? '#888',
-      pct: (value / portfolio.totalValue) * 100,
+      pct: (value / totals.totalValue) * 100,
     }));
-  }, [portfolio]);
+  }, [filteredHoldings, portfolio, totals]);
 
   const topMovers = useMemo(() => {
     if (!portfolio) return [];
-    return [...portfolio.holdings]
+    return [...filteredHoldings]
       .filter((h) => h.assetType !== 'cash')
       .sort((a, b) => Math.abs(b.dailyChangePercent) - Math.abs(a.dailyChangePercent))
       .slice(0, 5);
-  }, [portfolio]);
+  }, [filteredHoldings, portfolio]);
 
   const stats = useMemo(() => {
-    if (!portfolio) return null;
-    const nonCash = portfolio.holdings.filter((h) => h.assetType !== 'cash');
+    if (!portfolio || filteredHoldings.length === 0) return null;
+    const nonCash = filteredHoldings.filter((h) => h.assetType !== 'cash');
+    if (nonCash.length === 0) {
+      const cashTotal = filteredHoldings.reduce((sum, h) => sum + h.marketValueCad, 0);
+      return { best: null, worst: null, cashTotal };
+    }
     const best = nonCash.reduce(
       (a, b) => (b.gainLossPercent > a.gainLossPercent ? b : a),
       nonCash[0]
@@ -92,11 +121,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
       (a, b) => (b.gainLossPercent < a.gainLossPercent ? b : a),
       nonCash[0]
     );
-    const cashTotal = portfolio.holdings
+    const cashTotal = filteredHoldings
       .filter((h) => h.assetType === 'cash')
       .reduce((s, h) => s + h.marketValueCad, 0);
     return { best, worst, cashTotal };
-  }, [portfolio]);
+  }, [filteredHoldings, portfolio]);
 
   if (!portfolio && !loading) {
     return <EmptyState message="No portfolio data available" />;
@@ -126,6 +155,16 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         }}
       >
         <div style={LABEL}>Portfolio Value</div>
+        <div style={{ width: 180, marginBottom: 12 }}>
+          <Select
+            value={accountFilter}
+            onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
+            options={[
+              { value: 'all', label: 'All Accounts' },
+              ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+            ]}
+          />
+        </div>
         <div
           style={{
             fontFamily: 'var(--font-mono)',
@@ -136,7 +175,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             letterSpacing: '-0.02em',
           }}
         >
-          {portfolio ? formatCurrency(portfolio.totalValue) : '—'}
+          {portfolio ? formatCurrency(totals.totalValue) : '—'}
         </div>
         <div style={{ display: 'flex', gap: 24, marginTop: 10, alignItems: 'baseline' }}>
           <span
@@ -144,11 +183,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               fontFamily: 'var(--font-mono)',
               fontSize: 16,
               fontWeight: 600,
-              color: pnlColor(portfolio?.dailyPnl ?? 0),
+              color: pnlColor(totals.dailyPnl),
             }}
           >
             {portfolio
-              ? `${portfolio.dailyPnl >= 0 ? '+' : ''}${formatCurrency(portfolio.dailyPnl)}`
+              ? `${totals.dailyPnl >= 0 ? '+' : ''}${formatCurrency(totals.dailyPnl)}`
               : '—'}
           </span>
           {portfolio && (
@@ -156,7 +195,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 13,
-                color: pnlColor(portfolio.dailyPnl),
+                color: pnlColor(totals.dailyPnl),
               }}
             >
               today
@@ -181,7 +220,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 color: 'var(--text-secondary)',
               }}
             >
-              {portfolio ? formatCurrency(portfolio.totalCost) : '—'}
+              {portfolio ? formatCurrency(totals.totalCost) : '—'}
             </div>
           </div>
           <div>
@@ -190,11 +229,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               style={{
                 fontFamily: 'var(--font-mono)',
                 fontSize: 13,
-                color: pnlColor(portfolio?.totalGainLoss ?? 0),
+                color: pnlColor(totals.totalGainLoss),
               }}
             >
               {portfolio
-                ? `${portfolio.totalGainLoss >= 0 ? '+' : ''}${formatCurrency(portfolio.totalGainLoss)} (${formatPercent(portfolio.totalGainLossPercent)})`
+                ? `${totals.totalGainLoss >= 0 ? '+' : ''}${formatCurrency(totals.totalGainLoss)} (${formatPercent(totals.totalGainLossPercent)})`
                 : '—'}
             </div>
           </div>
@@ -466,9 +505,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           {
             label: 'Positions',
             value: portfolio
-              ? String(portfolio.holdings.filter((h) => h.assetType !== 'cash').length)
+              ? String(filteredHoldings.filter((h) => h.assetType !== 'cash').length)
               : '—',
-            sub: portfolio ? `${portfolio.holdings.length} total` : '',
+            sub: portfolio ? `${filteredHoldings.length} total` : '',
           },
           {
             label: 'Best Performer',
@@ -486,8 +525,8 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             label: 'Cash Position',
             value: stats ? formatCompact(stats.cashTotal) : '—',
             sub:
-              stats && portfolio
-                ? `${((stats.cashTotal / portfolio.totalValue) * 100).toFixed(1)}% of portfolio`
+              stats && totals.totalValue > 0
+                ? `${((stats.cashTotal / totals.totalValue) * 100).toFixed(1)}% of portfolio`
                 : '',
           },
           {

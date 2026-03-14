@@ -14,6 +14,9 @@ import {
 import { ALL_PERF_DATA, calcStats, filterByRange } from '../lib/perfMockData';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
+import { ACCOUNT_OPTIONS } from '../lib/constants';
+import { Select } from './ui/Select';
+import type { AccountType, PortfolioSnapshot } from '../types/portfolio';
 
 type Range = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 const RANGES: Range[] = ['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
@@ -23,6 +26,10 @@ const PANEL: React.CSSProperties = {
   border: '1px solid var(--border-primary)',
   padding: '20px',
 };
+
+interface PerformanceProps {
+  portfolio: PortfolioSnapshot | null;
+}
 
 const STAT_LABEL: React.CSSProperties = {
   fontSize: 10,
@@ -73,10 +80,28 @@ function CustomTooltip({
   );
 }
 
-export function Performance() {
+export function Performance({ portfolio }: PerformanceProps) {
   const [range, setRange] = useState<Range>('1Y');
+  const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
 
-  const data = useMemo(() => filterByRange(ALL_PERF_DATA, range), [range]);
+  const accountShare = useMemo(() => {
+    if (!portfolio || portfolio.totalValue === 0 || accountFilter === 'all') return 1;
+    const accountValue = portfolio.holdings
+      .filter((holding) => holding.account === accountFilter)
+      .reduce((sum, holding) => sum + holding.marketValueCad, 0);
+    return accountValue / portfolio.totalValue;
+  }, [portfolio, accountFilter]);
+
+  const scaledData = useMemo(
+    () =>
+      ALL_PERF_DATA.map((point) => ({
+        ...point,
+        value: Math.round(point.value * accountShare * 100) / 100,
+      })),
+    [accountShare]
+  );
+
+  const data = useMemo(() => filterByRange(scaledData, range), [scaledData, range]);
   const stats = useMemo(() => calcStats(data), [data]);
 
   // Thin out data for 1Y/ALL to avoid too many ticks
@@ -100,27 +125,41 @@ export function Performance() {
       {/* Range selector + main chart */}
       <div style={PANEL}>
         {/* Range buttons */}
-        <div style={{ display: 'flex', gap: 1, marginBottom: 20 }}>
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => setRange(r)}
-              style={{
-                padding: '4px 12px',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                textTransform: 'uppercase',
-                letterSpacing: '0.06em',
-                cursor: 'pointer',
-                borderRadius: '2px',
-                background: range === r ? 'var(--color-accent)' : 'transparent',
-                color: range === r ? '#fff' : 'var(--text-secondary)',
-                border: range === r ? 'none' : '1px solid var(--border-primary)',
-              }}
-            >
-              {r}
-            </button>
-          ))}
+        <div
+          style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}
+        >
+          <div style={{ width: 180 }}>
+            <Select
+              value={accountFilter}
+              onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
+              options={[
+                { value: 'all', label: 'All Accounts' },
+                ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+              ]}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 1 }}>
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                style={{
+                  padding: '4px 12px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  cursor: 'pointer',
+                  borderRadius: '2px',
+                  background: range === r ? 'var(--color-accent)' : 'transparent',
+                  color: range === r ? '#fff' : 'var(--text-secondary)',
+                  border: range === r ? 'none' : '1px solid var(--border-primary)',
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Area chart */}
@@ -269,7 +308,7 @@ export function Performance() {
             {
               label: 'Positions',
               value: String(data.length) + ' days',
-              sub: `${range} range`,
+              sub: `${accountFilter === 'all' ? 'all accounts' : accountFilter.toUpperCase()} · ${range}`,
               color: 'var(--text-secondary)',
             },
             {

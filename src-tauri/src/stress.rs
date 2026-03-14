@@ -1,7 +1,7 @@
 use crate::types::{PortfolioSnapshot, StressHoldingResult, StressResult, StressScenario};
 
 #[cfg(test)]
-use crate::types::{AssetType, HoldingWithPrice};
+use crate::types::{AccountType, AssetType, HoldingWithPrice};
 
 pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) -> StressResult {
     let mut holding_results: Vec<StressHoldingResult> = Vec::new();
@@ -74,7 +74,12 @@ mod tests {
             id: symbol.to_string(),
             symbol: symbol.to_string(),
             name: symbol.to_string(),
-            asset_type,
+            asset_type: asset_type.clone(),
+            account: if matches!(asset_type, AssetType::Cash) {
+                AccountType::Cash
+            } else {
+                AccountType::Taxable
+            },
             quantity: 1.0,
             cost_basis: value,
             currency: currency.to_string(),
