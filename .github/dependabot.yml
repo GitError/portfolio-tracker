@@ -14,7 +14,21 @@ updates:
       - "dependencies"
       - "frontend"
     groups:
-      # Group minor/patch updates to reduce PR noise
+      # Tailwind v4 and Vite must update together — @tailwindcss/vite has a
+      # strict vite peer dep range; bumping vite alone breaks npm ci.
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+          - "vite"
+          - "@vitejs/*"
+      # eslint + plugins must update together — plugins lag behind major releases
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
+          - "eslint-plugin-*"
+          - "typescript-eslint"
       react-ecosystem:
         patterns:
           - "react*"
