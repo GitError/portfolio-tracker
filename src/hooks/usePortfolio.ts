@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import {
+  createContext,
+  createElement,
+  useState,
+  useEffect,
+  useCallback,
+  useContext,
+  type ReactNode,
+} from 'react';
 import type {
   AccountType,
   Holding,
@@ -32,6 +40,8 @@ export interface UsePortfolioReturn {
   exportHoldingsCsv: () => Promise<string>;
 }
 
+const PortfolioContext = createContext<UsePortfolioReturn | null>(null);
+
 function parseMockCsv(csvContent: string): HoldingInput[] {
   const lines = csvContent
     .trim()
@@ -63,7 +73,7 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
   });
 }
 
-export function usePortfolio(): UsePortfolioReturn {
+function usePortfolioState(): UsePortfolioReturn {
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
@@ -238,4 +248,17 @@ export function usePortfolio(): UsePortfolioReturn {
     previewImportCsv,
     exportHoldingsCsv,
   };
+}
+
+export function PortfolioProvider({ children }: { children: ReactNode }) {
+  const value = usePortfolioState();
+  return createElement(PortfolioContext.Provider, { value }, children);
+}
+
+export function usePortfolio(): UsePortfolioReturn {
+  const context = useContext(PortfolioContext);
+  if (!context) {
+    throw new Error('usePortfolio must be used within a PortfolioProvider');
+  }
+  return context;
 }

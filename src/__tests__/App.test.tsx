@@ -4,6 +4,7 @@ import App from '../App';
 
 // Mock Tauri — not available in jsdom
 vi.mock('../hooks/usePortfolio', () => ({
+  PortfolioProvider: ({ children }: { children: React.ReactNode }) => children,
   usePortfolio: () => ({
     portfolio: null,
     holdings: [],
@@ -13,6 +14,9 @@ vi.mock('../hooks/usePortfolio', () => ({
     addHolding: vi.fn(),
     updateHolding: vi.fn(),
     deleteHolding: vi.fn(),
+    importHoldingsCsv: vi.fn(),
+    previewImportCsv: vi.fn(),
+    exportHoldingsCsv: vi.fn(),
   }),
 }));
 
