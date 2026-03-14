@@ -82,7 +82,6 @@ impl SearchCacheState {
         }
     }
 }
-
 #[derive(Debug)]
 struct ParsedImportRow {
     row: usize,
@@ -244,7 +243,6 @@ async fn validate_symbol(
 
     Ok(result)
 }
-
 #[tauri::command]
 pub async fn get_portfolio(
     db: State<'_, DbState>,

@@ -102,7 +102,6 @@ export interface SymbolResult {
   exchange: string;
   currency: string;
 }
-
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
