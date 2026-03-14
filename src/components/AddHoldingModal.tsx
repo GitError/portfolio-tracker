@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AssetType, Holding, HoldingInput } from '../types/portfolio';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
+import { Select } from './ui/Select';
 
 interface Props {
   isOpen: boolean;
@@ -138,9 +139,15 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   }
 
   function set(field: keyof FormState) {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    return (e: React.ChangeEvent<HTMLInputElement>) => {
       setForm((prev) => ({ ...prev, [field]: e.target.value }));
       setErrors((prev) => ({ ...prev, [field]: undefined }));
+    };
+  }
+
+  function setSelect(field: keyof FormState) {
+    return (value: string) => {
+      setForm((prev) => ({ ...prev, [field]: value }));
     };
   }
 
@@ -196,30 +203,23 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           {/* Type + Currency row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <Field label="Asset Type">
-              <select
+              <Select
                 value={form.assetType}
-                onChange={set('assetType')}
-                style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-              >
-                <option value="stock">Stock</option>
-                <option value="etf">ETF</option>
-                <option value="crypto">Crypto</option>
-                <option value="cash">Cash</option>
-              </select>
+                onChange={setSelect('assetType')}
+                options={[
+                  { value: 'stock', label: 'Stock' },
+                  { value: 'etf', label: 'ETF' },
+                  { value: 'crypto', label: 'Crypto' },
+                  { value: 'cash', label: 'Cash' },
+                ]}
+              />
             </Field>
             <Field label="Currency">
-              <select
+              <Select
                 value={form.currency}
-                onChange={set('currency')}
-                style={{ ...INPUT_STYLE, cursor: 'pointer' }}
-              >
-                {SUPPORTED_CURRENCIES.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-                <option value="AUD">AUD</option>
-              </select>
+                onChange={setSelect('currency')}
+                options={[...SUPPORTED_CURRENCIES, 'AUD'].map((c) => ({ value: c, label: c }))}
+              />
             </Field>
           </div>
 
