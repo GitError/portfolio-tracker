@@ -29,10 +29,10 @@ function parsePreview(csvContent: string): string[][] {
 
 function downloadTemplate() {
   const template = [
-    'symbol,name,type,quantity,cost_basis,currency',
-    'AAPL,Apple Inc.,stock,50,142.50,USD',
-    'VOO,Vanguard S&P 500 ETF,etf,100,380.00,USD',
-    'BTC-CAD,Bitcoin,crypto,0.5,45000.00,CAD',
+    'symbol,name,type,account,quantity,cost_basis,currency',
+    'AAPL,Apple Inc.,stock,tfsa,50,142.50,USD',
+    'VOO,Vanguard S&P 500 ETF,etf,rrsp,100,380.00,USD',
+    'BTC-CAD,Bitcoin,crypto,taxable,0.5,45000.00,CAD',
   ].join('\n');
 
   const blob = new Blob([template], { type: 'text/csv;charset=utf-8' });
@@ -134,7 +134,7 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport }: Props) {
                 marginTop: 4,
               }}
             >
-              Upload a CSV with `symbol,name,type,quantity,cost_basis,currency`
+              Upload a CSV with `symbol,name,type,account,quantity,cost_basis,currency`
             </div>
           </div>
           <button

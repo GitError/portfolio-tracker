@@ -1,4 +1,4 @@
-import type { StressScenario } from '../types/portfolio';
+import type { AccountType, StressScenario } from '../types/portfolio';
 
 export const PRESET_SCENARIOS: StressScenario[] = [
   {
@@ -29,6 +29,13 @@ export const ASSET_TYPE_CONFIG = {
   crypto: { label: 'Crypto', color: 'var(--color-crypto)', icon: 'Zap' },
   cash: { label: 'Cash', color: 'var(--color-cash)', icon: 'DollarSign' },
 } as const;
+
+export const ACCOUNT_OPTIONS: { value: AccountType; label: string }[] = [
+  { value: 'tfsa', label: 'TFSA' },
+  { value: 'rrsp', label: 'RRSP' },
+  { value: 'taxable', label: 'Taxable' },
+  { value: 'cash', label: 'Cash' },
+];
 
 export const SUPPORTED_CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'CHF', 'JPY'] as const;
 

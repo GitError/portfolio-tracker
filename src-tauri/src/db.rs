@@ -3,7 +3,26 @@ use rusqlite::{params, Connection};
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::types::{AssetType, FxRate, Holding, HoldingInput, PriceData, SymbolResult};
+use crate::types::{
+    AccountType, AssetType, FxRate, Holding, HoldingInput, PriceData, SymbolResult,
+};
+
+fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({})", table))
+        .map_err(|e| e.to_string())?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+
+    for name in columns {
+        if name.map_err(|e| e.to_string())? == column {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
 
 pub fn init_db(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
@@ -13,6 +32,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             symbol      TEXT NOT NULL,
             name        TEXT NOT NULL,
             asset_type  TEXT NOT NULL,
+            account     TEXT NOT NULL DEFAULT 'taxable',
             quantity    REAL NOT NULL,
             cost_basis  REAL NOT NULL,
             currency    TEXT NOT NULL,
@@ -50,7 +70,23 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         );
         ",
     )
-    .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())?;
+
+    if !table_has_column(conn, "holdings", "account")? {
+        conn.execute(
+            "ALTER TABLE holdings ADD COLUMN account TEXT NOT NULL DEFAULT 'taxable'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    conn.execute(
+        "UPDATE holdings SET account='cash' WHERE asset_type='cash' AND account='taxable'",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 pub fn get_config(conn: &Connection, key: &str) -> Result<Option<String>, String> {
@@ -81,13 +117,14 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
     let asset_type_str = input.asset_type.as_str();
 
     conn.execute(
-        "INSERT INTO holdings (id, symbol, name, asset_type, quantity, cost_basis, currency, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO holdings (id, symbol, name, asset_type, account, quantity, cost_basis, currency, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             id,
             input.symbol,
             input.name,
             asset_type_str,
+            input.account.as_str(),
             input.quantity,
             input.cost_basis,
             input.currency,
@@ -102,6 +139,7 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
         symbol: input.symbol,
         name: input.name,
         asset_type: input.asset_type,
+        account: input.account,
         quantity: input.quantity,
         cost_basis: input.cost_basis,
         currency: input.currency,
@@ -116,12 +154,13 @@ pub fn update_holding(conn: &Connection, holding: Holding) -> Result<Holding, St
 
     let rows = conn
         .execute(
-            "UPDATE holdings SET symbol=?1, name=?2, asset_type=?3, quantity=?4, cost_basis=?5, currency=?6, updated_at=?7
-             WHERE id=?8",
+            "UPDATE holdings SET symbol=?1, name=?2, asset_type=?3, account=?4, quantity=?5, cost_basis=?6, currency=?7, updated_at=?8
+             WHERE id=?9",
             params![
                 holding.symbol,
                 holding.name,
                 asset_type_str,
+                holding.account.as_str(),
                 holding.quantity,
                 holding.cost_basis,
                 holding.currency,
@@ -151,7 +190,7 @@ pub fn delete_holding(conn: &Connection, id: &str) -> Result<bool, String> {
 pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, symbol, name, asset_type, quantity, cost_basis, currency, created_at, updated_at
+            "SELECT id, symbol, name, asset_type, account, quantity, cost_basis, currency, created_at, updated_at
              FROM holdings ORDER BY created_at ASC",
         )
         .map_err(|e| e.to_string())?;
@@ -164,11 +203,12 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 asset_type_str,
-                row.get::<_, f64>(4)?,
+                row.get::<_, String>(4)?,
                 row.get::<_, f64>(5)?,
-                row.get::<_, String>(6)?,
+                row.get::<_, f64>(6)?,
                 row.get::<_, String>(7)?,
                 row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -179,6 +219,7 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 symbol,
                 name,
                 asset_type_str,
+                account_str,
                 quantity,
                 cost_basis,
                 currency,
@@ -186,11 +227,13 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 updated_at,
             )| {
                 let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+                let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
                 Holding {
                     id,
                     symbol,
                     name,
                     asset_type,
+                    account,
                     quantity,
                     cost_basis,
                     currency,
@@ -395,6 +438,7 @@ mod tests {
             symbol: symbol.to_string(),
             name: format!("{} Inc.", symbol),
             asset_type: AssetType::Stock,
+            account: AccountType::Taxable,
             quantity: 10.0,
             cost_basis: 100.0,
             currency: "CAD".to_string(),

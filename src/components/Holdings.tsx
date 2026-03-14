@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
@@ -8,13 +8,15 @@ import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
 import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
-import type { Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
+import { ACCOUNT_OPTIONS } from '../lib/constants';
+import type { AccountType, Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
 
 type SortKey = keyof Pick<
   HoldingWithPrice,
   | 'symbol'
   | 'name'
   | 'assetType'
+  | 'account'
   | 'quantity'
   | 'costBasis'
   | 'currentPrice'
@@ -33,6 +35,7 @@ const COLUMNS: { key: SortKey; label: string; align: 'left' | 'right' }[] = [
   { key: 'symbol', label: 'Symbol', align: 'left' },
   { key: 'name', label: 'Name', align: 'left' },
   { key: 'assetType', label: 'Type', align: 'left' },
+  { key: 'account', label: 'Account', align: 'left' },
   { key: 'quantity', label: 'Qty', align: 'right' },
   { key: 'costBasis', label: 'Cost Basis', align: 'right' },
   { key: 'currentPrice', label: 'Price', align: 'right' },
@@ -66,11 +69,19 @@ const TD: React.CSSProperties = {
 };
 
 export function Holdings() {
-  const { portfolio, holdings, addHolding, updateHolding, deleteHolding, importHoldingsCsv } =
-    usePortfolio();
+  const {
+    portfolio,
+    holdings,
+    addHolding,
+    updateHolding,
+    deleteHolding,
+    importHoldingsCsv,
+    exportHoldingsCsv,
+  } = usePortfolio();
   const { showToast } = useToast();
   const [sort, setSort] = useState<SortState>({ key: 'weight', dir: 'desc' });
   const [search, setSearch] = useState('');
+  const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Holding | undefined>(undefined);
@@ -82,10 +93,13 @@ export function Holdings() {
     const filtered = search
       ? source.filter(
           (h) =>
-            h.symbol.toLowerCase().includes(search.toLowerCase()) ||
-            h.name.toLowerCase().includes(search.toLowerCase())
+            (accountFilter === 'all' || h.account === accountFilter) &&
+            (h.symbol.toLowerCase().includes(search.toLowerCase()) ||
+              h.name.toLowerCase().includes(search.toLowerCase()))
         )
-      : source;
+      : accountFilter === 'all'
+        ? source
+        : source.filter((h) => h.account === accountFilter);
 
     return [...filtered].sort((a, b) => {
       const av = a[sort.key];
@@ -96,7 +110,7 @@ export function Holdings() {
           : (av as number) - (bv as number);
       return sort.dir === 'asc' ? cmp : -cmp;
     });
-  }, [portfolio, sort, search]);
+  }, [portfolio, sort, search, accountFilter]);
 
   function toggleSort(key: SortKey) {
     setSort((prev) =>
@@ -141,6 +155,22 @@ export function Holdings() {
       showToast(`Skipped ${result.skipped.length} rows`, 'info');
     }
     return result;
+  }
+
+  async function handleExport() {
+    try {
+      const csv = await exportHoldingsCsv();
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'holdings-export.csv';
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast('Holdings exported', 'success');
+    } catch (e) {
+      showToast(String(e), 'error');
+    }
   }
 
   const totals = useMemo(
@@ -215,6 +245,45 @@ export function Holdings() {
               width: 160,
             }}
           />
+          <select
+            value={accountFilter}
+            onChange={(e) => setAccountFilter(e.target.value as 'all' | AccountType)}
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-primary)',
+              color: 'var(--text-primary)',
+              padding: '6px 10px',
+              fontSize: 11,
+              fontFamily: 'var(--font-mono)',
+              borderRadius: '2px',
+            }}
+          >
+            <option value="all">All Accounts</option>
+            {ACCOUNT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => void handleExport()}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-primary)',
+              color: 'var(--text-primary)',
+              borderRadius: '2px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+          >
+            <Download size={12} />
+            Export CSV
+          </button>
           <button
             onClick={() => setImportOpen(true)}
             style={{
@@ -342,6 +411,17 @@ export function Holdings() {
                     </td>
                     <td style={TD}>
                       <Badge type={h.assetType} />
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        color: 'var(--text-secondary)',
+                        fontFamily: 'var(--font-mono)',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {ACCOUNT_OPTIONS.find((option) => option.value === h.account)?.label ??
+                        h.account}
                     </td>
                     <td
                       style={{
@@ -510,7 +590,7 @@ export function Holdings() {
                 }}
               >
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   style={{
                     ...TD,
                     fontFamily: 'var(--font-mono)',

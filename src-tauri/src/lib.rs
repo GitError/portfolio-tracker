@@ -46,6 +46,7 @@ pub fn run() {
             commands::update_holding,
             commands::delete_holding,
             commands::import_holdings_csv,
+            commands::export_holdings_csv,
             commands::refresh_prices,
             commands::run_stress_test_cmd,
             commands::get_performance,

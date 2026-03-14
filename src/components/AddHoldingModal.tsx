@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AssetType, Holding, HoldingInput, SymbolResult } from '../types/portfolio';
-import { SUPPORTED_CURRENCIES } from '../lib/constants';
+import type {
+  AccountType,
+  AssetType,
+  Holding,
+  HoldingInput,
+  SymbolResult,
+} from '../types/portfolio';
+import { ACCOUNT_OPTIONS, SUPPORTED_CURRENCIES } from '../lib/constants';
 import { Select } from './ui/Select';
 import { SymbolSearch } from './ui/SymbolSearch';
 
@@ -42,6 +48,7 @@ interface FormState {
   symbol: string;
   name: string;
   assetType: AssetType;
+  account: AccountType;
   quantity: string;
   costBasis: string;
   currency: string;
@@ -58,6 +65,7 @@ const EMPTY_FORM: FormState = {
   symbol: '',
   name: '',
   assetType: 'stock',
+  account: 'taxable',
   quantity: '',
   costBasis: '',
   currency: 'USD',
@@ -124,6 +132,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           symbol: editingHolding.symbol,
           name: editingHolding.name,
           assetType: editingHolding.assetType,
+          account: editingHolding.account,
           quantity: String(editingHolding.quantity),
           costBasis: String(editingHolding.costBasis),
           currency: editingHolding.currency,
@@ -192,6 +201,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         symbol: isCash ? `${form.currency}-CASH` : form.symbol.toUpperCase(),
         name: form.name,
         assetType: form.assetType,
+        account: form.account,
         quantity: parseFloat(form.quantity),
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
@@ -212,7 +222,18 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
 
   function setSelect(field: keyof FormState) {
     return (value: string) => {
-      setForm((prev) => ({ ...prev, [field]: value }));
+      setForm((prev) => {
+        if (field === 'assetType') {
+          const assetType = value as AssetType;
+          return {
+            ...prev,
+            assetType,
+            account:
+              assetType === 'cash' ? 'cash' : prev.account === 'cash' ? 'taxable' : prev.account,
+          };
+        }
+        return { ...prev, [field]: value };
+      });
     };
   }
 
@@ -266,7 +287,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* Type + Currency row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <Field label="Asset Type">
               <Select
                 value={form.assetType}
@@ -277,6 +298,16 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                   { value: 'crypto', label: 'Crypto' },
                   { value: 'cash', label: 'Cash' },
                 ]}
+              />
+            </Field>
+            <Field label="Account">
+              <Select
+                value={form.account}
+                onChange={setSelect('account')}
+                options={ACCOUNT_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
               />
             </Field>
             <Field label="Currency">

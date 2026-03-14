@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Holding, HoldingInput, ImportResult, PortfolioSnapshot } from '../types/portfolio';
+import type {
+  AccountType,
+  Holding,
+  HoldingInput,
+  ImportResult,
+  PortfolioSnapshot,
+} from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 
 // Tauri v2 always sets window.__TAURI_INTERNALS__ inside the webview.
@@ -21,6 +27,7 @@ export interface UsePortfolioReturn {
   updateHolding: (holding: Holding) => Promise<Holding>;
   deleteHolding: (id: string) => Promise<void>;
   importHoldingsCsv: (csvContent: string) => Promise<ImportResult>;
+  exportHoldingsCsv: () => Promise<string>;
 }
 
 function parseMockCsv(csvContent: string): HoldingInput[] {
@@ -40,11 +47,13 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
     const assetType = cells[columnIndex('type')] as HoldingInput['assetType'];
     const currency = cells[columnIndex('currency')].toUpperCase();
     const rawSymbol = cells[columnIndex('symbol')];
+    const rawAccount = cells[columnIndex('account')]?.toLowerCase() as AccountType | undefined;
 
     return {
       symbol: assetType === 'cash' ? rawSymbol || `${currency}-CASH` : rawSymbol.toUpperCase(),
       name: cells[columnIndex('name')] || (assetType === 'cash' ? `${currency} Cash` : rawSymbol),
       assetType,
+      account: rawAccount || (assetType === 'cash' ? 'cash' : 'taxable'),
       quantity: Number(cells[columnIndex('quantity')]),
       costBasis: Number(cells[columnIndex('cost_basis')]),
       currency,
@@ -170,6 +179,26 @@ export function usePortfolio(): UsePortfolioReturn {
     [loadPortfolio]
   );
 
+  const exportHoldingsCsv = useCallback(async (): Promise<string> => {
+    if (isTauri()) {
+      return tauriInvoke<string>('export_holdings_csv');
+    }
+
+    const rows = [
+      ['symbol', 'name', 'type', 'account', 'quantity', 'cost_basis', 'currency'],
+      ...holdings.map((holding) => [
+        holding.symbol,
+        holding.name,
+        holding.assetType,
+        holding.account,
+        String(holding.quantity),
+        String(holding.costBasis),
+        holding.currency,
+      ]),
+    ];
+    return rows.map((row) => row.join(',')).join('\n');
+  }, [holdings]);
+
   return {
     portfolio,
     holdings,
@@ -180,5 +209,6 @@ export function usePortfolio(): UsePortfolioReturn {
     updateHolding,
     deleteHolding,
     importHoldingsCsv,
+    exportHoldingsCsv,
   };
 }

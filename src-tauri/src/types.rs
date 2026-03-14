@@ -36,12 +36,47 @@ impl std::str::FromStr for AssetType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AccountType {
+    Tfsa,
+    Rrsp,
+    Taxable,
+    Cash,
+}
+
+impl AccountType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AccountType::Tfsa => "tfsa",
+            AccountType::Rrsp => "rrsp",
+            AccountType::Taxable => "taxable",
+            AccountType::Cash => "cash",
+        }
+    }
+}
+
+impl std::str::FromStr for AccountType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "tfsa" => Ok(AccountType::Tfsa),
+            "rrsp" => Ok(AccountType::Rrsp),
+            "taxable" => Ok(AccountType::Taxable),
+            "cash" => Ok(AccountType::Cash),
+            other => Err(format!("Unknown account type: {}", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Holding {
     pub id: String,
     pub symbol: String,
     pub name: String,
     pub asset_type: AssetType,
+    pub account: AccountType,
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
@@ -55,6 +90,7 @@ pub struct HoldingInput {
     pub symbol: String,
     pub name: String,
     pub asset_type: AssetType,
+    pub account: AccountType,
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
@@ -86,6 +122,7 @@ pub struct HoldingWithPrice {
     pub symbol: String,
     pub name: String,
     pub asset_type: AssetType,
+    pub account: AccountType,
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,

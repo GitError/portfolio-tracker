@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use csv::{ReaderBuilder, StringRecord, Trim};
+use csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
 use tauri::State;
 
 use crate::db;
@@ -12,8 +12,8 @@ use crate::price::{fetch_all_prices, fetch_price};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError, ImportResult,
-    PortfolioSnapshot, PriceData, StressResult, StressScenario, SymbolResult,
+    AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
+    ImportResult, PortfolioSnapshot, PriceData, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -88,6 +88,7 @@ struct ParsedImportRow {
     symbol: String,
     name: String,
     asset_type: AssetType,
+    account: AccountType,
     quantity: f64,
     cost_basis: f64,
     currency: String,
@@ -146,6 +147,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
     let symbol_index = find_column_index(&headers, "symbol")
         .ok_or_else(|| "Missing required column: symbol".to_string())?;
     let name_index = find_column_index(&headers, "name");
+    let account_index = find_column_index(&headers, "account");
     let type_index = find_column_index(&headers, "type")
         .ok_or_else(|| "Missing required column: type".to_string())?;
     let quantity_index = find_column_index(&headers, "quantity")
@@ -172,6 +174,19 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             .to_lowercase()
             .parse::<AssetType>()
             .map_err(|_| format!("Row {}: invalid_type", row))?;
+        let account = parse_optional_field(&record, account_index);
+        let account = if account.is_empty() {
+            if matches!(asset_type, AssetType::Cash) {
+                AccountType::Cash
+            } else {
+                AccountType::Taxable
+            }
+        } else {
+            account
+                .to_lowercase()
+                .parse::<AccountType>()
+                .map_err(|_| format!("Row {}: invalid_account", row))?
+        };
         let currency =
             parse_required_field(&record, currency_index, row, "currency")?.to_uppercase();
         let raw_symbol = parse_optional_field(&record, Some(symbol_index));
@@ -206,6 +221,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             symbol,
             name: parse_optional_field(&record, name_index),
             asset_type,
+            account,
             quantity,
             cost_basis,
             currency,
@@ -331,6 +347,7 @@ pub async fn get_portfolio(
             symbol: holding.symbol.clone(),
             name: holding.name.clone(),
             asset_type: holding.asset_type.clone(),
+            account: holding.account.clone(),
             quantity: holding.quantity,
             cost_basis: holding.cost_basis,
             currency: holding.currency.clone(),
@@ -400,6 +417,44 @@ pub async fn delete_holding(db: State<'_, DbState>, id: String) -> Result<bool, 
 }
 
 #[tauri::command]
+pub async fn export_holdings_csv(db: State<'_, DbState>) -> Result<String, String> {
+    let holdings = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_all_holdings(&conn)?
+    };
+
+    let mut writer = WriterBuilder::new().from_writer(vec![]);
+    writer
+        .write_record([
+            "symbol",
+            "name",
+            "type",
+            "account",
+            "quantity",
+            "cost_basis",
+            "currency",
+        ])
+        .map_err(|e| e.to_string())?;
+
+    for holding in holdings {
+        writer
+            .write_record([
+                holding.symbol,
+                holding.name,
+                holding.asset_type.as_str().to_string(),
+                holding.account.as_str().to_string(),
+                holding.quantity.to_string(),
+                holding.cost_basis.to_string(),
+                holding.currency,
+            ])
+            .map_err(|e| e.to_string())?;
+    }
+
+    let bytes = writer.into_inner().map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn import_holdings_csv(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
@@ -438,6 +493,7 @@ pub async fn import_holdings_csv(
                     row.name
                 },
                 asset_type: row.asset_type,
+                account: row.account,
                 quantity: row.quantity,
                 cost_basis: row.cost_basis,
                 currency: row.currency,
@@ -474,6 +530,7 @@ pub async fn import_holdings_csv(
                 row.name
             },
             asset_type: row.asset_type,
+            account: row.account,
             quantity: row.quantity,
             cost_basis: row.cost_basis,
             currency: row.currency,

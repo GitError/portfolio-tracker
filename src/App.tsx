@@ -79,7 +79,7 @@ function AppRoutes() {
         >
           <Route index element={<Dashboard portfolio={portfolio} loading={loading} />} />
           <Route path="/holdings" element={<Holdings />} />
-          <Route path="/performance" element={<Performance />} />
+          <Route path="/performance" element={<Performance portfolio={portfolio} />} />
           <Route path="/stress" element={<StressTest />} />
         </Route>
       </Routes>
