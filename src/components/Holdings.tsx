@@ -391,18 +391,22 @@ export function Holdings() {
                         ...TD,
                         textAlign: 'right',
                         fontFamily: 'var(--font-mono)',
-                        color: pnlColor(h.gainLoss),
+                        color: h.assetType === 'cash' ? 'var(--text-muted)' : pnlColor(h.gainLoss),
                       }}
                     >
-                      {h.gainLoss >= 0 ? '+' : ''}
-                      {formatCurrency(h.gainLoss)}
+                      {h.assetType === 'cash'
+                        ? '—'
+                        : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss)}`}
                     </td>
                     <td
                       style={{
                         ...TD,
                         textAlign: 'right',
                         fontFamily: 'var(--font-mono)',
-                        color: pnlColor(h.gainLossPercent),
+                        color:
+                          h.assetType === 'cash'
+                            ? 'var(--text-muted)'
+                            : pnlColor(h.gainLossPercent),
                       }}
                     >
                       {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}

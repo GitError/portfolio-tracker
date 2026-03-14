@@ -10,8 +10,12 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
     for holding in &snapshot.holdings {
         let asset_type_key = holding.asset_type.as_str().to_string();
 
-        // Asset-level shock (e.g., "stock", "etf", "crypto", "cash")
-        let asset_shock = scenario.shocks.get(&asset_type_key).copied().unwrap_or(0.0);
+        // Asset-level shock: cash is excluded — only FX shocks may affect cash positions
+        let asset_shock = if asset_type_key == "cash" {
+            0.0
+        } else {
+            scenario.shocks.get(&asset_type_key).copied().unwrap_or(0.0)
+        };
 
         // FX shock: apply if holding is not in CAD
         let fx_shock = if holding.currency.to_uppercase() != "CAD" {
@@ -179,6 +183,46 @@ mod tests {
         let result = run_stress_test(&snapshot, &scenario);
 
         assert!((result.total_impact).abs() < 0.001);
+    }
+
+    #[test]
+    fn cash_ignores_asset_shock_but_applies_fx_shock() {
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![
+            make_holding("USD-CASH", AssetType::Cash, "USD", value),
+            make_holding("CAD-CASH", AssetType::Cash, "CAD", value),
+        ]);
+        let mut shocks = HashMap::new();
+        shocks.insert("cash".to_string(), -0.50); // must NOT apply to cash
+        shocks.insert("fx_usd_cad".to_string(), 0.10); // must apply to USD cash
+        let scenario = StressScenario {
+            name: "Cash test".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        let usd = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "USD-CASH")
+            .unwrap();
+        let cad = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "CAD-CASH")
+            .unwrap();
+
+        // USD cash: only FX shock → 10000 * 1.10
+        assert!(
+            (usd.stressed_value - 11_000.0).abs() < 0.001,
+            "USD cash should gain from FX shock"
+        );
+        // CAD cash: no shocks applicable → unchanged
+        assert!(
+            (cad.stressed_value - value).abs() < 0.001,
+            "CAD cash should be unaffected"
+        );
     }
 
     #[test]
