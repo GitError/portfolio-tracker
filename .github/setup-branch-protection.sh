@@ -26,8 +26,7 @@ gh api repos/$REPO/branches/main/protection \
   "required_status_checks": {
     "strict": true,
     "contexts": [
-      "Frontend",
-      "Backend (Rust)"
+      "CI Status"
     ]
   },
   "enforce_admins": false,
@@ -43,7 +42,7 @@ EOF
 
 echo "  ✓ main protected"
 echo "    - PRs required (no direct push)"
-echo "    - CI must pass (Frontend + Backend + Claude Review)"
+echo "    - CI Status roll-up must pass"
 echo "    - Stale reviews dismissed on new commits"
 
 # ── dev branch: lighter protection ────────────────────────────
@@ -55,8 +54,7 @@ gh api repos/$REPO/branches/dev/protection \
   "required_status_checks": {
     "strict": false,
     "contexts": [
-      "Frontend",
-      "Backend (Rust)"
+      "CI Status"
     ]
   },
   "enforce_admins": false,
@@ -68,7 +66,7 @@ gh api repos/$REPO/branches/dev/protection \
 EOF
 
 echo "  ✓ dev protected"
-echo "    - CI must pass (Frontend + Backend)"
+echo "    - CI Status roll-up must pass"
 echo "    - Direct push allowed (for agent merges)"
 echo "    - Force push allowed (for rebases)"
 
