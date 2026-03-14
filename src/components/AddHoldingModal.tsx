@@ -52,6 +52,7 @@ interface FormState {
   quantity: string;
   costBasis: string;
   currency: string;
+  targetWeight: string;
 }
 
 interface FormErrors {
@@ -59,6 +60,7 @@ interface FormErrors {
   name?: string;
   quantity?: string;
   costBasis?: string;
+  targetWeight?: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -69,6 +71,7 @@ const EMPTY_FORM: FormState = {
   quantity: '',
   costBasis: '',
   currency: 'USD',
+  targetWeight: '0',
 };
 
 const INPUT_STYLE: React.CSSProperties = {
@@ -136,6 +139,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           quantity: String(editingHolding.quantity),
           costBasis: String(editingHolding.costBasis),
           currency: editingHolding.currency,
+          targetWeight: String(editingHolding.targetWeight ?? 0),
         });
       } else {
         setForm(EMPTY_FORM);
@@ -189,6 +193,10 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
     if (isNaN(qty) || qty <= 0) next.quantity = 'Quantity must be > 0';
     const cost = parseFloat(form.costBasis);
     if (isNaN(cost) || cost <= 0) next.costBasis = 'Cost basis must be > 0';
+    const targetWeight = parseFloat(form.targetWeight);
+    if (isNaN(targetWeight) || targetWeight < 0 || targetWeight > 100) {
+      next.targetWeight = 'Target weight must be between 0 and 100';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -205,6 +213,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         quantity: parseFloat(form.quantity),
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
+        targetWeight: parseFloat(form.targetWeight),
       };
       await onSave(input);
       onClose();
@@ -243,7 +252,9 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
     (isCash || form.symbol.trim()) &&
     form.name.trim() &&
     parseFloat(form.quantity) > 0 &&
-    parseFloat(form.costBasis) > 0;
+    parseFloat(form.costBasis) > 0 &&
+    parseFloat(form.targetWeight) >= 0 &&
+    parseFloat(form.targetWeight) <= 100;
 
   return (
     <div
@@ -348,7 +359,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           </Field>
 
           {/* Qty + Cost row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <Field label={isCash ? 'Amount' : 'Quantity'} error={errors.quantity}>
               <input
                 type="number"
@@ -395,6 +406,20 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                 />
               </Field>
             )}
+            <Field label="Target Weight %" error={errors.targetWeight}>
+              <input
+                type="number"
+                value={form.targetWeight}
+                onChange={set('targetWeight')}
+                placeholder="0.0"
+                min="0"
+                max="100"
+                step="0.1"
+                style={INPUT_STYLE}
+                onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
+                onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+              />
+            </Field>
           </div>
         </div>
 

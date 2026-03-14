@@ -300,6 +300,8 @@ fn build_portfolio_snapshot(
             daily_pnl: 0.0,
             last_updated,
             base_currency: base_currency.to_string(),
+            total_target_weight: 0.0,
+            target_cash_delta: 0.0,
         };
     }
 
@@ -362,6 +364,7 @@ fn build_portfolio_snapshot(
             quantity: holding.quantity,
             cost_basis: holding.cost_basis,
             currency: holding.currency.clone(),
+            target_weight: holding.target_weight,
             created_at: holding.created_at.clone(),
             updated_at: holding.updated_at.clone(),
             current_price,
@@ -371,9 +374,15 @@ fn build_portfolio_snapshot(
             gain_loss,
             gain_loss_percent,
             weight: 0.0,
+            target_value: 0.0,
+            target_delta_value: 0.0,
+            target_delta_percent: 0.0,
             daily_change_percent: change_percent,
         });
     }
+
+    let total_target_weight: f64 = holdings.iter().map(|holding| holding.target_weight).sum();
+    let mut target_cash_delta = 0.0f64;
 
     for holding in &mut holdings_with_price {
         holding.weight = if total_value != 0.0 {
@@ -381,6 +390,13 @@ fn build_portfolio_snapshot(
         } else {
             0.0
         };
+        holding.target_value = total_value * (holding.target_weight / 100.0);
+        holding.target_delta_value = holding.target_value - holding.market_value_cad;
+        holding.target_delta_percent = holding.target_weight - holding.weight;
+
+        if holding.asset_type.as_str() == "cash" {
+            target_cash_delta += holding.market_value_cad - holding.target_value;
+        }
     }
 
     let total_gain_loss = total_value - total_cost;
@@ -399,6 +415,8 @@ fn build_portfolio_snapshot(
         daily_pnl,
         last_updated,
         base_currency: base_currency.to_string(),
+        total_target_weight,
+        target_cash_delta,
     }
 }
 #[tauri::command]
@@ -532,6 +550,7 @@ pub async fn import_holdings_csv(
                 quantity: row.quantity,
                 cost_basis: row.cost_basis,
                 currency: row.currency,
+                target_weight: 0.0,
             });
             continue;
         }
@@ -582,6 +601,7 @@ pub async fn import_holdings_csv(
             quantity: row.quantity,
             cost_basis: row.cost_basis,
             currency: row.currency,
+            target_weight: 0.0,
         });
     }
 
@@ -887,6 +907,7 @@ mod tests {
             quantity,
             cost_basis,
             currency: currency.to_string(),
+            target_weight: 0.0,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         }
@@ -997,6 +1018,7 @@ mod tests {
         assert!((snapshot.total_value - 1887.5).abs() < 0.001);
         assert!((snapshot.total_cost - 1625.0).abs() < 0.001);
         assert!((snapshot.daily_pnl - 92.75).abs() < 0.001);
+        assert_eq!(snapshot.total_target_weight, 0.0);
     }
 
     #[test]
@@ -1043,5 +1065,39 @@ mod tests {
         assert!((snapshot.holdings[1].market_value_cad - 220.0).abs() < 0.001);
         assert!((snapshot.total_value - 396.0).abs() < 0.001);
         assert!((snapshot.total_cost - 360.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_computes_target_deltas() {
+        let mut holdings = vec![
+            make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD"),
+            make_holding("CAD-CASH", AssetType::Cash, 500.0, 1.0, "CAD"),
+        ];
+        holdings[0].target_weight = 60.0;
+        holdings[1].target_weight = 10.0;
+
+        let prices = vec![PriceData {
+            symbol: "AAPL".to_string(),
+            price: 120.0,
+            currency: "CAD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &holdings,
+            &prices,
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+        );
+
+        assert!((snapshot.total_value - 1700.0).abs() < 0.001);
+        assert!((snapshot.total_target_weight - 70.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].target_value - 1020.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].target_delta_value + 180.0).abs() < 0.001);
+        assert!((snapshot.holdings[1].target_delta_value + 330.0).abs() < 0.001);
+        assert!((snapshot.target_cash_delta - 330.0).abs() < 0.001);
     }
 }

@@ -80,6 +80,7 @@ pub struct Holding {
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
+    pub target_weight: f64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -94,6 +95,7 @@ pub struct HoldingInput {
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
+    pub target_weight: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,6 +128,7 @@ pub struct HoldingWithPrice {
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
+    pub target_weight: f64,
     pub created_at: String,
     pub updated_at: String,
     pub current_price: f64,
@@ -135,6 +138,9 @@ pub struct HoldingWithPrice {
     pub gain_loss: f64,
     pub gain_loss_percent: f64,
     pub weight: f64,
+    pub target_value: f64,
+    pub target_delta_value: f64,
+    pub target_delta_percent: f64,
     pub daily_change_percent: f64,
 }
 
@@ -150,6 +156,8 @@ pub struct PortfolioSnapshot {
     pub last_updated: String,
     /// The currency all values are expressed in (user-configurable, default "CAD").
     pub base_currency: String,
+    pub total_target_weight: f64,
+    pub target_cash_delta: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
