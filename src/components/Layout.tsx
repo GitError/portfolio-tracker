@@ -25,6 +25,7 @@ export function Layout({ portfolio, loading, onRefresh }: LayoutProps) {
         <main
           style={{
             flex: 1,
+            minHeight: 0,
             overflowY: 'auto',
             padding: '24px',
             scrollbarWidth: 'thin',
