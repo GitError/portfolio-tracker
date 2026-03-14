@@ -1,9 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Table2, TrendingUp, AlertTriangle } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Table2,
+  TrendingUp,
+  AlertTriangle,
+  ChevronsLeft,
+  ChevronsRight,
+} from 'lucide-react';
 import { formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import type { PortfolioSnapshot } from '../types/portfolio';
+
+const STORAGE_KEY = 'sidebar-expanded';
 
 interface SidebarProps {
   portfolio: PortfolioSnapshot | null;
@@ -17,14 +26,30 @@ const NAV_ITEMS = [
 ];
 
 export function Sidebar({ portfolio }: SidebarProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored === null ? false : stored === 'true';
+  });
   const totalValue = portfolio?.totalValue ?? 0;
   const dailyPnl = portfolio?.dailyPnl ?? 0;
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, String(expanded));
+  }, [expanded]);
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === 'b') {
+        e.preventDefault();
+        setExpanded((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
   return (
     <nav
-      onMouseEnter={() => setExpanded(true)}
-      onMouseLeave={() => setExpanded(false)}
       style={{
         width: expanded ? 220 : 64,
         minWidth: expanded ? 220 : 64,
@@ -137,6 +162,33 @@ export function Sidebar({ portfolio }: SidebarProps) {
           </div>
         )}
       </div>
+
+      {/* Toggle button */}
+      <button
+        onClick={() => setExpanded((prev) => !prev)}
+        title={expanded ? 'Collapse sidebar (⌘B)' : 'Expand sidebar (⌘B)'}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          padding: '12px 0',
+          background: 'transparent',
+          border: 'none',
+          borderTop: '1px solid var(--border-subtle)',
+          cursor: 'pointer',
+          color: 'var(--text-secondary)',
+          transition: 'color 150ms',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)';
+        }}
+      >
+        {expanded ? <ChevronsLeft size={16} /> : <ChevronsRight size={16} />}
+      </button>
     </nav>
   );
 }
