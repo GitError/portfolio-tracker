@@ -64,6 +64,7 @@ pub fn get_config(conn: &Connection, key: &str) -> Result<Option<String>, String
     }
 }
 
+#[allow(dead_code)]
 pub fn set_config(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
     conn.execute(
         "INSERT INTO app_config (key, value) VALUES (?1, ?2)
@@ -369,6 +370,7 @@ pub fn get_symbol_cache_exact(
     }))
 }
 
+#[allow(dead_code)]
 pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
     let mut stmt = conn
         .prepare("SELECT 1 FROM holdings WHERE UPPER(symbol) = UPPER(?1) LIMIT 1")
