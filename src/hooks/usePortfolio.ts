@@ -71,42 +71,60 @@ export function usePortfolio(): UsePortfolioReturn {
     }
   }, [loadPortfolio]);
 
-  const addHolding = useCallback(async (input: HoldingInput): Promise<Holding> => {
-    if (isTauri()) {
-      const created = await tauriInvoke<Holding>('add_holding', { holding: input });
-      await loadPortfolio();
-      return created;
-    }
-    // Mock: create a fake holding
-    const mock: Holding = {
-      id: String(Date.now()),
-      ...input,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setHoldings((prev) => [...prev, mock]);
-    return mock;
-  }, [loadPortfolio]);
+  const addHolding = useCallback(
+    async (input: HoldingInput): Promise<Holding> => {
+      if (isTauri()) {
+        const created = await tauriInvoke<Holding>('add_holding', { holding: input });
+        await loadPortfolio();
+        return created;
+      }
+      // Mock: create a fake holding
+      const mock: Holding = {
+        id: String(Date.now()),
+        ...input,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setHoldings((prev) => [...prev, mock]);
+      return mock;
+    },
+    [loadPortfolio]
+  );
 
-  const updateHolding = useCallback(async (holding: Holding): Promise<Holding> => {
-    if (isTauri()) {
-      const updated = await tauriInvoke<Holding>('update_holding', { holding });
-      await loadPortfolio();
+  const updateHolding = useCallback(
+    async (holding: Holding): Promise<Holding> => {
+      if (isTauri()) {
+        const updated = await tauriInvoke<Holding>('update_holding', { holding });
+        await loadPortfolio();
+        return updated;
+      }
+      const updated = { ...holding, updatedAt: new Date().toISOString() };
+      setHoldings((prev) => prev.map((h) => (h.id === holding.id ? updated : h)));
       return updated;
-    }
-    const updated = { ...holding, updatedAt: new Date().toISOString() };
-    setHoldings((prev) => prev.map((h) => (h.id === holding.id ? updated : h)));
-    return updated;
-  }, [loadPortfolio]);
+    },
+    [loadPortfolio]
+  );
 
-  const deleteHolding = useCallback(async (id: string): Promise<void> => {
-    if (isTauri()) {
-      await tauriInvoke('delete_holding', { id });
-      await loadPortfolio();
-      return;
-    }
-    setHoldings((prev) => prev.filter((h) => h.id !== id));
-  }, [loadPortfolio]);
+  const deleteHolding = useCallback(
+    async (id: string): Promise<void> => {
+      if (isTauri()) {
+        await tauriInvoke('delete_holding', { id });
+        await loadPortfolio();
+        return;
+      }
+      setHoldings((prev) => prev.filter((h) => h.id !== id));
+    },
+    [loadPortfolio]
+  );
 
-  return { portfolio, holdings, loading, error, refreshPrices, addHolding, updateHolding, deleteHolding };
+  return {
+    portfolio,
+    holdings,
+    loading,
+    error,
+    refreshPrices,
+    addHolding,
+    updateHolding,
+    deleteHolding,
+  };
 }

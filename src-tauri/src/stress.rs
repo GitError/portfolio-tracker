@@ -1,5 +1,8 @@
 use crate::types::{PortfolioSnapshot, StressHoldingResult, StressResult, StressScenario};
 
+#[cfg(test)]
+use crate::types::{AssetType, HoldingWithPrice};
+
 pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) -> StressResult {
     let mut holding_results: Vec<StressHoldingResult> = Vec::new();
     let mut total_stressed = 0.0;
@@ -53,5 +56,139 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         total_impact,
         total_impact_percent,
         holding_breakdown: holding_results,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn make_holding(
+        symbol: &str,
+        asset_type: AssetType,
+        currency: &str,
+        value: f64,
+    ) -> HoldingWithPrice {
+        HoldingWithPrice {
+            id: symbol.to_string(),
+            symbol: symbol.to_string(),
+            name: symbol.to_string(),
+            asset_type,
+            quantity: 1.0,
+            cost_basis: value,
+            currency: currency.to_string(),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+            current_price: value,
+            current_price_cad: value,
+            market_value_cad: value,
+            cost_value_cad: value,
+            gain_loss: 0.0,
+            gain_loss_percent: 0.0,
+            weight: 1.0,
+            daily_change_percent: 0.0,
+        }
+    }
+
+    fn make_snapshot(holdings: Vec<HoldingWithPrice>) -> PortfolioSnapshot {
+        let total = holdings.iter().map(|h| h.market_value_cad).sum();
+        PortfolioSnapshot {
+            holdings,
+            total_value: total,
+            total_cost: total,
+            total_gain_loss: 0.0,
+            total_gain_loss_percent: 0.0,
+            daily_pnl: 0.0,
+            last_updated: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn zero_shocks_return_unchanged_values() {
+        let snapshot = make_snapshot(vec![
+            make_holding("AAPL", AssetType::Stock, "USD", 10_000.0),
+            make_holding("BTC", AssetType::Crypto, "CAD", 5_000.0),
+        ]);
+        let scenario = StressScenario {
+            name: "Zero".to_string(),
+            shocks: HashMap::new(),
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!(
+            (result.total_impact).abs() < 0.001,
+            "Zero shocks should produce zero impact"
+        );
+        assert_eq!(result.holding_breakdown.len(), 2);
+        for h in &result.holding_breakdown {
+            assert!((h.impact).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn stock_shock_applies_correctly() {
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "CAD", value)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.20);
+        let scenario = StressScenario {
+            name: "Bear".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        let expected_stressed = value * 0.80;
+        assert!((result.stressed_value - expected_stressed).abs() < 0.001);
+        assert!((result.total_impact - (-2_000.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn fx_shock_applies_to_non_cad_holdings() {
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "USD", value)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.10);
+        shocks.insert("fx_usd_cad".to_string(), 0.05);
+        let scenario = StressScenario {
+            name: "Mixed".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        // stressed = 10000 * 0.90 * 1.05 = 9450
+        let expected = value * 0.90 * 1.05;
+        assert!((result.stressed_value - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn cad_holdings_ignore_fx_shock() {
+        let value = 5_000.0;
+        let snapshot = make_snapshot(vec![make_holding("RY.TO", AssetType::Stock, "CAD", value)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("fx_usd_cad".to_string(), 0.15); // should not affect CAD holding
+        let scenario = StressScenario {
+            name: "FX only".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!((result.total_impact).abs() < 0.001);
+    }
+
+    #[test]
+    fn empty_snapshot_returns_zero() {
+        let snapshot = make_snapshot(vec![]);
+        let scenario = StressScenario {
+            name: "Empty".to_string(),
+            shocks: HashMap::new(),
+        };
+        let result = run_stress_test(&snapshot, &scenario);
+        assert_eq!(result.total_impact, 0.0);
+        assert_eq!(result.total_impact_percent, 0.0);
     }
 }

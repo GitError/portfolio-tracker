@@ -1,0 +1,55 @@
+version: 2
+
+updates:
+  # Frontend (npm)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "GitError"  # replace with your GitHub username
+    labels:
+      - "dependencies"
+      - "frontend"
+    groups:
+      # Group minor/patch updates to reduce PR noise
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "@types/react*"
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Backend (Cargo / Rust)
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "GitError"  # replace with your GitHub username
+    labels:
+      - "dependencies"
+      - "backend"
+    groups:
+      tauri:
+        patterns:
+          - "tauri*"
+      serde:
+        patterns:
+          - "serde*"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    labels:
+      - "dependencies"
+      - "ci"

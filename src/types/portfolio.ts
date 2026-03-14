@@ -15,31 +15,31 @@ export interface Holding {
   name: string;
   assetType: AssetType;
   quantity: number;
-  costBasis: number;       // per unit, in original currency
-  currency: string;        // ISO currency code
-  createdAt: string;       // ISO 8601
-  updatedAt: string;       // ISO 8601
+  costBasis: number; // per unit, in original currency
+  currency: string; // ISO currency code
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
 }
 
 export interface HoldingWithPrice extends Holding {
-  currentPrice: number;    // in original currency
+  currentPrice: number; // in original currency
   currentPriceCad: number; // converted to CAD
-  marketValueCad: number;  // quantity × currentPriceCad
-  costValueCad: number;    // quantity × costBasis × fxRate
-  gainLoss: number;        // marketValueCad - costValueCad
+  marketValueCad: number; // quantity × currentPriceCad
+  costValueCad: number; // quantity × costBasis × fxRate
+  gainLoss: number; // marketValueCad - costValueCad
   gainLossPercent: number; // gainLoss / costValueCad
-  weight: number;          // marketValueCad / totalPortfolioValue
+  weight: number; // marketValueCad / totalPortfolioValue
   dailyChangePercent: number;
 }
 
 export interface PortfolioSnapshot {
   holdings: HoldingWithPrice[];
-  totalValue: number;      // sum of all marketValueCad
-  totalCost: number;       // sum of all costValueCad
+  totalValue: number; // sum of all marketValueCad
+  totalCost: number; // sum of all costValueCad
   totalGainLoss: number;
   totalGainLossPercent: number;
   dailyPnl: number;
-  lastUpdated: string;     // ISO 8601
+  lastUpdated: string; // ISO 8601
 }
 
 export interface PriceData {
@@ -52,14 +52,14 @@ export interface PriceData {
 }
 
 export interface FxRate {
-  pair: string;            // e.g. "USDCAD"
+  pair: string; // e.g. "USDCAD"
   rate: number;
   updatedAt: string;
 }
 
 export interface StressScenario {
   name: string;
-  shocks: Record<string, number>;  // keys: "stock"|"etf"|"crypto"|"fx_usd_cad" etc, values: decimal (-0.10 = -10%)
+  shocks: Record<string, number>; // keys: "stock"|"etf"|"crypto"|"fx_usd_cad" etc, values: decimal (-0.10 = -10%)
 }
 
 export interface StressHoldingResult {

@@ -10,10 +10,10 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { to: '/',            label: 'Dashboard',   Icon: LayoutDashboard },
-  { to: '/holdings',    label: 'Holdings',    Icon: Table2          },
-  { to: '/performance', label: 'Performance', Icon: TrendingUp      },
-  { to: '/stress',      label: 'Stress Test', Icon: AlertTriangle   },
+  { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
+  { to: '/holdings', label: 'Holdings', Icon: Table2 },
+  { to: '/performance', label: 'Performance', Icon: TrendingUp },
+  { to: '/stress', label: 'Stress Test', Icon: AlertTriangle },
 ];
 
 export function Sidebar({ portfolio }: SidebarProps) {
@@ -91,7 +91,14 @@ export function Sidebar({ portfolio }: SidebarProps) {
               whiteSpace: 'nowrap',
             })}
           >
-            <Icon size={18} style={{ flexShrink: 0, marginLeft: expanded ? 0 : 'auto', marginRight: expanded ? 0 : 'auto' }} />
+            <Icon
+              size={18}
+              style={{
+                flexShrink: 0,
+                marginLeft: expanded ? 0 : 'auto',
+                marginRight: expanded ? 0 : 'auto',
+              }}
+            />
             {expanded && label}
           </NavLink>
         ))}
@@ -125,7 +132,8 @@ export function Sidebar({ portfolio }: SidebarProps) {
               marginTop: 2,
             }}
           >
-            {dailyPnl >= 0 ? '+' : ''}{formatCompact(Math.abs(dailyPnl))} today
+            {dailyPnl >= 0 ? '+' : ''}
+            {formatCompact(Math.abs(dailyPnl))} today
           </div>
         )}
       </div>

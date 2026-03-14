@@ -11,7 +11,14 @@ interface LayoutProps {
 
 export function Layout({ portfolio, loading, onRefresh }: LayoutProps) {
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-primary)' }}>
+    <div
+      style={{
+        display: 'flex',
+        height: '100vh',
+        overflow: 'hidden',
+        background: 'var(--bg-primary)',
+      }}
+    >
       <Sidebar portfolio={portfolio} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar portfolio={portfolio} loading={loading} onRefresh={onRefresh} />

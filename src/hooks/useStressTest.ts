@@ -36,8 +36,7 @@ function computeLocally(snapshot: PortfolioSnapshot, scenario: StressScenario): 
 
   const currentValue = snapshot.totalValue;
   const totalImpact = totalStressed - currentValue;
-  const totalImpactPercent =
-    currentValue !== 0 ? (totalImpact / currentValue) * 100 : 0;
+  const totalImpactPercent = currentValue !== 0 ? (totalImpact / currentValue) * 100 : 0;
 
   return {
     scenario: scenario.name,

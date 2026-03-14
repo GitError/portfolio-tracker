@@ -29,9 +29,16 @@ const LABEL: React.CSSProperties = {
 
 function CenterLabel({ text }: { text: string }) {
   return (
-    <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central"
-      fill="var(--text-secondary)" fontSize={11} fontFamily="var(--font-mono)"
-      style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+    <text
+      x="50%"
+      y="50%"
+      textAnchor="middle"
+      dominantBaseline="central"
+      fill="var(--text-secondary)"
+      fontSize={11}
+      fontFamily="var(--font-mono)"
+      style={{ textTransform: 'uppercase', letterSpacing: '0.08em' }}
+    >
       {text}
     </text>
   );
@@ -77,8 +84,14 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
   const stats = useMemo(() => {
     if (!portfolio) return null;
     const nonCash = portfolio.holdings.filter((h) => h.assetType !== 'cash');
-    const best = nonCash.reduce((a, b) => (b.gainLossPercent > a.gainLossPercent ? b : a), nonCash[0]);
-    const worst = nonCash.reduce((a, b) => (b.gainLossPercent < a.gainLossPercent ? b : a), nonCash[0]);
+    const best = nonCash.reduce(
+      (a, b) => (b.gainLossPercent > a.gainLossPercent ? b : a),
+      nonCash[0]
+    );
+    const worst = nonCash.reduce(
+      (a, b) => (b.gainLossPercent < a.gainLossPercent ? b : a),
+      nonCash[0]
+    );
     const cashTotal = portfolio.holdings
       .filter((h) => h.assetType === 'cash')
       .reduce((s, h) => s + h.marketValueCad, 0);
@@ -128,7 +141,13 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               : '—'}
           </span>
           {portfolio && (
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: pnlColor(portfolio.dailyPnl) }}>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                color: pnlColor(portfolio.dailyPnl),
+              }}
+            >
               today
             </span>
           )}
@@ -144,7 +163,13 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         >
           <div>
             <div style={{ ...LABEL, marginBottom: 2 }}>Cost Basis</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+              }}
+            >
               {portfolio ? formatCurrency(portfolio.totalCost) : '—'}
             </div>
           </div>
@@ -172,8 +197,10 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           <PieChart>
             <Pie
               data={allocationData}
-              cx="50%" cy="50%"
-              innerRadius={50} outerRadius={72}
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={72}
               dataKey="value"
               strokeWidth={0}
             >
@@ -183,16 +210,46 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             </Pie>
             <CenterLabel text="Allocation" />
             <Tooltip
-              contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-primary)', borderRadius: 0, fontSize: 12, fontFamily: 'var(--font-mono)' }}
+              contentStyle={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 0,
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+              }}
               formatter={(v: unknown) => [formatCompact(Number(v)), '']}
             />
           </PieChart>
         </ResponsiveContainer>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
           {allocationData.map((d) => (
-            <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, display: 'inline-block' }} />
+            <div
+              key={d.name}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: 11,
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: d.color,
+                    display: 'inline-block',
+                  }}
+                />
                 {d.name}
               </span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
@@ -210,7 +267,20 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           <thead>
             <tr>
               {['Symbol', 'Name', 'Change %', 'Change $'].map((col) => (
-                <th key={col} style={{ textAlign: col === 'Change %' || col === 'Change $' ? 'right' : 'left', padding: '4px 0', color: 'var(--text-muted)', fontWeight: 400, fontFamily: 'var(--font-mono)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-primary)' }}>
+                <th
+                  key={col}
+                  style={{
+                    textAlign: col === 'Change %' || col === 'Change $' ? 'right' : 'left',
+                    padding: '4px 0',
+                    color: 'var(--text-muted)',
+                    fontWeight: 400,
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    borderBottom: '1px solid var(--border-primary)',
+                  }}
+                >
                   {col}
                 </th>
               ))}
@@ -221,10 +291,41 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               const dailyChange = h.marketValueCad * (h.dailyChangePercent / 100);
               return (
                 <tr key={h.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '6px 0', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text-primary)', fontSize: 12 }}>{h.symbol}</td>
-                  <td style={{ padding: '6px 0', color: 'var(--text-secondary)', fontSize: 11 }}>{h.name}</td>
-                  <td style={{ padding: '6px 0', textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(h.dailyChangePercent) }}>{formatPercent(h.dailyChangePercent)}</td>
-                  <td style={{ padding: '6px 0', textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(dailyChange) }}>{dailyChange >= 0 ? '+' : ''}{formatCurrency(dailyChange)}</td>
+                  <td
+                    style={{
+                      padding: '6px 0',
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      fontSize: 12,
+                    }}
+                  >
+                    {h.symbol}
+                  </td>
+                  <td style={{ padding: '6px 0', color: 'var(--text-secondary)', fontSize: 11 }}>
+                    {h.name}
+                  </td>
+                  <td
+                    style={{
+                      padding: '6px 0',
+                      textAlign: 'right',
+                      fontFamily: 'var(--font-mono)',
+                      color: pnlColor(h.dailyChangePercent),
+                    }}
+                  >
+                    {formatPercent(h.dailyChangePercent)}
+                  </td>
+                  <td
+                    style={{
+                      padding: '6px 0',
+                      textAlign: 'right',
+                      fontFamily: 'var(--font-mono)',
+                      color: pnlColor(dailyChange),
+                    }}
+                  >
+                    {dailyChange >= 0 ? '+' : ''}
+                    {formatCurrency(dailyChange)}
+                  </td>
                 </tr>
               );
             })}
@@ -239,8 +340,10 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           <PieChart>
             <Pie
               data={currencyData}
-              cx="50%" cy="50%"
-              innerRadius={50} outerRadius={72}
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={72}
               dataKey="value"
               strokeWidth={0}
             >
@@ -250,16 +353,46 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             </Pie>
             <CenterLabel text="Currency" />
             <Tooltip
-              contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-primary)', borderRadius: 0, fontSize: 12, fontFamily: 'var(--font-mono)' }}
+              contentStyle={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 0,
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+              }}
               formatter={(v: unknown) => [formatCompact(Number(v)), '']}
             />
           </PieChart>
         </ResponsiveContainer>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
           {currencyData.map((d) => (
-            <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: d.color, display: 'inline-block' }} />
+            <div
+              key={d.name}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                fontSize: 11,
+              }}
+            >
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  color: 'var(--text-secondary)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: d.color,
+                    display: 'inline-block',
+                  }}
+                />
                 {d.name}
               </span>
               <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
@@ -283,7 +416,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         {[
           {
             label: 'Positions',
-            value: portfolio ? String(portfolio.holdings.filter((h) => h.assetType !== 'cash').length) : '—',
+            value: portfolio
+              ? String(portfolio.holdings.filter((h) => h.assetType !== 'cash').length)
+              : '—',
             sub: portfolio ? `${portfolio.holdings.length} total` : '',
           },
           {
@@ -301,7 +436,10 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           {
             label: 'Cash Position',
             value: stats ? formatCompact(stats.cashTotal) : '—',
-            sub: stats && portfolio ? `${((stats.cashTotal / portfolio.totalValue) * 100).toFixed(1)}% of portfolio` : '',
+            sub:
+              stats && portfolio
+                ? `${((stats.cashTotal / portfolio.totalValue) * 100).toFixed(1)}% of portfolio`
+                : '',
           },
           {
             label: 'Portfolio Beta',
@@ -318,11 +456,25 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             }}
           >
             <div style={LABEL}>{stat.label}</div>
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 600, color: 'var(--text-primary)' }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 20,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+              }}
+            >
               {stat.value}
             </div>
             {stat.sub && (
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: stat.subColor ?? 'var(--text-muted)', marginTop: 2 }}>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: stat.subColor ?? 'var(--text-muted)',
+                  marginTop: 2,
+                }}
+              >
                 {stat.sub}
               </div>
             )}

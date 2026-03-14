@@ -14,9 +14,13 @@ export function pnlClass(value: number): string {
 
 export function assetTypeColor(type: AssetType): string {
   switch (type) {
-    case 'stock':  return 'var(--color-stock)';
-    case 'etf':    return 'var(--color-etf)';
-    case 'crypto': return 'var(--color-crypto)';
-    case 'cash':   return 'var(--color-cash)';
+    case 'stock':
+      return 'var(--color-stock)';
+    case 'etf':
+      return 'var(--color-etf)';
+    case 'crypto':
+      return 'var(--color-crypto)';
+    case 'cash':
+      return 'var(--color-cash)';
   }
 }

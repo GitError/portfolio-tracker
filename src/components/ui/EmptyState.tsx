@@ -14,7 +14,8 @@ export function EmptyState({ message, action }: EmptyStateProps) {
           letterSpacing: '0.05em',
         }}
       >
-        {'> '}{message.toUpperCase()}
+        {'> '}
+        {message.toUpperCase()}
       </p>
       {action && (
         <button

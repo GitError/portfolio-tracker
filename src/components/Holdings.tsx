@@ -11,8 +11,16 @@ import type { Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio
 
 type SortKey = keyof Pick<
   HoldingWithPrice,
-  'symbol' | 'name' | 'assetType' | 'quantity' | 'costBasis' | 'currentPrice' |
-  'marketValueCad' | 'gainLoss' | 'gainLossPercent' | 'weight'
+  | 'symbol'
+  | 'name'
+  | 'assetType'
+  | 'quantity'
+  | 'costBasis'
+  | 'currentPrice'
+  | 'marketValueCad'
+  | 'gainLoss'
+  | 'gainLossPercent'
+  | 'weight'
 >;
 
 interface SortState {
@@ -21,16 +29,16 @@ interface SortState {
 }
 
 const COLUMNS: { key: SortKey; label: string; align: 'left' | 'right' }[] = [
-  { key: 'symbol',          label: 'Symbol',         align: 'left'  },
-  { key: 'name',            label: 'Name',           align: 'left'  },
-  { key: 'assetType',       label: 'Type',           align: 'left'  },
-  { key: 'quantity',        label: 'Qty',            align: 'right' },
-  { key: 'costBasis',       label: 'Cost Basis',     align: 'right' },
-  { key: 'currentPrice',    label: 'Price',          align: 'right' },
-  { key: 'marketValueCad',  label: 'Mkt Value (CAD)',align: 'right' },
-  { key: 'gainLoss',        label: 'Gain/Loss',      align: 'right' },
-  { key: 'gainLossPercent', label: 'G/L %',          align: 'right' },
-  { key: 'weight',          label: 'Weight',         align: 'right' },
+  { key: 'symbol', label: 'Symbol', align: 'left' },
+  { key: 'name', label: 'Name', align: 'left' },
+  { key: 'assetType', label: 'Type', align: 'left' },
+  { key: 'quantity', label: 'Qty', align: 'right' },
+  { key: 'costBasis', label: 'Cost Basis', align: 'right' },
+  { key: 'currentPrice', label: 'Price', align: 'right' },
+  { key: 'marketValueCad', label: 'Mkt Value (CAD)', align: 'right' },
+  { key: 'gainLoss', label: 'Gain/Loss', align: 'right' },
+  { key: 'gainLossPercent', label: 'G/L %', align: 'right' },
+  { key: 'weight', label: 'Weight', align: 'right' },
 ];
 
 const TH: React.CSSProperties = {
@@ -127,7 +135,11 @@ export function Holdings() {
       gainLoss: rows.reduce((s, r) => s + r.gainLoss, 0),
       gainLossPercent: portfolio
         ? (rows.reduce((s, r) => s + r.gainLoss, 0) /
-            Math.max(rows.reduce((s, r) => s + r.costValueCad, 0), 1)) * 100
+            Math.max(
+              rows.reduce((s, r) => s + r.costValueCad, 0),
+              1
+            )) *
+          100
         : 0,
     }),
     [rows, portfolio]
@@ -147,7 +159,14 @@ export function Holdings() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>
+          <span
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 600,
+              fontSize: 15,
+              color: 'var(--text-primary)',
+            }}
+          >
             Holdings
           </span>
           <span
@@ -183,7 +202,10 @@ export function Holdings() {
             }}
           />
           <button
-            onClick={() => { setEditing(undefined); setModalOpen(true); }}
+            onClick={() => {
+              setEditing(undefined);
+              setModalOpen(true);
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -222,15 +244,15 @@ export function Holdings() {
             <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
               <tr>
                 {COLUMNS.map(({ key, label, align }) => (
-                  <th
-                    key={key}
-                    onClick={() => toggleSort(key)}
-                    style={{ ...TH, textAlign: align }}
-                  >
+                  <th key={key} onClick={() => toggleSort(key)} style={{ ...TH, textAlign: align }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                       {label}
                       {sort.key === key ? (
-                        sort.dir === 'asc' ? <ChevronUp size={10} /> : <ChevronDown size={10} />
+                        sort.dir === 'asc' ? (
+                          <ChevronUp size={10} />
+                        ) : (
+                          <ChevronDown size={10} />
+                        )
                       ) : null}
                     </span>
                   </th>
@@ -247,61 +269,160 @@ export function Holdings() {
                   <tr
                     key={h.id}
                     style={{
-                      background: isPending ? 'rgba(255,71,87,0.08)' : isDeleting ? 'rgba(255,71,87,0.15)' : bg,
+                      background: isPending
+                        ? 'rgba(255,71,87,0.08)'
+                        : isDeleting
+                          ? 'rgba(255,71,87,0.15)'
+                          : bg,
                       transition: 'background 200ms',
                     }}
                     onMouseEnter={(e) => {
                       if (!isPending && !isDeleting)
-                        (e.currentTarget as HTMLElement).style.background = 'var(--bg-surface-hover)';
+                        (e.currentTarget as HTMLElement).style.background =
+                          'var(--bg-surface-hover)';
                     }}
                     onMouseLeave={(e) => {
                       if (!isPending && !isDeleting)
                         (e.currentTarget as HTMLElement).style.background = bg;
                     }}
                   >
-                    <td style={{ ...TD, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <td
+                      style={{
+                        ...TD,
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
                       {h.symbol}
                     </td>
-                    <td style={{ ...TD, color: 'var(--text-secondary)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <td
+                      style={{
+                        ...TD,
+                        color: 'var(--text-secondary)',
+                        maxWidth: 160,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
                       {h.name}
                     </td>
                     <td style={TD}>
                       <Badge type={h.assetType} />
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
                       {formatNumber(h.quantity, h.assetType === 'crypto' ? 4 : 2)}
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
                       {formatNumber(h.costBasis, 2)} {h.currency}
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-                      {h.assetType === 'cash' ? '—' : `${formatNumber(h.currentPrice, 2)} ${h.currency}`}
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-primary)',
+                      }}
+                    >
+                      {h.assetType === 'cash'
+                        ? '—'
+                        : `${formatNumber(h.currentPrice, 2)} ${h.currency}`}
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontWeight: 600 }}>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-primary)',
+                        fontWeight: 600,
+                      }}
+                    >
                       {formatCurrency(h.marketValueCad)}
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(h.gainLoss) }}>
-                      {h.gainLoss >= 0 ? '+' : ''}{formatCurrency(h.gainLoss)}
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: pnlColor(h.gainLoss),
+                      }}
+                    >
+                      {h.gainLoss >= 0 ? '+' : ''}
+                      {formatCurrency(h.gainLoss)}
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(h.gainLossPercent) }}>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: pnlColor(h.gainLossPercent),
+                      }}
+                    >
                       {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}
                     </td>
-                    <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
                       {h.weight.toFixed(1)}%
                     </td>
                     <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
                       {isPending ? (
                         <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                          <span style={{ fontSize: 11, color: 'var(--color-loss)', fontFamily: 'var(--font-mono)' }}>Delete?</span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--color-loss)',
+                              fontFamily: 'var(--font-mono)',
+                            }}
+                          >
+                            Delete?
+                          </span>
                           <button
                             onClick={() => handleDelete(h.id)}
-                            style={{ fontSize: 11, color: 'var(--color-loss)', background: 'none', border: '1px solid var(--color-loss)', padding: '2px 6px', borderRadius: '2px', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--color-loss)',
+                              background: 'none',
+                              border: '1px solid var(--color-loss)',
+                              padding: '2px 6px',
+                              borderRadius: '2px',
+                              cursor: 'pointer',
+                              fontFamily: 'var(--font-mono)',
+                            }}
                           >
                             Confirm
                           </button>
                           <button
                             onClick={() => setPendingDelete(null)}
-                            style={{ fontSize: 11, color: 'var(--text-secondary)', background: 'none', border: '1px solid var(--border-primary)', padding: '2px 6px', borderRadius: '2px', cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                            style={{
+                              fontSize: 11,
+                              color: 'var(--text-secondary)',
+                              background: 'none',
+                              border: '1px solid var(--border-primary)',
+                              padding: '2px 6px',
+                              borderRadius: '2px',
+                              cursor: 'pointer',
+                              fontFamily: 'var(--font-mono)',
+                            }}
                           >
                             Cancel
                           </button>
@@ -309,16 +430,35 @@ export function Holdings() {
                       ) : (
                         <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
                           <button
-                            onClick={() => { setEditing(h); setModalOpen(true); }}
+                            onClick={() => {
+                              setEditing(h);
+                              setModalOpen(true);
+                            }}
                             title="Edit"
-                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 3, display: 'flex', alignItems: 'center' }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              padding: 3,
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
                           >
                             <Pencil size={13} />
                           </button>
                           <button
                             onClick={() => setPendingDelete(h.id)}
                             title="Delete"
-                            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 3, display: 'flex', alignItems: 'center' }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--text-muted)',
+                              cursor: 'pointer',
+                              padding: 3,
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
                           >
                             <Trash2 size={13} />
                           </button>
@@ -330,17 +470,61 @@ export function Holdings() {
               })}
             </tbody>
             <tfoot style={{ position: 'sticky', bottom: 0 }}>
-              <tr style={{ background: 'var(--bg-surface-alt)', borderTop: '2px solid var(--border-primary)' }}>
-                <td colSpan={6} style={{ ...TD, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-secondary)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <tr
+                style={{
+                  background: 'var(--bg-surface-alt)',
+                  borderTop: '2px solid var(--border-primary)',
+                }}
+              >
+                <td
+                  colSpan={6}
+                  style={{
+                    ...TD,
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    color: 'var(--text-secondary)',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}
+                >
                   Total ({rows.length} positions)
                 </td>
-                <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-primary)', fontSize: 13 }}>
+                <td
+                  style={{
+                    ...TD,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                    fontSize: 13,
+                  }}
+                >
                   {formatCurrency(totals.marketValueCad)}
                 </td>
-                <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: pnlColor(totals.gainLoss), fontSize: 13 }}>
-                  {totals.gainLoss >= 0 ? '+' : ''}{formatCurrency(totals.gainLoss)}
+                <td
+                  style={{
+                    ...TD,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    color: pnlColor(totals.gainLoss),
+                    fontSize: 13,
+                  }}
+                >
+                  {totals.gainLoss >= 0 ? '+' : ''}
+                  {formatCurrency(totals.gainLoss)}
                 </td>
-                <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 700, color: pnlColor(totals.gainLossPercent), fontSize: 13 }}>
+                <td
+                  style={{
+                    ...TD,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 700,
+                    color: pnlColor(totals.gainLossPercent),
+                    fontSize: 13,
+                  }}
+                >
                   {formatPercent(totals.gainLossPercent)}
                 </td>
                 <td colSpan={2} style={TD} />
@@ -352,7 +536,10 @@ export function Holdings() {
 
       <AddHoldingModal
         isOpen={modalOpen}
-        onClose={() => { setModalOpen(false); setEditing(undefined); }}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(undefined);
+        }}
         onSave={handleSave}
         editingHolding={editing}
       />

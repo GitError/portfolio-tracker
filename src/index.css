@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   /* Backgrounds */
@@ -81,11 +81,21 @@ body::after {
 
 /* Spin animation */
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Utility classes for pnl coloring (used by pnlClass helper) */
-.text-gain      { color: var(--color-gain) !important; }
-.text-loss      { color: var(--color-loss) !important; }
-.text-secondary { color: var(--text-secondary) !important; }
+.text-gain {
+  color: var(--color-gain) !important;
+}
+.text-loss {
+  color: var(--color-loss) !important;
+}
+.text-secondary {
+  color: var(--text-secondary) !important;
+}

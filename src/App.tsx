@@ -29,7 +29,7 @@ function AppRoutes() {
     } else {
       document.title = 'Portfolio Tracker';
     }
-  }, [portfolio?.totalValue]);
+  }, [portfolio]);
 
   // Keyboard shortcuts
   useEffect(() => {

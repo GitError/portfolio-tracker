@@ -285,3 +285,9 @@ export const PRESET_SCENARIOS: StressScenario[] = [
 - Yahoo Finance requests MUST include a User-Agent header or they will 403.
 - The SQLite DB file lives in Tauri's app data directory (`app_data_dir`), NOT in the project folder.
 - All timestamps are ISO 8601 UTC strings.
+
+## Testing
+- Rust: `cargo test` (unit tests in each module)
+- Frontend: Vitest + React Testing Library
+- E2E: Playwright
+- Coverage target: 80%+

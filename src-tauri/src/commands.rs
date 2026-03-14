@@ -49,10 +49,8 @@ pub async fn get_portfolio(
         .map(|p| (p.symbol.clone(), p))
         .collect();
 
-    let fx_map: std::collections::HashMap<String, &FxRate> = cached_fx
-        .iter()
-        .map(|r| (r.pair.clone(), r))
-        .collect();
+    let fx_map: std::collections::HashMap<String, &FxRate> =
+        cached_fx.iter().map(|r| (r.pair.clone(), r)).collect();
 
     let mut holdings_with_price: Vec<HoldingWithPrice> = Vec::new();
     let mut total_value = 0.0f64;
@@ -145,19 +143,13 @@ pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, String
 }
 
 #[tauri::command]
-pub async fn add_holding(
-    db: State<'_, DbState>,
-    holding: HoldingInput,
-) -> Result<Holding, String> {
+pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::insert_holding(&conn, holding)
 }
 
 #[tauri::command]
-pub async fn update_holding(
-    db: State<'_, DbState>,
-    holding: Holding,
-) -> Result<Holding, String> {
+pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::update_holding(&conn, holding)
 }

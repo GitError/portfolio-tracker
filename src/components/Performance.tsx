@@ -1,7 +1,15 @@
 import { useMemo, useState } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
 } from 'recharts';
 import { ALL_PERF_DATA, calcStats, filterByRange } from '../lib/perfMockData';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
@@ -36,7 +44,11 @@ function formatAxisDate(dateStr: string, range: Range): string {
   return d.toLocaleDateString('en-CA', { month: 'short', year: '2-digit' });
 }
 
-function CustomTooltip({ active, payload, label }: {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: {
   active?: boolean;
   payload?: Array<{ value: number; payload: { dailyReturn: number } }>;
   label?: string;
@@ -45,13 +57,15 @@ function CustomTooltip({ active, payload, label }: {
   const val = payload[0].value;
   const daily = payload[0].payload.dailyReturn;
   return (
-    <div style={{
-      background: 'var(--bg-surface)',
-      border: '1px solid var(--border-primary)',
-      padding: '10px 14px',
-      fontSize: 12,
-      fontFamily: 'var(--font-mono)',
-    }}>
+    <div
+      style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-primary)',
+        padding: '10px 14px',
+        fontSize: 12,
+        fontFamily: 'var(--font-mono)',
+      }}
+    >
       <div style={{ color: 'var(--text-secondary)', marginBottom: 6 }}>{label}</div>
       <div style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatCurrency(val)}</div>
       <div style={{ color: pnlColor(daily), marginTop: 2 }}>{formatPercent(daily)} daily</div>
@@ -75,7 +89,14 @@ export function Performance() {
   const xTickCount = range === '1D' || range === '1W' ? undefined : 6;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', background: 'var(--border-primary)' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1px',
+        background: 'var(--border-primary)',
+      }}
+    >
       {/* Range selector + main chart */}
       <div style={PANEL}>
         {/* Range buttons */}
@@ -128,7 +149,10 @@ export function Performance() {
               tickLine={false}
               width={62}
             />
-            <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--text-muted)', strokeWidth: 1, strokeDasharray: '4 2' }} />
+            <Tooltip
+              content={<CustomTooltip />}
+              cursor={{ stroke: 'var(--text-muted)', strokeWidth: 1, strokeDasharray: '4 2' }}
+            />
             <Area
               type="monotone"
               dataKey="value"
@@ -136,7 +160,12 @@ export function Performance() {
               strokeWidth={2}
               fill="url(#valueGrad)"
               dot={false}
-              activeDot={{ r: 3, fill: 'var(--color-accent)', stroke: 'var(--bg-surface)', strokeWidth: 2 }}
+              activeDot={{
+                r: 3,
+                fill: 'var(--color-accent)',
+                stroke: 'var(--bg-surface)',
+                strokeWidth: 2,
+              }}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -144,7 +173,16 @@ export function Performance() {
 
       {/* Daily returns bar chart */}
       <div style={{ ...PANEL, paddingTop: 14, paddingBottom: 14 }}>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+        <div
+          style={{
+            fontSize: 10,
+            color: 'var(--text-muted)',
+            fontFamily: 'var(--font-mono)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            marginBottom: 8,
+          }}
+        >
           Daily Returns
         </div>
         <ResponsiveContainer width="100%" height={100}>
@@ -159,13 +197,22 @@ export function Performance() {
               width={40}
             />
             <Tooltip
-              contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-primary)', borderRadius: 0, fontSize: 11, fontFamily: 'var(--font-mono)' }}
+              contentStyle={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                borderRadius: 0,
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+              }}
               formatter={(v: unknown) => [`${Number(v).toFixed(2)}%`, 'Daily Return']}
               labelStyle={{ color: 'var(--text-secondary)' }}
             />
             <Bar dataKey="dailyReturn" maxBarSize={8}>
               {chartData.map((entry, i) => (
-                <Cell key={i} fill={entry.dailyReturn >= 0 ? 'var(--color-gain)' : 'var(--color-loss)'} />
+                <Cell
+                  key={i}
+                  fill={entry.dailyReturn >= 0 ? 'var(--color-gain)' : 'var(--color-loss)'}
+                />
               ))}
             </Bar>
           </BarChart>
@@ -241,10 +288,24 @@ export function Performance() {
               }}
             >
               <div style={STAT_LABEL}>{s.label}</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 16, fontWeight: 600, color: s.color }}>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: s.color,
+                }}
+              >
                 {s.value}
               </div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  marginTop: 2,
+                }}
+              >
                 {s.sub}
               </div>
             </div>

@@ -1,6 +1,6 @@
 export interface PerfDataPoint {
-  date: string;       // YYYY-MM-DD
-  value: number;      // CAD portfolio value
+  date: string; // YYYY-MM-DD
+  value: number; // CAD portfolio value
   dailyReturn: number; // % change vs previous day
 }
 
@@ -62,14 +62,28 @@ export function filterByRange(data: PerfDataPoint[], range: string): PerfDataPoi
   const cutoff = new Date(now);
 
   switch (range) {
-    case '1D': cutoff.setDate(cutoff.getDate() - 2);   break;
-    case '1W': cutoff.setDate(cutoff.getDate() - 7);   break;
-    case '1M': cutoff.setMonth(cutoff.getMonth() - 1); break;
-    case '3M': cutoff.setMonth(cutoff.getMonth() - 3); break;
-    case '6M': cutoff.setMonth(cutoff.getMonth() - 6); break;
-    case '1Y': cutoff.setFullYear(cutoff.getFullYear() - 1); break;
-    case 'ALL': return data;
-    default: cutoff.setMonth(cutoff.getMonth() - 1);
+    case '1D':
+      cutoff.setDate(cutoff.getDate() - 2);
+      break;
+    case '1W':
+      cutoff.setDate(cutoff.getDate() - 7);
+      break;
+    case '1M':
+      cutoff.setMonth(cutoff.getMonth() - 1);
+      break;
+    case '3M':
+      cutoff.setMonth(cutoff.getMonth() - 3);
+      break;
+    case '6M':
+      cutoff.setMonth(cutoff.getMonth() - 6);
+      break;
+    case '1Y':
+      cutoff.setFullYear(cutoff.getFullYear() - 1);
+      break;
+    case 'ALL':
+      return data;
+    default:
+      cutoff.setMonth(cutoff.getMonth() - 1);
   }
 
   return data.filter((p) => new Date(p.date) >= cutoff);

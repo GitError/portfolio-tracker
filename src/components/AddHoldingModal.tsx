@@ -64,7 +64,9 @@ const ERROR_STYLE: React.CSSProperties = {
 };
 
 function Field({
-  label, error, children,
+  label,
+  error,
+  children,
 }: {
   label: string;
   error?: string;
@@ -162,7 +164,9 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         justifyContent: 'center',
         zIndex: 1000,
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         style={{
@@ -176,7 +180,14 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       >
         {/* Title */}
         <div style={{ marginBottom: 20 }}>
-          <h2 style={{ fontFamily: 'var(--font-sans)', fontWeight: 600, fontSize: 15, color: 'var(--text-primary)' }}>
+          <h2
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 600,
+              fontSize: 15,
+              color: 'var(--text-primary)',
+            }}
+          >
             {editingHolding ? 'Edit Holding' : 'Add Holding'}
           </h2>
         </div>
@@ -203,7 +214,9 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                 style={{ ...INPUT_STYLE, cursor: 'pointer' }}
               >
                 {SUPPORTED_CURRENCIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
                 <option value="AUD">AUD</option>
               </select>

@@ -12,10 +12,10 @@ interface TopBarProps {
 }
 
 const ROUTE_TITLES: Record<string, string> = {
-  '/':            'Dashboard',
-  '/holdings':    'Holdings',
+  '/': 'Dashboard',
+  '/holdings': 'Holdings',
   '/performance': 'Performance',
-  '/stress':      'Stress Test',
+  '/stress': 'Stress Test',
 };
 
 function useRelativeTime(isoDate: string | null): string {
@@ -42,9 +42,7 @@ export function TopBar({ portfolio, loading, onRefresh }: TopBarProps) {
   const title = ROUTE_TITLES[pathname] ?? 'Portfolio Tracker';
   const updatedLabel = useRelativeTime(portfolio?.lastUpdated ?? null);
   const dailyPnl = portfolio?.dailyPnl ?? 0;
-  const dailyPct = portfolio
-    ? (dailyPnl / (portfolio.totalValue - dailyPnl)) * 100
-    : 0;
+  const dailyPct = portfolio ? (dailyPnl / (portfolio.totalValue - dailyPnl)) * 100 : 0;
 
   return (
     <div
@@ -88,7 +86,8 @@ export function TopBar({ portfolio, loading, onRefresh }: TopBarProps) {
               borderRadius: '2px',
             }}
           >
-            {dailyPnl >= 0 ? '+' : ''}{formatCurrency(dailyPnl)} ({formatPercent(dailyPct)})
+            {dailyPnl >= 0 ? '+' : ''}
+            {formatCurrency(dailyPnl)} ({formatPercent(dailyPct)})
           </span>
         )}
 

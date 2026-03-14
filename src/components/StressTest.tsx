@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, ReferenceLine,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  ReferenceLine,
 } from 'recharts';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useStressTest } from '../hooks/useStressTest';
@@ -15,9 +22,9 @@ import type { StressScenario } from '../types/portfolio';
 type ShockMap = Record<string, number>; // values are decimals e.g. -0.20
 
 const ASSET_SLIDERS: { key: string; label: string }[] = [
-  { key: 'stock',  label: 'Stocks'  },
-  { key: 'etf',   label: 'ETFs'    },
-  { key: 'crypto', label: 'Crypto'  },
+  { key: 'stock', label: 'Stocks' },
+  { key: 'etf', label: 'ETFs' },
+  { key: 'crypto', label: 'Crypto' },
 ];
 
 const FX_SLIDERS: { key: string; label: string }[] = [
@@ -28,8 +35,12 @@ const FX_SLIDERS: { key: string; label: string }[] = [
 
 const ALL_PRESET_NAMES = [...PRESET_SCENARIOS.map((s) => s.name), 'Custom'];
 const ZERO_SHOCKS: ShockMap = {
-  stock: 0, etf: 0, crypto: 0,
-  fx_usd_cad: 0, fx_eur_cad: 0, fx_gbp_cad: 0,
+  stock: 0,
+  etf: 0,
+  crypto: 0,
+  fx_usd_cad: 0,
+  fx_eur_cad: 0,
+  fx_gbp_cad: 0,
 };
 
 const PANEL: React.CSSProperties = {
@@ -68,23 +79,37 @@ function ShockSlider({
   onChange: (v: number) => void;
 }) {
   const pct = Math.round(value * 100);
-  const color = value > 0 ? 'var(--color-gain)' : value < 0 ? 'var(--color-loss)' : 'var(--color-accent)';
+  const color =
+    value > 0 ? 'var(--color-gain)' : value < 0 ? 'var(--color-loss)' : 'var(--color-accent)';
   // Fill gradient position: 0 = -50%, 50 = 0%, 100 = +50%
   const pos = ((value * 100 + 50) / 100) * 100; // 0-100
-  const gradStop = value < 0
-    ? `var(--color-loss) 0%, var(--color-loss) ${pos}%, var(--border-primary) ${pos}%`
-    : value > 0
-      ? `var(--border-primary) 0%, var(--border-primary) ${pos}%, var(--color-gain) ${pos}%`
-      : `var(--border-primary) 0%`;
+  const gradStop =
+    value < 0
+      ? `var(--color-loss) 0%, var(--color-loss) ${pos}%, var(--border-primary) ${pos}%`
+      : value > 0
+        ? `var(--border-primary) 0%, var(--border-primary) ${pos}%, var(--color-gain) ${pos}%`
+        : `var(--border-primary) 0%`;
 
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>
+        <span
+          style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}
+        >
           {label}
         </span>
-        <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 600, color, minWidth: 50, textAlign: 'right' }}>
-          {pct >= 0 ? '+' : ''}{pct}%
+        <span
+          style={{
+            fontSize: 12,
+            fontFamily: 'var(--font-mono)',
+            fontWeight: 600,
+            color,
+            minWidth: 50,
+            textAlign: 'right',
+          }}
+        >
+          {pct >= 0 ? '+' : ''}
+          {pct}%
         </span>
       </div>
       <input
@@ -114,7 +139,9 @@ function ComparisonChart({ totalValue }: { totalValue: number }) {
   const data = PRESET_SCENARIOS.map((s) => {
     let stressed = 0;
     // crude estimate: no holdings breakdown, use asset shock weighted avg
-    const avg = Object.values(s.shocks).reduce((a, b) => a + b, 0) / Math.max(Object.keys(s.shocks).length, 1);
+    const avg =
+      Object.values(s.shocks).reduce((a, b) => a + b, 0) /
+      Math.max(Object.keys(s.shocks).length, 1);
     stressed = totalValue * (1 + avg);
     const impact = stressed - totalValue;
     return { name: s.name, impact: Math.round(impact), pct: (impact / totalValue) * 100 };
@@ -141,7 +168,13 @@ function ComparisonChart({ totalValue }: { totalValue: number }) {
           />
           <ReferenceLine y={0} stroke="var(--border-primary)" />
           <Tooltip
-            contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-primary)', borderRadius: 0, fontSize: 11, fontFamily: 'var(--font-mono)' }}
+            contentStyle={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-primary)',
+              borderRadius: 0,
+              fontSize: 11,
+              fontFamily: 'var(--font-mono)',
+            }}
             formatter={(v: unknown) => [formatCurrency(Number(v)), 'Impact']}
             labelStyle={{ color: 'var(--text-secondary)' }}
           />
@@ -161,7 +194,11 @@ export function StressTest() {
   const { portfolio, holdings } = usePortfolio();
   const { result, loading, runTest } = useStressTest();
   const [presetName, setPresetName] = useState<string>('Mild Correction');
-  const [shocks, setShocks] = useState<ShockMap>({ ...PRESET_SCENARIOS[0].shocks, ...ZERO_SHOCKS, ...PRESET_SCENARIOS[0].shocks });
+  const [shocks, setShocks] = useState<ShockMap>({
+    ...PRESET_SCENARIOS[0].shocks,
+    ...ZERO_SHOCKS,
+    ...PRESET_SCENARIOS[0].shocks,
+  });
   const [showComparison, setShowComparison] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -217,9 +254,7 @@ export function StressTest() {
   }
 
   const waterfallData = result
-    ? [...result.holdingBreakdown]
-        .sort((a, b) => a.impact - b.impact)
-        .filter((h) => h.impact !== 0)
+    ? [...result.holdingBreakdown].sort((a, b) => a.impact - b.impact).filter((h) => h.impact !== 0)
     : [];
 
   return (
@@ -248,11 +283,24 @@ export function StressTest() {
       {showComparison && <ComparisonChart totalValue={portfolio?.totalValue ?? 0} />}
 
       {/* Main two-column layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '35% 65%', gap: 1, background: 'var(--border-primary)' }}>
-
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '35% 65%',
+          gap: 1,
+          background: 'var(--border-primary)',
+        }}
+      >
         {/* ─── LEFT: Scenario controls ─── */}
-        <div style={{ ...PANEL, display: 'flex', flexDirection: 'column', gap: 0, background: 'var(--bg-surface)' }}>
-
+        <div
+          style={{
+            ...PANEL,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0,
+            background: 'var(--bg-surface)',
+          }}
+        >
           {/* Preset selector */}
           <div style={{ marginBottom: 20 }}>
             <div style={SECTION_TITLE}>Preset Scenario</div>
@@ -273,7 +321,9 @@ export function StressTest() {
               }}
             >
               {ALL_PRESET_NAMES.map((n) => (
-                <option key={n} value={n}>{n}</option>
+                <option key={n} value={n}>
+                  {n}
+                </option>
               ))}
             </select>
           </div>
@@ -295,7 +345,14 @@ export function StressTest() {
           {activeFxSliders.length > 0 && (
             <div>
               <div style={SECTION_TITLE}>Currency Shocks</div>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-mono)',
+                  marginBottom: 10,
+                }}
+              >
                 Positive = CAD weakens (foreign assets worth more in CAD)
               </div>
               {activeFxSliders.map(({ key, label }) => (
@@ -310,32 +367,61 @@ export function StressTest() {
           )}
 
           {loading && (
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textAlign: 'center', marginTop: 8 }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+                textAlign: 'center',
+                marginTop: 8,
+              }}
+            >
               Calculating...
             </div>
           )}
         </div>
 
         {/* ─── RIGHT: Results ─── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--border-primary)' }}>
-
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
+            background: 'var(--border-primary)',
+          }}
+        >
           {/* Summary card */}
           <div
             style={{
               ...PANEL,
-              background: result && result.totalImpact < -1
-                ? 'linear-gradient(135deg, #1a0a0e 0%, var(--bg-surface) 60%)'
-                : result && result.totalImpact > 1
-                  ? 'linear-gradient(135deg, #0a1a12 0%, var(--bg-surface) 60%)'
-                  : 'var(--bg-surface)',
+              background:
+                result && result.totalImpact < -1
+                  ? 'linear-gradient(135deg, #1a0a0e 0%, var(--bg-surface) 60%)'
+                  : result && result.totalImpact > 1
+                    ? 'linear-gradient(135deg, #0a1a12 0%, var(--bg-surface) 60%)'
+                    : 'var(--bg-surface)',
             }}
           >
             {allZero || !result ? (
               <div style={{ textAlign: 'center', padding: '24px 0' }}>
-                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 12, letterSpacing: '0.1em' }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-muted)',
+                    fontSize: 12,
+                    letterSpacing: '0.1em',
+                  }}
+                >
                   NO SCENARIO APPLIED
                 </div>
-                <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', fontSize: 11, marginTop: 6 }}>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-muted)',
+                    fontSize: 11,
+                    marginTop: 6,
+                  }}
+                >
                   Adjust sliders to see impact
                 </div>
               </div>
@@ -343,28 +429,75 @@ export function StressTest() {
               <>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 16 }}>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-mono)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        marginBottom: 4,
+                      }}
+                    >
                       Current
                     </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 22,
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                      }}
+                    >
                       {formatCurrency(result.currentValue)}
                     </div>
                   </div>
                   <div style={{ fontSize: 18, color: 'var(--text-muted)' }}>→</div>
                   <div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: 'var(--text-muted)',
+                        fontFamily: 'var(--font-mono)',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.08em',
+                        marginBottom: 4,
+                      }}
+                    >
                       Stressed
                     </div>
-                    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 22, fontWeight: 700, color: pnlColor(result.totalImpact) }}>
+                    <div
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 22,
+                        fontWeight: 700,
+                        color: pnlColor(result.totalImpact),
+                      }}
+                    >
                       {formatCurrency(result.stressedValue)}
                     </div>
                   </div>
                 </div>
                 <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 12 }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 28, fontWeight: 700, color: pnlColor(result.totalImpact) }}>
-                    {result.totalImpact >= 0 ? '+' : ''}{formatCurrency(result.totalImpact)}
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 28,
+                      fontWeight: 700,
+                      color: pnlColor(result.totalImpact),
+                    }}
+                  >
+                    {result.totalImpact >= 0 ? '+' : ''}
+                    {formatCurrency(result.totalImpact)}
                   </span>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 16, color: pnlColor(result.totalImpact), marginLeft: 12 }}>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 16,
+                      color: pnlColor(result.totalImpact),
+                      marginLeft: 12,
+                    }}
+                  >
                     ({formatPercent(result.totalImpactPercent)})
                   </span>
                 </div>
@@ -382,36 +515,78 @@ export function StressTest() {
                   data={waterfallData}
                   margin={{ top: 0, right: 10, left: 0, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" horizontal={false} />
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--border-subtle)"
+                    horizontal={false}
+                  />
                   <XAxis
                     type="number"
                     tickFormatter={(v) => formatCompact(v)}
-                    tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'var(--font-mono)' }}
+                    tick={{
+                      fill: 'var(--text-muted)',
+                      fontSize: 9,
+                      fontFamily: 'var(--font-mono)',
+                    }}
                     axisLine={{ stroke: 'var(--border-primary)' }}
                     tickLine={false}
                   />
                   <YAxis
                     type="category"
                     dataKey="symbol"
-                    tick={{ fill: 'var(--text-secondary)', fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 600 }}
+                    tick={{
+                      fill: 'var(--text-secondary)',
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                      fontWeight: 600,
+                    }}
                     axisLine={false}
                     tickLine={false}
                     width={72}
                   />
                   <ReferenceLine x={0} stroke="var(--border-primary)" />
                   <Tooltip
-                    contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-primary)', borderRadius: 0, fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                    contentStyle={{
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-primary)',
+                      borderRadius: 0,
+                      fontSize: 11,
+                      fontFamily: 'var(--font-mono)',
+                    }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
                       const d = payload[0].payload;
                       return (
-                        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-primary)', padding: '10px 14px', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-                          <div style={{ color: 'var(--text-primary)', fontWeight: 700, marginBottom: 4 }}>{d.symbol} — {d.name}</div>
-                          <div style={{ color: 'var(--text-secondary)' }}>Current:  {formatCurrency(d.currentValue)}</div>
-                          <div style={{ color: pnlColor(d.stressedValue - d.currentValue) }}>Stressed: {formatCurrency(d.stressedValue)}</div>
-                          <div style={{ color: 'var(--text-muted)' }}>Shock:    {formatPercent(d.shockApplied * 100)}</div>
+                        <div
+                          style={{
+                            background: 'var(--bg-surface)',
+                            border: '1px solid var(--border-primary)',
+                            padding: '10px 14px',
+                            fontSize: 11,
+                            fontFamily: 'var(--font-mono)',
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: 'var(--text-primary)',
+                              fontWeight: 700,
+                              marginBottom: 4,
+                            }}
+                          >
+                            {d.symbol} — {d.name}
+                          </div>
+                          <div style={{ color: 'var(--text-secondary)' }}>
+                            Current: {formatCurrency(d.currentValue)}
+                          </div>
+                          <div style={{ color: pnlColor(d.stressedValue - d.currentValue) }}>
+                            Stressed: {formatCurrency(d.stressedValue)}
+                          </div>
+                          <div style={{ color: 'var(--text-muted)' }}>
+                            Shock: {formatPercent(d.shockApplied * 100)}
+                          </div>
                           <div style={{ color: pnlColor(d.impact), fontWeight: 600, marginTop: 4 }}>
-                            Impact:   {d.impact >= 0 ? '+' : ''}{formatCurrency(d.impact)}
+                            Impact: {d.impact >= 0 ? '+' : ''}
+                            {formatCurrency(d.impact)}
                           </div>
                         </div>
                       );
@@ -419,7 +594,10 @@ export function StressTest() {
                   />
                   <Bar dataKey="impact" maxBarSize={16}>
                     {waterfallData.map((d, i) => (
-                      <Cell key={i} fill={d.impact >= 0 ? 'var(--color-gain)' : 'var(--color-loss)'} />
+                      <Cell
+                        key={i}
+                        fill={d.impact >= 0 ? 'var(--color-gain)' : 'var(--color-loss)'}
+                      />
                     ))}
                   </Bar>
                 </BarChart>
@@ -434,7 +612,15 @@ export function StressTest() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                 <thead style={{ position: 'sticky', top: 0 }}>
                   <tr>
-                    {['Symbol', 'Type', 'Current Value', 'Shock', 'Stressed Value', 'Impact ($)', 'Impact (%)'].map((col) => (
+                    {[
+                      'Symbol',
+                      'Type',
+                      'Current Value',
+                      'Shock',
+                      'Stressed Value',
+                      'Impact ($)',
+                      'Impact (%)',
+                    ].map((col) => (
                       <th
                         key={col}
                         style={{
@@ -462,29 +648,73 @@ export function StressTest() {
                       const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
                       return (
                         <tr key={h.holdingId} style={{ background: bg }}>
-                          <td style={{ ...TD, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-primary)' }}>
+                          <td
+                            style={{
+                              ...TD,
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 700,
+                              color: 'var(--text-primary)',
+                            }}
+                          >
                             {h.symbol}
                           </td>
                           <td style={{ ...TD, color: 'var(--text-secondary)' }}>
                             {holding
-                              ? ASSET_TYPE_CONFIG[holding.assetType]?.label ?? holding.assetType
+                              ? (ASSET_TYPE_CONFIG[holding.assetType]?.label ?? holding.assetType)
                               : '—'}
                           </td>
-                          <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
                             {formatCurrency(h.currentValue)}
                           </td>
-                          <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(h.shockApplied) }}>
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: pnlColor(h.shockApplied),
+                            }}
+                          >
                             {h.shockApplied !== 0 ? formatPercent(h.shockApplied * 100) : '—'}
                           </td>
-                          <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(h.impact) }}>
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: pnlColor(h.impact),
+                            }}
+                          >
                             {formatCurrency(h.stressedValue)}
                           </td>
-                          <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: pnlColor(h.impact) }}>
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 600,
+                              color: pnlColor(h.impact),
+                            }}
+                          >
                             {h.impact !== 0
                               ? `${h.impact >= 0 ? '+' : ''}${formatCurrency(h.impact)}`
                               : '—'}
                           </td>
-                          <td style={{ ...TD, textAlign: 'right', fontFamily: 'var(--font-mono)', color: pnlColor(h.impact), borderRight: 'none' }}>
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: pnlColor(h.impact),
+                              borderRight: 'none',
+                            }}
+                          >
                             {h.impact !== 0
                               ? formatPercent((h.impact / h.currentValue) * 100)
                               : '—'}

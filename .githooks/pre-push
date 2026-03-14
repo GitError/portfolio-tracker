@@ -1,0 +1,21 @@
+#!/bin/sh
+# pre-push: run full test suite before push
+
+set -e
+
+echo "🧪 Running full test suite before push..."
+
+echo "  → Frontend tests..."
+npm test
+
+echo "  → Rust tests..."
+CARGO="${HOME}/.cargo/bin/cargo"
+if [ -x "$CARGO" ]; then
+  cd src-tauri
+  "$CARGO" test
+  cd ..
+else
+  echo "  (cargo not found, skipping Rust tests)"
+fi
+
+echo "✅ All tests passed. Proceeding with push."

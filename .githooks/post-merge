@@ -1,0 +1,17 @@
+#!/bin/sh
+# post-merge: reinstall deps if package.json or Cargo.toml changed
+
+CHANGED=$(git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD)
+
+if echo "$CHANGED" | grep -q 'package.json\|package-lock.json'; then
+  echo "📦 package.json changed — running npm install..."
+  npm install
+fi
+
+if echo "$CHANGED" | grep -q 'Cargo.toml\|Cargo.lock'; then
+  CARGO="${HOME}/.cargo/bin/cargo"
+  if [ -x "$CARGO" ]; then
+    echo "🦀 Cargo.toml changed — running cargo fetch..."
+    cd src-tauri && "$CARGO" fetch
+  fi
+fi

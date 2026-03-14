@@ -20,11 +20,7 @@ pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, Str
         .map_err(|e| format!("Request failed for {}: {}", symbol, e))?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "HTTP {} for symbol {}",
-            response.status(),
-            symbol
-        ));
+        return Err(format!("HTTP {} for symbol {}", response.status(), symbol));
     }
 
     let json: serde_json::Value = response
@@ -52,10 +48,7 @@ pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, Str
         0.0
     };
 
-    let currency = meta["currency"]
-        .as_str()
-        .unwrap_or("USD")
-        .to_string();
+    let currency = meta["currency"].as_str().unwrap_or("USD").to_string();
 
     Ok(PriceData {
         symbol: symbol.to_string(),

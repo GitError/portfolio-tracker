@@ -1,7 +1,7 @@
-use rusqlite::{Connection, params};
 use chrono::Utc;
-use uuid::Uuid;
+use rusqlite::{params, Connection};
 use std::str::FromStr;
+use uuid::Uuid;
 
 use crate::types::{AssetType, FxRate, Holding, HoldingInput, PriceData};
 
@@ -137,20 +137,32 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .map(|(id, symbol, name, asset_type_str, quantity, cost_basis, currency, created_at, updated_at)| {
-            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-            Holding {
+        .map(
+            |(
                 id,
                 symbol,
                 name,
-                asset_type,
+                asset_type_str,
                 quantity,
                 cost_basis,
                 currency,
                 created_at,
                 updated_at,
-            }
-        })
+            )| {
+                let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+                Holding {
+                    id,
+                    symbol,
+                    name,
+                    asset_type,
+                    quantity,
+                    cost_basis,
+                    currency,
+                    created_at,
+                    updated_at,
+                }
+            },
+        )
         .collect();
 
     Ok(holdings)
@@ -177,7 +189,9 @@ pub fn upsert_price(conn: &Connection, price: &PriceData) -> Result<(), String> 
 
 pub fn get_cached_prices(conn: &Connection) -> Result<Vec<PriceData>, String> {
     let mut stmt = conn
-        .prepare("SELECT symbol, price, currency, change, change_percent, updated_at FROM price_cache")
+        .prepare(
+            "SELECT symbol, price, currency, change, change_percent, updated_at FROM price_cache",
+        )
         .map_err(|e| e.to_string())?;
 
     let prices = stmt
@@ -226,4 +240,100 @@ pub fn get_fx_rates(conn: &Connection) -> Result<Vec<FxRate>, String> {
         .collect();
 
     Ok(rates)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        init_db(&conn).expect("init_db");
+        conn
+    }
+
+    fn make_input(symbol: &str) -> HoldingInput {
+        HoldingInput {
+            symbol: symbol.to_string(),
+            name: format!("{} Inc.", symbol),
+            asset_type: AssetType::Stock,
+            quantity: 10.0,
+            cost_basis: 100.0,
+            currency: "CAD".to_string(),
+        }
+    }
+
+    #[test]
+    fn init_db_creates_tables() {
+        let conn = open_test_db();
+        // Should be able to query all three tables without error
+        conn.execute_batch(
+            "SELECT 1 FROM holdings; SELECT 1 FROM price_cache; SELECT 1 FROM fx_rates;",
+        )
+        .expect("tables should exist");
+    }
+
+    #[test]
+    fn insert_and_get_holdings() {
+        let conn = open_test_db();
+        insert_holding(&conn, make_input("AAPL")).expect("insert");
+        insert_holding(&conn, make_input("MSFT")).expect("insert");
+        let holdings = get_all_holdings(&conn).expect("get all");
+        assert_eq!(holdings.len(), 2);
+        let symbols: Vec<&str> = holdings.iter().map(|h| h.symbol.as_str()).collect();
+        assert!(symbols.contains(&"AAPL"));
+        assert!(symbols.contains(&"MSFT"));
+    }
+
+    #[test]
+    fn update_holding_changes_fields() {
+        let conn = open_test_db();
+        let inserted = insert_holding(&conn, make_input("GOOG")).expect("insert");
+        let updated_holding = Holding {
+            quantity: 20.0,
+            cost_basis: 150.0,
+            ..inserted
+        };
+        let updated = update_holding(&conn, updated_holding).expect("update");
+        assert!((updated.quantity - 20.0).abs() < 0.001);
+        assert!((updated.cost_basis - 150.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn delete_holding_removes_row() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("TSLA")).expect("insert");
+        let deleted = delete_holding(&conn, &holding.id).expect("delete");
+        assert!(deleted);
+        let holdings = get_all_holdings(&conn).expect("get all");
+        assert_eq!(holdings.len(), 0);
+    }
+
+    #[test]
+    fn delete_nonexistent_holding_returns_false() {
+        let conn = open_test_db();
+        let deleted = delete_holding(&conn, "nonexistent-id").expect("delete");
+        assert!(!deleted);
+    }
+
+    #[test]
+    fn upsert_fx_rate_and_get() {
+        let conn = open_test_db();
+        let rate = FxRate {
+            pair: "USDCAD".to_string(),
+            rate: 1.36,
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+        };
+        upsert_fx_rate(&conn, &rate).expect("upsert fx");
+        // Upsert again with updated rate
+        let rate2 = FxRate {
+            pair: "USDCAD".to_string(),
+            rate: 1.37,
+            updated_at: "2024-01-02T00:00:00Z".to_string(),
+        };
+        upsert_fx_rate(&conn, &rate2).expect("upsert fx 2");
+        let rates = get_fx_rates(&conn).expect("get fx rates");
+        assert_eq!(rates.len(), 1);
+        assert!((rates[0].rate - 1.37).abs() < 0.001);
+    }
 }
