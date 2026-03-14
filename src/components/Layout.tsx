@@ -7,9 +7,17 @@ interface LayoutProps {
   portfolio: PortfolioSnapshot | null;
   loading: boolean;
   onRefresh: () => void;
+  baseCurrency: string;
+  onBaseCurrencyChange: (currency: string) => void;
 }
 
-export function Layout({ portfolio, loading, onRefresh }: LayoutProps) {
+export function Layout({
+  portfolio,
+  loading,
+  onRefresh,
+  baseCurrency,
+  onBaseCurrencyChange,
+}: LayoutProps) {
   return (
     <div
       style={{
@@ -21,7 +29,13 @@ export function Layout({ portfolio, loading, onRefresh }: LayoutProps) {
     >
       <Sidebar portfolio={portfolio} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <TopBar portfolio={portfolio} loading={loading} onRefresh={onRefresh} />
+        <TopBar
+          portfolio={portfolio}
+          loading={loading}
+          onRefresh={onRefresh}
+          baseCurrency={baseCurrency}
+          onBaseCurrencyChange={onBaseCurrencyChange}
+        />
         <main
           style={{
             flex: 1,
