@@ -107,13 +107,24 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr 1fr',
+        gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr) auto',
         gap: '1px',
         background: 'var(--border-primary)',
         border: '1px solid var(--border-primary)',
+        height: '100%',
+        minHeight: 0,
       }}
     >
       {/* Panel 1 — Portfolio Value (spans 2 cols) */}
-      <div style={{ ...PANEL, gridColumn: 'span 2', background: 'var(--bg-surface)' }}>
+      <div
+        style={{
+          ...PANEL,
+          gridColumn: 'span 2',
+          background: 'var(--bg-surface)',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
         <div style={LABEL}>Portfolio Value</div>
         <div
           style={{
@@ -191,37 +202,50 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
       </div>
 
       {/* Panel 2 — Asset Allocation */}
-      <div style={{ ...PANEL, background: 'var(--bg-surface)' }}>
-        <div style={LABEL}>Allocation</div>
-        <ResponsiveContainer width="100%" height={160}>
-          <PieChart>
-            <Pie
-              data={allocationData}
-              cx="50%"
-              cy="50%"
-              innerRadius={50}
-              outerRadius={72}
-              dataKey="value"
-              strokeWidth={0}
-            >
-              {allocationData.map((entry, i) => (
-                <Cell key={i} fill={entry.color} />
-              ))}
-            </Pie>
-            <CenterLabel text="Allocation" />
-            <Tooltip
-              contentStyle={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 0,
-                fontSize: 12,
-                fontFamily: 'var(--font-mono)',
-              }}
-              formatter={(v: unknown) => [formatCompact(Number(v)), '']}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+      <div
+        style={{
+          ...PANEL,
+          background: 'var(--bg-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ ...LABEL, flexShrink: 0 }}>Allocation</div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={allocationData}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={72}
+                dataKey="value"
+                strokeWidth={0}
+              >
+                {allocationData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Pie>
+              <CenterLabel text="Allocation" />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 0,
+                  fontSize: 12,
+                  fontFamily: 'var(--font-mono)',
+                }}
+                formatter={(v: unknown) => [formatCompact(Number(v)), '']}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div
+          style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}
+        >
           {allocationData.map((d) => (
             <div
               key={d.name}
@@ -261,110 +285,135 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
       </div>
 
       {/* Panel 3 — Top Movers (spans 2 cols) */}
-      <div style={{ ...PANEL, gridColumn: 'span 2', background: 'var(--bg-surface)' }}>
-        <div style={LABEL}>Top Movers</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-          <thead>
-            <tr>
-              {['Symbol', 'Name', 'Change %', 'Change $'].map((col) => (
-                <th
-                  key={col}
-                  style={{
-                    textAlign: col === 'Change %' || col === 'Change $' ? 'right' : 'left',
-                    padding: '4px 0',
-                    color: 'var(--text-muted)',
-                    fontWeight: 400,
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 10,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                    borderBottom: '1px solid var(--border-primary)',
-                  }}
-                >
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {topMovers.map((h) => {
-              const dailyChange = h.marketValueCad * (h.dailyChangePercent / 100);
-              return (
-                <tr key={h.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td
+      <div
+        style={{
+          ...PANEL,
+          gridColumn: 'span 2',
+          background: 'var(--bg-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ ...LABEL, flexShrink: 0 }}>Top Movers</div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead>
+              <tr>
+                {['Symbol', 'Name', 'Change %', 'Change $'].map((col) => (
+                  <th
+                    key={col}
                     style={{
-                      padding: '6px 0',
+                      textAlign: col === 'Change %' || col === 'Change $' ? 'right' : 'left',
+                      padding: '4px 0',
+                      color: 'var(--text-muted)',
+                      fontWeight: 400,
                       fontFamily: 'var(--font-mono)',
-                      fontWeight: 600,
-                      color: 'var(--text-primary)',
-                      fontSize: 12,
+                      fontSize: 10,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      borderBottom: '1px solid var(--border-primary)',
                     }}
                   >
-                    {h.symbol}
-                  </td>
-                  <td style={{ padding: '6px 0', color: 'var(--text-secondary)', fontSize: 11 }}>
-                    {h.name}
-                  </td>
-                  <td
-                    style={{
-                      padding: '6px 0',
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      color: pnlColor(h.dailyChangePercent),
-                    }}
-                  >
-                    {formatPercent(h.dailyChangePercent)}
-                  </td>
-                  <td
-                    style={{
-                      padding: '6px 0',
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      color: pnlColor(dailyChange),
-                    }}
-                  >
-                    {dailyChange >= 0 ? '+' : ''}
-                    {formatCurrency(dailyChange)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {topMovers.map((h) => {
+                const dailyChange = h.marketValueCad * (h.dailyChangePercent / 100);
+                return (
+                  <tr key={h.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td
+                      style={{
+                        padding: '6px 0',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 600,
+                        color: 'var(--text-primary)',
+                        fontSize: 12,
+                      }}
+                    >
+                      {h.symbol}
+                    </td>
+                    <td style={{ padding: '6px 0', color: 'var(--text-secondary)', fontSize: 11 }}>
+                      {h.name}
+                    </td>
+                    <td
+                      style={{
+                        padding: '6px 0',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: pnlColor(h.dailyChangePercent),
+                      }}
+                    >
+                      {formatPercent(h.dailyChangePercent)}
+                    </td>
+                    <td
+                      style={{
+                        padding: '6px 0',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        color: pnlColor(dailyChange),
+                      }}
+                    >
+                      {dailyChange >= 0 ? '+' : ''}
+                      {formatCurrency(dailyChange)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Panel 4 — Currency Exposure */}
-      <div style={{ ...PANEL, background: 'var(--bg-surface)' }}>
-        <div style={LABEL}>Currency</div>
-        <ResponsiveContainer width="100%" height={160}>
-          <PieChart>
-            <Pie
-              data={currencyData}
-              cx="50%"
-              cy="50%"
-              innerRadius={50}
-              outerRadius={72}
-              dataKey="value"
-              strokeWidth={0}
-            >
-              {currencyData.map((entry, i) => (
-                <Cell key={i} fill={entry.color} />
-              ))}
-            </Pie>
-            <CenterLabel text="Currency" />
-            <Tooltip
-              contentStyle={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 0,
-                fontSize: 12,
-                fontFamily: 'var(--font-mono)',
-              }}
-              formatter={(v: unknown) => [formatCompact(Number(v)), '']}
-            />
-          </PieChart>
-        </ResponsiveContainer>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+      <div
+        style={{
+          ...PANEL,
+          background: 'var(--bg-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ ...LABEL, flexShrink: 0 }}>Currency</div>
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={currencyData}
+                cx="50%"
+                cy="50%"
+                innerRadius={50}
+                outerRadius={72}
+                dataKey="value"
+                strokeWidth={0}
+              >
+                {currencyData.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Pie>
+              <CenterLabel text="Currency" />
+              <Tooltip
+                contentStyle={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 0,
+                  fontSize: 12,
+                  fontFamily: 'var(--font-mono)',
+                }}
+                formatter={(v: unknown) => [formatCompact(Number(v)), '']}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div
+          style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}
+        >
           {currencyData.map((d) => (
             <div
               key={d.name}
