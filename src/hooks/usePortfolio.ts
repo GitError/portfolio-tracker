@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Holding, HoldingInput, PortfolioSnapshot } from '../types/portfolio';
+import type { Holding, HoldingInput, ImportResult, PortfolioSnapshot } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 
 // Tauri v2 always sets window.__TAURI_INTERNALS__ inside the webview.
@@ -20,6 +20,36 @@ export interface UsePortfolioReturn {
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
   deleteHolding: (id: string) => Promise<void>;
+  importHoldingsCsv: (csvContent: string) => Promise<ImportResult>;
+}
+
+function parseMockCsv(csvContent: string): HoldingInput[] {
+  const lines = csvContent
+    .trim()
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0);
+
+  if (lines.length < 2) return [];
+
+  const header = lines[0].split(/[;,]/).map((field) => field.trim().toLowerCase());
+  const columnIndex = (field: string) => header.indexOf(field);
+
+  return lines.slice(1).map((line) => {
+    const cells = line.split(/[;,]/).map((cell) => cell.trim());
+    const assetType = cells[columnIndex('type')] as HoldingInput['assetType'];
+    const currency = cells[columnIndex('currency')].toUpperCase();
+    const rawSymbol = cells[columnIndex('symbol')];
+
+    return {
+      symbol: assetType === 'cash' ? rawSymbol || `${currency}-CASH` : rawSymbol.toUpperCase(),
+      name: cells[columnIndex('name')] || (assetType === 'cash' ? `${currency} Cash` : rawSymbol),
+      assetType,
+      quantity: Number(cells[columnIndex('quantity')]),
+      costBasis: Number(cells[columnIndex('cost_basis')]),
+      currency,
+    };
+  });
 }
 
 export function usePortfolio(): UsePortfolioReturn {
@@ -119,6 +149,27 @@ export function usePortfolio(): UsePortfolioReturn {
     [loadPortfolio]
   );
 
+  const importHoldingsCsv = useCallback(
+    async (csvContent: string): Promise<ImportResult> => {
+      if (isTauri()) {
+        const result = await tauriInvoke<ImportResult>('import_holdings_csv', { csvContent });
+        await loadPortfolio();
+        return result;
+      }
+
+      const now = new Date().toISOString();
+      const imported = parseMockCsv(csvContent).map((input, index) => ({
+        id: `${Date.now()}-${index}`,
+        ...input,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      setHoldings((prev) => [...prev, ...imported]);
+      return { imported, skipped: [], totalRows: imported.length };
+    },
+    [loadPortfolio]
+  );
+
   return {
     portfolio,
     holdings,
@@ -128,5 +179,6 @@ export function usePortfolio(): UsePortfolioReturn {
     addHolding,
     updateHolding,
     deleteHolding,
+    importHoldingsCsv,
   };
 }

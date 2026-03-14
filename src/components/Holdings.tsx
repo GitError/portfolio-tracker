@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
+import { ImportHoldingsModal } from './ImportHoldingsModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
@@ -65,11 +66,13 @@ const TD: React.CSSProperties = {
 };
 
 export function Holdings() {
-  const { portfolio, holdings, addHolding, updateHolding, deleteHolding } = usePortfolio();
+  const { portfolio, holdings, addHolding, updateHolding, deleteHolding, importHoldingsCsv } =
+    usePortfolio();
   const { showToast } = useToast();
   const [sort, setSort] = useState<SortState>({ key: 'weight', dir: 'desc' });
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Holding | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -127,6 +130,17 @@ export function Holdings() {
       setDeletingId(null);
       setPendingDelete(null);
     }
+  }
+
+  async function handleImport(csvContent: string) {
+    const result = await importHoldingsCsv(csvContent);
+    if (result.imported.length > 0) {
+      showToast(`Imported ${result.imported.length} holdings`, 'success');
+    }
+    if (result.skipped.length > 0) {
+      showToast(`Skipped ${result.skipped.length} rows`, 'info');
+    }
+    return result;
   }
 
   const totals = useMemo(
@@ -201,6 +215,25 @@ export function Holdings() {
               width: 160,
             }}
           />
+          <button
+            onClick={() => setImportOpen(true)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-primary)',
+              color: 'var(--text-primary)',
+              borderRadius: '2px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+          >
+            <Upload size={12} />
+            Import CSV
+          </button>
           <button
             onClick={() => {
               setEditing(undefined);
@@ -542,6 +575,11 @@ export function Holdings() {
         }}
         onSave={handleSave}
         editingHolding={editing}
+      />
+      <ImportHoldingsModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImport={handleImport}
       />
     </div>
   );

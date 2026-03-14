@@ -101,6 +101,7 @@ mod tests {
             total_gain_loss_percent: 0.0,
             daily_pnl: 0.0,
             last_updated: "2024-01-01T00:00:00Z".to_string(),
+            base_currency: "CAD".to_string(),
         }
     }
 

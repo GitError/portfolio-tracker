@@ -111,6 +111,8 @@ pub struct PortfolioSnapshot {
     pub total_gain_loss_percent: f64,
     pub daily_pnl: f64,
     pub last_updated: String,
+    /// The currency all values are expressed in (user-configurable, default "CAD").
+    pub base_currency: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,6 +132,32 @@ pub struct StressHoldingResult {
     pub stressed_value: f64,
     pub impact: f64,
     pub shock_applied: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolResult {
+    pub symbol: String,
+    pub name: String,
+    pub asset_type: AssetType,
+    pub exchange: String,
+    pub currency: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportError {
+    pub row: usize,
+    pub symbol: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    pub imported: Vec<Holding>,
+    pub skipped: Vec<ImportError>,
+    pub total_rows: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

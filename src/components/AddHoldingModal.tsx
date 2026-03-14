@@ -1,7 +1,35 @@
-import { useEffect, useState } from 'react';
-import type { AssetType, Holding, HoldingInput } from '../types/portfolio';
+import { useEffect, useRef, useState } from 'react';
+import type { AssetType, Holding, HoldingInput, SymbolResult } from '../types/portfolio';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
 import { Select } from './ui/Select';
+import { SymbolSearch } from './ui/SymbolSearch';
+
+const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<T>(cmd, args);
+}
+
+// Mock prices for browser dev mode
+const MOCK_PRICES: Record<string, number> = {
+  AAPL: 189.3,
+  MSFT: 415.5,
+  NVDA: 875.4,
+  GOOGL: 175.0,
+  META: 510.2,
+  AMZN: 195.6,
+  TSLA: 175.8,
+  VOO: 490.1,
+  QQQ: 432.8,
+  VTI: 238.4,
+  'BTC-USD': 65000,
+  'ETH-USD': 3400,
+  'TD.TO': 78.5,
+  'RY.TO': 132.4,
+  'XIU.TO': 38.2,
+  'VFV.TO': 117.6,
+};
 
 interface Props {
   isOpen: boolean;
@@ -86,6 +114,8 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+  const [priceFetching, setPriceFetching] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -106,6 +136,41 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   }, [isOpen, editingHolding]);
 
   const isCash = form.assetType === 'cash';
+
+  async function handleSymbolSelect(result: SymbolResult) {
+    setForm((prev) => ({
+      ...prev,
+      symbol: result.symbol,
+      name: result.name,
+      assetType: result.assetType,
+      currency: result.currency,
+    }));
+    setErrors((prev) => ({ ...prev, symbol: undefined }));
+
+    // Cancel any in-flight price fetch
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
+    setPriceFetching(true);
+    try {
+      let price: number | null = null;
+      if (isTauri()) {
+        const data = await tauriInvoke<{ price: number }>('get_symbol_price', {
+          symbol: result.symbol,
+        });
+        price = data.price;
+      } else {
+        price = MOCK_PRICES[result.symbol] ?? null;
+      }
+      if (price !== null) {
+        setForm((prev) => ({ ...prev, costBasis: String(price) }));
+      }
+    } catch {
+      // non-fatal: user can enter cost basis manually
+    } finally {
+      setPriceFetching(false);
+    }
+  }
 
   function validate(): boolean {
     const next: FormErrors = {};
@@ -226,14 +291,14 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           {/* Symbol (hidden for cash) */}
           {!isCash && (
             <Field label="Symbol" error={errors.symbol}>
-              <input
-                type="text"
+              <SymbolSearch
                 value={form.symbol}
-                onChange={set('symbol')}
-                placeholder="AAPL"
-                style={{ ...INPUT_STYLE, textTransform: 'uppercase' }}
-                onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
-                onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+                onChange={(v) => {
+                  setForm((prev) => ({ ...prev, symbol: v }));
+                  setErrors((prev) => ({ ...prev, symbol: undefined }));
+                }}
+                onSelect={handleSymbolSelect}
+                disabled={saving}
               />
             </Field>
           )}
@@ -267,7 +332,10 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               />
             </Field>
             {!isCash && (
-              <Field label="Cost Per Unit" error={errors.costBasis}>
+              <Field
+                label={priceFetching ? 'Cost Per Unit (fetching…)' : 'Cost Per Unit'}
+                error={errors.costBasis}
+              >
                 <input
                   type="number"
                   value={form.costBasis}
