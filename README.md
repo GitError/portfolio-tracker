@@ -10,6 +10,8 @@ A macOS desktop portfolio tracker built with Tauri v2. Tracks stocks, ETFs, cryp
 
 The app runs as a native macOS window with a Bloomberg-inspired dark terminal UI. Holdings are stored locally in SQLite — no cloud account required.
 
+**Docs:** [Feature Guide](docs/features.md) · [Roadmap](docs/roadmap.md)
+
 ---
 
 ## Screenshot
