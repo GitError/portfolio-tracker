@@ -90,4 +90,4 @@ export interface StressResult {
 // invoke('delete_holding', { id })  → boolean
 // invoke('refresh_prices')          → PriceData[]
 // invoke('get_performance', { range }) → { date: string; value: number }[]
-// invoke('run_stress_test', { scenario }) → StressResult
+// invoke('run_stress_test_cmd', { scenario }) → StressResult
