@@ -1,27 +1,50 @@
 import type { AccountType, StressScenario } from '../types/portfolio';
 
-export const PRESET_SCENARIOS: StressScenario[] = [
-  {
-    name: 'Mild Correction',
-    shocks: { stock: -0.05, etf: -0.05, crypto: -0.1 },
-  },
-  {
-    name: 'Bear Market',
-    shocks: { stock: -0.2, etf: -0.2, crypto: -0.4, fx_usd_cad: -0.05 },
-  },
-  {
-    name: 'Crypto Winter',
-    shocks: { crypto: -0.5 },
-  },
-  {
-    name: 'CAD Crash',
-    shocks: { fx_usd_cad: 0.15, fx_eur_cad: 0.1, fx_gbp_cad: 0.1 },
-  },
-  {
-    name: 'Stagflation',
-    shocks: { stock: -0.15, etf: -0.12, crypto: -0.2, fx_usd_cad: 0.08 },
-  },
-];
+export function fxShockKey(currency: string, baseCurrency: string): string {
+  return `fx_${currency.toLowerCase()}_${baseCurrency.toLowerCase()}`;
+}
+
+export function createPresetScenarios(baseCurrency: string): StressScenario[] {
+  const addFxShock = (shocks: Record<string, number>, currency: string, value: number) => {
+    if (currency.toUpperCase() !== baseCurrency.toUpperCase()) {
+      shocks[fxShockKey(currency, baseCurrency)] = value;
+    }
+  };
+
+  const bearMarket: Record<string, number> = { stock: -0.2, etf: -0.2, crypto: -0.4 };
+  addFxShock(bearMarket, 'USD', -0.05);
+
+  const baseCurrencyDrop: Record<string, number> = {};
+  addFxShock(baseCurrencyDrop, 'USD', 0.15);
+  addFxShock(baseCurrencyDrop, 'EUR', 0.1);
+  addFxShock(baseCurrencyDrop, 'GBP', 0.1);
+
+  const stagflation: Record<string, number> = { stock: -0.15, etf: -0.12, crypto: -0.2 };
+  addFxShock(stagflation, 'USD', 0.08);
+
+  return [
+    {
+      name: 'Mild Correction',
+      shocks: { stock: -0.05, etf: -0.05, crypto: -0.1 },
+    },
+    {
+      name: 'Bear Market',
+      shocks: bearMarket,
+    },
+    {
+      name: 'Crypto Winter',
+      shocks: { crypto: -0.5 },
+    },
+    {
+      name: 'Base Currency Drop',
+      shocks: baseCurrencyDrop,
+    },
+    {
+      name: 'Stagflation',
+      shocks: stagflation,
+    },
+  ];
+}
 
 export const ASSET_TYPE_CONFIG = {
   stock: { label: 'Stock', color: 'var(--color-stock)', icon: 'TrendingUp' },

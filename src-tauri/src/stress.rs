@@ -3,6 +3,14 @@ use crate::types::{PortfolioSnapshot, StressHoldingResult, StressResult, StressS
 #[cfg(test)]
 use crate::types::{AccountType, AssetType, HoldingWithPrice};
 
+fn fx_shock_key(currency: &str, base_currency: &str) -> String {
+    format!(
+        "fx_{}_{}",
+        currency.to_lowercase(),
+        base_currency.to_lowercase()
+    )
+}
+
 pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) -> StressResult {
     let mut holding_results: Vec<StressHoldingResult> = Vec::new();
     let mut total_stressed = 0.0;
@@ -13,9 +21,12 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         // Asset-level shock (e.g., "stock", "etf", "crypto", "cash")
         let asset_shock = scenario.shocks.get(&asset_type_key).copied().unwrap_or(0.0);
 
-        // FX shock: apply if holding is not in CAD
-        let fx_shock = if holding.currency.to_uppercase() != "CAD" {
-            let fx_key = format!("fx_{}_cad", holding.currency.to_lowercase());
+        // FX shock: apply if holding is not in the portfolio base currency.
+        let fx_shock = if !holding
+            .currency
+            .eq_ignore_ascii_case(&snapshot.base_currency)
+        {
+            let fx_key = fx_shock_key(&holding.currency, &snapshot.base_currency);
             scenario.shocks.get(&fx_key).copied().unwrap_or(0.0)
         } else {
             0.0
@@ -152,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn fx_shock_applies_to_non_cad_holdings() {
+    fn fx_shock_applies_to_non_base_holdings() {
         let value = 10_000.0;
         let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "USD", value)]);
         let mut shocks = HashMap::new();
@@ -171,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn cad_holdings_ignore_fx_shock() {
+    fn base_currency_holdings_ignore_fx_shock() {
         let value = 5_000.0;
         let snapshot = make_snapshot(vec![make_holding("RY.TO", AssetType::Stock, "CAD", value)]);
         let mut shocks = HashMap::new();
@@ -184,6 +195,28 @@ mod tests {
         let result = run_stress_test(&snapshot, &scenario);
 
         assert!((result.total_impact).abs() < 0.001);
+    }
+
+    #[test]
+    fn fx_shock_uses_snapshot_base_currency() {
+        let value = 8_000.0;
+        let mut snapshot = make_snapshot(vec![
+            make_holding("RY.TO", AssetType::Stock, "CAD", value),
+            make_holding("MSFT", AssetType::Stock, "USD", value),
+        ]);
+        snapshot.base_currency = "USD".to_string();
+
+        let mut shocks = HashMap::new();
+        shocks.insert("fx_cad_usd".to_string(), -0.10);
+        let scenario = StressScenario {
+            name: "USD Base".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!((result.holding_breakdown[0].stressed_value - 7_200.0).abs() < 0.001);
+        assert!((result.holding_breakdown[1].stressed_value - 8_000.0).abs() < 0.001);
     }
 
     #[test]

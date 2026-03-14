@@ -64,7 +64,7 @@ export interface FxRate {
 
 export interface StressScenario {
   name: string;
-  shocks: Record<string, number>; // keys: "stock"|"etf"|"crypto"|"fx_usd_cad" etc, values: decimal (-0.10 = -10%)
+  shocks: Record<string, number>; // keys: "stock"|"etf"|"crypto"|"fx_usd_cad"|"fx_cad_usd" etc, values: decimal (-0.10 = -10%)
 }
 
 export interface StressHoldingResult {
