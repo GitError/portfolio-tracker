@@ -4,6 +4,7 @@ import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG, CURRENCY_COLORS } from '../lib/constants';
 import { EmptyState } from './ui/EmptyState';
+import { config } from '../lib/config';
 import { Select } from './ui/Select';
 import type { AccountType, PortfolioSnapshot } from '../types/portfolio';
 
@@ -115,7 +116,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     return [...filteredHoldings]
       .filter((h) => h.assetType !== 'cash')
       .sort((a, b) => Math.abs(b.dailyChangePercent) - Math.abs(a.dailyChangePercent))
-      .slice(0, 5);
+      .slice(0, config.topMoversCount);
   }, [filteredHoldings, portfolio]);
 
   const stats = useMemo(() => {
@@ -160,7 +161,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     const nonCash = filteredHoldings.filter((h) => h.assetType !== 'cash');
     return [...nonCash]
       .sort((a, b) => b.weight - a.weight)
-      .slice(0, 5)
+      .slice(0, config.topMoversCount)
       .map((h) => ({
         id: h.id,
         symbol: h.symbol,
