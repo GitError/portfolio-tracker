@@ -165,6 +165,20 @@ export interface PreviewImportResult {
   readyCount: number;
   skipCount: number;
 }
+export interface RebalanceSuggestion {
+  holdingId: string;
+  symbol: string;
+  name: string;
+  currentValueCad: number;
+  targetValueCad: number;
+  currentWeight: number;
+  targetWeight: number;
+  drift: number;
+  suggestedTradeCad: number;
+  suggestedUnits: number;
+  currentPriceCad: number;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
@@ -177,3 +191,4 @@ export interface PreviewImportResult {
 // invoke('run_stress_test_cmd', { scenario }) → StressResult
 // invoke('search_symbols', { query }) → SymbolResult[]
 // invoke('get_symbol_price', { symbol }) → PriceData
+// invoke('get_rebalance_suggestions', { driftThreshold }) → RebalanceSuggestion[]

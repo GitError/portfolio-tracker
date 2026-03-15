@@ -312,3 +312,19 @@ pub struct RefreshResult {
     /// Symbols for which the price fetch failed (network error, HTTP error, parse failure).
     pub failed_symbols: Vec<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RebalanceSuggestion {
+    pub holding_id: String,
+    pub symbol: String,
+    pub name: String,
+    pub current_value_cad: f64,
+    pub target_value_cad: f64,
+    pub current_weight: f64,   // actual % of portfolio
+    pub target_weight: f64,    // user-set target %
+    pub drift: f64,            // current_weight - target_weight (percentage points)
+    pub suggested_trade_cad: f64,  // positive = sell, negative = buy
+    pub suggested_units: f64,      // positive = sell, negative = buy
+    pub current_price_cad: f64,
+}
