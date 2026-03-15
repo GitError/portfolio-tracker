@@ -13,6 +13,7 @@ const SHORTCUTS: ShortcutRow[] = [
   { keys: ['⌘2', 'Ctrl+2'], description: 'Go to Holdings' },
   { keys: ['⌘3', 'Ctrl+3'], description: 'Go to Performance' },
   { keys: ['⌘4', 'Ctrl+4'], description: 'Go to Stress Test' },
+  { keys: ['⌘,', 'Ctrl+,'], description: 'Go to Settings' },
   { keys: ['?'], description: 'Toggle this help overlay' },
   { keys: ['Esc'], description: 'Close this overlay' },
 ];

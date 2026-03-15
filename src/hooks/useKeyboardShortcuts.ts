@@ -65,6 +65,13 @@ export function useKeyboardShortcuts({
         return;
       }
 
+      // ⌘, / Ctrl+, — navigate to Settings
+      if (isMeta && e.key === ',') {
+        e.preventDefault();
+        navigate('/settings');
+        return;
+      }
+
       // ⌘1–4 / Ctrl+1–4 — navigate between views
       if (isMeta && ROUTE_KEYS[e.key]) {
         e.preventDefault();
