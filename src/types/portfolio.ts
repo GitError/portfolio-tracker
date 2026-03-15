@@ -126,6 +126,25 @@ export interface SymbolResult {
   currency: string;
 }
 
+export interface Dividend {
+  id: number;
+  holdingId: string;
+  symbol: string;
+  amountPerUnit: number;
+  currency: string;
+  exDate: string;
+  payDate: string;
+  createdAt: string;
+}
+
+export interface DividendInput {
+  holdingId: string;
+  amountPerUnit: number;
+  currency: string;
+  exDate: string;
+  payDate: string;
+}
+
 export type AlertDirection = 'above' | 'below';
 
 export interface PriceAlert {

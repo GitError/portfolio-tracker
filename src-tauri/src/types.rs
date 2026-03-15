@@ -253,6 +253,29 @@ pub struct PerformancePoint {
     pub value: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dividend {
+    pub id: i64,
+    pub holding_id: String,
+    pub symbol: String,
+    pub amount_per_unit: f64,
+    pub currency: String,
+    pub ex_date: String,
+    pub pay_date: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DividendInput {
+    pub holding_id: String,
+    pub amount_per_unit: f64,
+    pub currency: String,
+    pub ex_date: String,
+    pub pay_date: String,
+}
+
 /// Direction for a price alert threshold.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
