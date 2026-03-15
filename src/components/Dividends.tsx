@@ -136,11 +136,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CURRENCY</div>
-          <select
-            style={inputStyle}
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-          >
+          <select style={inputStyle} value={currency} onChange={(e) => setCurrency(e.target.value)}>
             {['CAD', 'USD', 'EUR', 'GBP'].map((c) => (
               <option key={c} value={c}>
                 {c}
@@ -362,10 +358,7 @@ export function Dividends() {
           }}
         >
           {Object.entries(summary).map(([symbol, data]) => (
-            <div
-              key={symbol}
-              style={{ background: 'var(--bg-surface)', padding: '14px 16px' }}
-            >
+            <div key={symbol} style={{ background: 'var(--bg-surface)', padding: '14px 16px' }}>
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -454,8 +447,7 @@ export function Dividends() {
                 padding: '10px 16px',
                 alignItems: 'center',
                 background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)',
-                borderBottom:
-                  i < dividends.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                borderBottom: i < dividends.length - 1 ? '1px solid var(--border-subtle)' : 'none',
               }}
             >
               <div
@@ -473,7 +465,11 @@ export function Dividends() {
                 {div.symbol}
               </div>
               <div
-                style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  color: 'var(--text-primary)',
+                }}
               >
                 {div.exDate}
               </div>
