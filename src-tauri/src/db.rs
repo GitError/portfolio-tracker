@@ -738,7 +738,15 @@ pub fn insert_transaction(
     conn.execute(
         "INSERT INTO transactions (holding_id, type, quantity, price, currency, fee, transacted_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![holding_id, tx_type, quantity, price, currency, fee, transacted_at],
+        params![
+            holding_id,
+            tx_type,
+            quantity,
+            price,
+            currency,
+            fee,
+            transacted_at
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -1203,8 +1211,17 @@ mod tests {
         let h1 = insert_holding(&conn, make_input("AAPL")).expect("insert h1");
         let h2 = insert_holding(&conn, make_input("GOOG")).expect("insert h2");
 
-        insert_transaction(&conn, &h1.id, "buy", 10.0, 100.0, "USD", 0.0, "2024-01-01T00:00:00Z")
-            .expect("tx1");
+        insert_transaction(
+            &conn,
+            &h1.id,
+            "buy",
+            10.0,
+            100.0,
+            "USD",
+            0.0,
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("tx1");
         insert_transaction(
             &conn,
             &h2.id,
@@ -1226,9 +1243,17 @@ mod tests {
         let conn = open_test_db();
         let holding = insert_holding(&conn, make_input("TSLA")).expect("insert");
 
-        let tx_id =
-            insert_transaction(&conn, &holding.id, "buy", 1.0, 200.0, "USD", 0.0, "2024-01-01T00:00:00Z")
-                .expect("insert tx");
+        let tx_id = insert_transaction(
+            &conn,
+            &holding.id,
+            "buy",
+            1.0,
+            200.0,
+            "USD",
+            0.0,
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("insert tx");
 
         delete_transaction(&conn, tx_id).expect("delete tx");
         let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
@@ -1239,11 +1264,21 @@ mod tests {
     fn transactions_cascade_on_holding_delete() {
         let conn = open_test_db();
         // Enable cascading FK constraints (required in SQLite)
-        conn.execute_batch("PRAGMA foreign_keys = ON").expect("pragma");
+        conn.execute_batch("PRAGMA foreign_keys = ON")
+            .expect("pragma");
         let holding = insert_holding(&conn, make_input("NVDA")).expect("insert");
 
-        insert_transaction(&conn, &holding.id, "buy", 5.0, 300.0, "USD", 0.0, "2024-01-01T00:00:00Z")
-            .expect("insert tx");
+        insert_transaction(
+            &conn,
+            &holding.id,
+            "buy",
+            5.0,
+            300.0,
+            "USD",
+            0.0,
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("insert tx");
 
         delete_holding(&conn, &holding.id).expect("delete holding");
         let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");

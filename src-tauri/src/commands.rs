@@ -1734,10 +1734,7 @@ pub async fn get_transactions(
 }
 
 #[tauri::command]
-pub async fn delete_transaction(
-    state: State<'_, DbState>,
-    id: i64,
-) -> Result<bool, String> {
+pub async fn delete_transaction(state: State<'_, DbState>, id: i64) -> Result<bool, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     db::delete_transaction(&conn, id).map_err(|e| e.to_string())?;
     Ok(true)
