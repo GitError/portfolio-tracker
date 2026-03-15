@@ -6,17 +6,19 @@ use chrono::Utc;
 use csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
 use tauri::{Manager, State};
 
+use crate::analytics::compute_realized_gains_grouped;
 use crate::db;
 use crate::fx::{convert_to_base, fetch_all_fx_rates};
 use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AccountType, AssetType, CountryWeight, CreateTransactionRequest, Dividend, DividendInput,
-    FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError, ImportResult, PerformancePoint,
-    PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow,
-    PriceAlert, PriceAlertInput, PriceData, RebalanceSuggestion, RefreshResult, SectorWeight,
-    StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction,
+    AccountType, AssetType, CountryWeight, Dividend, DividendInput, FxRate, Holding, HoldingInput,
+    HoldingWithPrice, ImportError, ImportResult, PerformancePoint, PortfolioAnalytics,
+    PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
+    PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion, RefreshResult,
+    SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction,
+    TransactionInput,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -348,6 +350,7 @@ fn build_portfolio_snapshot(
     cached_fx: &[FxRate],
     base_currency: &str,
     last_updated: String,
+    realized_gains: f64,
 ) -> PortfolioSnapshot {
     if holdings.is_empty() {
         return PortfolioSnapshot {
@@ -361,6 +364,7 @@ fn build_portfolio_snapshot(
             base_currency: base_currency.to_string(),
             total_target_weight: 0.0,
             target_cash_delta: 0.0,
+            realized_gains,
         };
     }
 
@@ -485,6 +489,7 @@ fn build_portfolio_snapshot(
         base_currency: base_currency.to_string(),
         total_target_weight,
         target_cash_delta,
+        realized_gains,
     }
 }
 #[tauri::command]
@@ -504,12 +509,23 @@ pub async fn get_portfolio(
         (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
     };
 
+    let realized_gains = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let cost_basis_method =
+            db::get_config(&conn, "cost_basis_method")?.unwrap_or_else(|| "avco".to_string());
+        let transactions = db::get_all_transactions(&conn)?;
+        compute_realized_gains_grouped(&transactions, &cost_basis_method)
+            .map(|s| s.total_realized_gain)
+            .unwrap_or(0.0)
+    };
+
     Ok(build_portfolio_snapshot(
         &holdings,
         &cached_prices,
         &cached_fx,
         &base_currency,
         Utc::now().to_rfc3339(),
+        realized_gains,
     ))
 }
 
@@ -910,6 +926,7 @@ pub async fn refresh_prices(
             &cached_fx,
             &base_currency,
             Utc::now().to_rfc3339(),
+            0.0,
         );
         (snap.total_value, snap.total_cost, snap.total_gain_loss)
     };
@@ -1243,6 +1260,7 @@ pub async fn get_rebalance_suggestions(
         &cached_fx,
         &base_currency,
         Utc::now().to_rfc3339(),
+        0.0,
     );
 
     let total_value = snapshot.total_value;
@@ -1536,6 +1554,7 @@ pub async fn get_portfolio_analytics(
         &cached_fx,
         &base_currency,
         Utc::now().to_rfc3339(),
+        0.0,
     );
 
     // Only fetch metadata for non-cash symbols
@@ -1553,6 +1572,25 @@ pub async fn get_portfolio_analytics(
         .unwrap_or_default();
 
     Ok(compute_portfolio_analytics(&snapshot, &metadata))
+}
+
+// ── Realized gains command ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_realized_gains(
+    db: State<'_, DbState>,
+    holding_id: Option<String>,
+) -> Result<RealizedGainsSummary, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let cost_basis_method =
+        db::get_config(&conn, "cost_basis_method")?.unwrap_or_else(|| "avco".to_string());
+
+    let transactions = match holding_id {
+        Some(ref id) => db::get_transactions_for_holding(&conn, id).map_err(|e| e.to_string())?,
+        None => db::get_all_transactions(&conn).map_err(|e| e.to_string())?,
+    };
+
+    compute_realized_gains_grouped(&transactions, &cost_basis_method)
 }
 
 #[cfg(test)]
@@ -1828,6 +1866,7 @@ mod tests {
             &fx,
             "CAD",
             "2024-01-01T00:00:00Z".to_string(),
+            0.0,
         );
 
         assert_eq!(snapshot.base_currency, "CAD");
@@ -1876,6 +1915,7 @@ mod tests {
             &fx,
             "USD",
             "2024-01-01T00:00:00Z".to_string(),
+            0.0,
         );
 
         assert_eq!(snapshot.base_currency, "USD");
@@ -2006,6 +2046,7 @@ mod tests {
             &[],
             "CAD",
             "2024-01-01T00:00:00Z".to_string(),
+            0.0,
         );
 
         assert!((snapshot.total_value - 1700.0).abs() < 0.001);
@@ -2032,8 +2073,14 @@ mod tests {
             updated_at: Utc::now().to_rfc3339(),
         }];
 
-        let snapshot =
-            build_portfolio_snapshot(&[holding], &prices, &[], "CAD", Utc::now().to_rfc3339());
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            Utc::now().to_rfc3339(),
+            0.0,
+        );
 
         // market_value_cad = 10 * 120 = 1200; daily_pnl should be 0, not 60
         assert!(
@@ -2061,8 +2108,14 @@ mod tests {
             updated_at: Utc::now().to_rfc3339(),
         }];
 
-        let snapshot =
-            build_portfolio_snapshot(&[holding], &prices, &[], "CAD", Utc::now().to_rfc3339());
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            Utc::now().to_rfc3339(),
+            0.0,
+        );
 
         // market_value_cad = 10 * 220 = 2200; daily_pnl = 2200 * 0.10 = 220
         assert!(
@@ -2075,72 +2128,35 @@ mod tests {
 
 // ── Transaction commands ──────────────────────────────────────────────────────
 
-const VALID_TX_TYPES: &[&str] = &["buy", "sell", "deposit", "withdrawal"];
-
 #[tauri::command]
 pub async fn add_transaction(
-    state: State<'_, DbState>,
-    tx: CreateTransactionRequest,
+    db: State<'_, DbState>,
+    input: TransactionInput,
 ) -> Result<Transaction, String> {
-    if tx.quantity <= 0.0 {
-        return Err("quantity must be greater than 0".to_string());
+    if input.quantity <= 0.0 {
+        return Err("Transaction quantity must be positive".to_string());
     }
-    if tx.price < 0.0 {
-        return Err("price must be >= 0".to_string());
+    if input.price < 0.0 {
+        return Err("Transaction price must be non-negative".to_string());
     }
-    if tx.fee < 0.0 {
-        return Err("fee must be >= 0".to_string());
-    }
-    if !VALID_TX_TYPES.contains(&tx.transaction_type.as_str()) {
-        return Err(format!(
-            "transaction_type must be one of: {}",
-            VALID_TX_TYPES.join(", ")
-        ));
-    }
-    if tx.transacted_at.trim().is_empty() {
-        return Err("transacted_at must not be empty".to_string());
-    }
-
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let id = db::insert_transaction(
-        &conn,
-        &tx.holding_id,
-        &tx.transaction_type,
-        tx.quantity,
-        tx.price,
-        &tx.currency,
-        tx.fee,
-        &tx.transacted_at,
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(Transaction {
-        id,
-        holding_id: tx.holding_id,
-        transaction_type: tx.transaction_type,
-        quantity: tx.quantity,
-        price: tx.price,
-        currency: tx.currency,
-        fee: tx.fee,
-        transacted_at: tx.transacted_at,
-    })
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::insert_transaction(&conn, input)
 }
 
 #[tauri::command]
 pub async fn get_transactions(
-    state: State<'_, DbState>,
+    db: State<'_, DbState>,
     holding_id: Option<String>,
 ) -> Result<Vec<Transaction>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
     match holding_id {
-        Some(id) => db::get_transactions_for_holding(&conn, &id).map_err(|e| e.to_string()),
-        None => db::get_all_transactions(&conn).map_err(|e| e.to_string()),
+        Some(id) => db::get_transactions_for_holding(&conn, &id),
+        None => db::get_all_transactions(&conn),
     }
 }
 
 #[tauri::command]
-pub async fn delete_transaction(state: State<'_, DbState>, id: i64) -> Result<bool, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::delete_transaction(&conn, id).map_err(|e| e.to_string())?;
-    Ok(true)
+pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::delete_transaction(&conn, &id)
 }

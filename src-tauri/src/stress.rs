@@ -129,6 +129,7 @@ mod tests {
             base_currency: "CAD".to_string(),
             total_target_weight: 0.0,
             target_cash_delta: 0.0,
+            realized_gains: 0.0,
         }
     }
 

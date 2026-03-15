@@ -1,3 +1,4 @@
+mod analytics;
 mod commands;
 mod config;
 mod db;
@@ -71,6 +72,7 @@ pub fn run() {
             commands::get_dividends,
             commands::add_dividend,
             commands::delete_dividend,
+            commands::get_realized_gains,
         ])
         .run(tauri::generate_context!());
 
