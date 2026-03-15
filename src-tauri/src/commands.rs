@@ -13,8 +13,8 @@ use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData, RefreshResult,
-    StressResult, StressScenario, SymbolResult,
+    ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData,
+    RefreshResult, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -830,7 +830,7 @@ pub async fn refresh_prices(
         failed: failed_symbols,
     } = fetch_result;
 
-    // Persist to cache
+    // Persist prices and FX rates to cache
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         for price in &prices {
@@ -838,6 +838,42 @@ pub async fn refresh_prices(
         }
         for rate in &fx_rates {
             db::upsert_fx_rate(&conn, rate)?;
+        }
+    }
+
+    // Build a portfolio snapshot to record the current total value
+    let snapshot_totals = {
+        let (holdings, cached_prices, cached_fx) = {
+            let conn = db.0.lock().map_err(|e| e.to_string())?;
+            (
+                db::get_all_holdings(&conn)?,
+                db::get_cached_prices(&conn)?,
+                db::get_fx_rates(&conn)?,
+            )
+        };
+        let snap = build_portfolio_snapshot(
+            &holdings,
+            &cached_prices,
+            &cached_fx,
+            &base_currency,
+            Utc::now().to_rfc3339(),
+        );
+        (snap.total_value, snap.total_cost, snap.total_gain_loss)
+    };
+
+    // Record the snapshot and prune old data; log errors but don't fail the command
+    {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        if let Err(e) = db::insert_snapshot(
+            &conn,
+            snapshot_totals.0,
+            snapshot_totals.1,
+            snapshot_totals.2,
+        ) {
+            eprintln!("Failed to insert portfolio snapshot: {}", e);
+        }
+        if let Err(e) = db::prune_snapshots(&conn) {
+            eprintln!("Failed to prune portfolio snapshots: {}", e);
         }
     }
 
@@ -914,36 +950,22 @@ pub async fn get_symbol_price(
 pub async fn get_performance(
     db: State<'_, DbState>,
     range: String,
-) -> Result<Vec<serde_json::Value>, String> {
-    // TODO: Implement real historical performance tracking using a snapshots table.
-    // For v1, return mock data based on the requested range.
-    let _ = db;
-    let days = match range.as_str() {
-        "1W" => 7,
-        "1M" => 30,
-        "3M" => 90,
-        "6M" => 180,
-        "1Y" => 365,
-        _ => 30,
+) -> Result<Vec<PerformancePoint>, String> {
+    let now = Utc::now();
+    let end = now.to_rfc3339();
+
+    let start = match range.as_str() {
+        "1W" => (now - chrono::Duration::days(7)).to_rfc3339(),
+        "1M" => (now - chrono::Duration::days(30)).to_rfc3339(),
+        "3M" => (now - chrono::Duration::days(90)).to_rfc3339(),
+        "6M" => (now - chrono::Duration::days(180)).to_rfc3339(),
+        "1Y" => (now - chrono::Duration::days(365)).to_rfc3339(),
+        "ALL" => "1970-01-01T00:00:00+00:00".to_string(),
+        _ => (now - chrono::Duration::days(30)).to_rfc3339(),
     };
 
-    let now = Utc::now();
-    let base_value = 50000.0f64;
-    let mut data = Vec::new();
-
-    for i in (0..=days).rev() {
-        let date = now - chrono::Duration::days(i);
-        let noise = (i as f64 * 0.7).sin() * 2000.0 + (i as f64 * 0.3).cos() * 1500.0;
-        let trend = (days - i) as f64 * 50.0;
-        let value = base_value + trend + noise;
-
-        data.push(serde_json::json!({
-            "date": date.format("%Y-%m-%d").to_string(),
-            "value": (value * 100.0).round() / 100.0
-        }));
-    }
-
-    Ok(data)
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
