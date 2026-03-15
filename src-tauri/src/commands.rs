@@ -535,20 +535,26 @@ pub async fn import_holdings_csv(
     csv_content: String,
 ) -> Result<ImportResult, String> {
     let parsed_rows = parse_import_rows(&csv_content)?;
-    let existing_symbols = {
+    let existing_keys: HashSet<(String, String)> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
             .into_iter()
-            .map(|holding| holding.symbol.to_uppercase())
-            .collect::<HashSet<_>>()
+            .map(|holding| {
+                (
+                    holding.symbol.to_uppercase(),
+                    holding.account.as_str().to_string(),
+                )
+            })
+            .collect()
     };
 
-    let mut seen_symbols = existing_symbols;
+    let mut seen_keys = existing_keys;
     let mut pending_inputs = Vec::new();
     let mut skipped = Vec::new();
 
     for row in parsed_rows {
-        if seen_symbols.contains(&row.symbol) {
+        let key = (row.symbol.to_uppercase(), row.account.as_str().to_string());
+        if seen_keys.contains(&key) {
             skipped.push(ImportError {
                 row: row.row,
                 symbol: row.symbol,
@@ -558,7 +564,7 @@ pub async fn import_holdings_csv(
         }
 
         if matches!(row.asset_type, AssetType::Cash) {
-            seen_symbols.insert(row.symbol.clone());
+            seen_keys.insert((row.symbol.to_uppercase(), row.account.as_str().to_string()));
             pending_inputs.push(HoldingInput {
                 symbol: row.symbol,
                 name: if row.name.is_empty() {
@@ -609,7 +615,10 @@ pub async fn import_holdings_csv(
             continue;
         }
 
-        seen_symbols.insert(validated.symbol.to_uppercase());
+        seen_keys.insert((
+            validated.symbol.to_uppercase(),
+            row.account.as_str().to_string(),
+        ));
         pending_inputs.push(HoldingInput {
             symbol: validated.symbol,
             name: if row.name.is_empty() {
@@ -648,21 +657,21 @@ pub async fn preview_import_csv(
     csv_content: String,
 ) -> Result<PreviewImportResult, String> {
     let parsed_rows = parse_import_rows(&csv_content)?;
-    let existing_symbols: HashSet<String> = {
+    let existing_keys: HashSet<(String, String)> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
             .into_iter()
-            .map(|h| h.symbol.to_uppercase())
+            .map(|h| (h.symbol.to_uppercase(), h.account.as_str().to_string()))
             .collect()
     };
 
     let mut preview_rows: Vec<PreviewRow> = Vec::new();
-    let mut seen: HashSet<String> = existing_symbols;
+    let mut seen: HashSet<(String, String)> = existing_keys;
 
     for row in parsed_rows {
-        let sym_upper = row.symbol.to_uppercase();
+        let row_key = (row.symbol.to_uppercase(), row.account.as_str().to_string());
 
-        if seen.contains(&sym_upper) {
+        if seen.contains(&row_key) {
             preview_rows.push(PreviewRow {
                 row: row.row,
                 original_symbol: row.symbol.clone(),
@@ -680,7 +689,7 @@ pub async fn preview_import_csv(
         }
 
         if matches!(row.asset_type, AssetType::Cash) {
-            seen.insert(sym_upper);
+            seen.insert((row.symbol.to_uppercase(), row.account.as_str().to_string()));
             preview_rows.push(PreviewRow {
                 row: row.row,
                 original_symbol: row.symbol.clone(),
@@ -703,7 +712,10 @@ pub async fn preview_import_csv(
 
         match validate_symbol(&db, &client, &row.symbol).await {
             Ok(Some(result)) => {
-                seen.insert(result.symbol.to_uppercase());
+                seen.insert((
+                    result.symbol.to_uppercase(),
+                    row.account.as_str().to_string(),
+                ));
                 preview_rows.push(PreviewRow {
                     row: row.row,
                     original_symbol: row.symbol,
