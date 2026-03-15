@@ -130,6 +130,7 @@ export interface PreviewRow {
   exchange: string;
   quantity: number;
   costBasis: number;
+  targetWeight: number;
   /** "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed" */
   status: string;
 }
