@@ -131,6 +131,21 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+
+  // Sum of target weights for all holdings OTHER than the one being edited
+  const otherWeightsSum = holdings
+    .filter((h) => h.id !== editingHolding?.id)
+    .reduce((sum, h) => sum + (h.targetWeight ?? 0), 0);
+
+  const thisWeight = parseFloat(form.targetWeight) || 0;
+  const projectedTotal = otherWeightsSum + thisWeight;
+
+  const weightTotalColor =
+    projectedTotal > 100
+      ? 'var(--color-loss)'
+      : projectedTotal >= 90
+        ? 'var(--color-warning)'
+        : 'var(--color-gain)';
   const [priceFetching, setPriceFetching] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const selectedSymbolRef = useRef<string>('');
@@ -257,13 +272,9 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   async function handleSave() {
     if (!validate()) return;
 
-    const thisWeight = parseFloat(form.targetWeight) || 0;
-    const otherWeightsSum = holdings
-      .filter((h) => h.id !== editingHolding?.id)
-      .reduce((sum, h) => sum + (h.targetWeight ?? 0), 0);
-    if (otherWeightsSum + thisWeight > 100) {
+    if (projectedTotal > 100) {
       showToast(
-        `Warning: total target weight will be ${(otherWeightsSum + thisWeight).toFixed(1)}% (exceeds 100%)`,
+        `Warning: total target weight will be ${projectedTotal.toFixed(1)}% (exceeds 100%)`,
         'info'
       );
     }
@@ -505,6 +516,18 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                 onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
                 onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
               />
+              {thisWeight > 0 && (
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 10,
+                    fontFamily: 'var(--font-mono)',
+                    color: weightTotalColor,
+                  }}
+                >
+                  Portfolio total: {projectedTotal.toFixed(1)}% of 100%
+                </div>
+              )}
             </Field>
           </div>
         </div>

@@ -488,7 +488,10 @@ pub fn get_snapshots_in_range(
             let total_value: f64 = row.get(1)?;
             // Truncate ISO timestamp to date portion for the chart
             let date = recorded_at.get(..10).unwrap_or(&recorded_at).to_string();
-            Ok(PerformancePoint { date, value: total_value })
+            Ok(PerformancePoint {
+                date,
+                value: total_value,
+            })
         })?
         .filter_map(|r| r.ok())
         .collect();
@@ -516,6 +519,28 @@ pub fn prune_snapshots(conn: &Connection) -> Result<(), rusqlite::Error> {
     )?;
 
     Ok(())
+}
+
+/// Returns the sum of all `target_weight` values in the holdings table,
+/// optionally excluding a specific holding by id (used during updates).
+pub fn sum_target_weights(conn: &Connection, exclude_id: Option<&str>) -> Result<f64, String> {
+    let sum: f64 = match exclude_id {
+        Some(id) => conn
+            .query_row(
+                "SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE id != ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?,
+        None => conn
+            .query_row(
+                "SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?,
+    };
+    Ok(sum)
 }
 
 #[allow(dead_code)]
@@ -685,16 +710,22 @@ mod tests {
         .expect("manual insert");
 
         // Query a range that excludes that date
-        let points =
-            get_snapshots_in_range(&conn, "2021-01-01T00:00:00+00:00", "2099-12-31T23:59:59+00:00")
-                .expect("get snapshots");
+        let points = get_snapshots_in_range(
+            &conn,
+            "2021-01-01T00:00:00+00:00",
+            "2099-12-31T23:59:59+00:00",
+        )
+        .expect("get snapshots");
 
         assert_eq!(points.len(), 0);
 
         // Query a range that includes it
-        let points =
-            get_snapshots_in_range(&conn, "2020-01-01T00:00:00+00:00", "2020-12-31T23:59:59+00:00")
-                .expect("get snapshots");
+        let points = get_snapshots_in_range(
+            &conn,
+            "2020-01-01T00:00:00+00:00",
+            "2020-12-31T23:59:59+00:00",
+        )
+        .expect("get snapshots");
 
         assert_eq!(points.len(), 1);
         assert!((points[0].value - 50_000.0).abs() < 0.001);
@@ -730,9 +761,12 @@ mod tests {
 
         prune_snapshots(&conn).expect("prune");
 
-        let all =
-            get_snapshots_in_range(&conn, "1970-01-01T00:00:00+00:00", "2099-12-31T23:59:59+00:00")
-                .expect("get all");
+        let all = get_snapshots_in_range(
+            &conn,
+            "1970-01-01T00:00:00+00:00",
+            "2099-12-31T23:59:59+00:00",
+        )
+        .expect("get all");
 
         // 1 old (latest of that day) + 1 recent = 2
         assert_eq!(all.len(), 2);
@@ -741,6 +775,39 @@ mod tests {
         let old_point = all.iter().find(|p| p.date == "2020-06-01");
         assert!(old_point.is_some());
         assert!((old_point.unwrap().value - 1100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn sum_target_weights_returns_zero_for_empty_table() {
+        let conn = open_test_db();
+        let sum = sum_target_weights(&conn, None).expect("sum");
+        assert!((sum - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn sum_target_weights_sums_all_holdings() {
+        let conn = open_test_db();
+        let mut input_a = make_input("AAPL");
+        input_a.target_weight = 40.0;
+        let mut input_b = make_input("MSFT");
+        input_b.target_weight = 35.0;
+        insert_holding(&conn, input_a).expect("insert a");
+        insert_holding(&conn, input_b).expect("insert b");
+        let sum = sum_target_weights(&conn, None).expect("sum");
+        assert!((sum - 75.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn sum_target_weights_excludes_specified_id() {
+        let conn = open_test_db();
+        let mut input_a = make_input("AAPL");
+        input_a.target_weight = 40.0;
+        let mut input_b = make_input("MSFT");
+        input_b.target_weight = 35.0;
+        let holding_a = insert_holding(&conn, input_a).expect("insert a");
+        insert_holding(&conn, input_b).expect("insert b");
+        let sum = sum_target_weights(&conn, Some(&holding_a.id)).expect("sum excluding a");
+        assert!((sum - 35.0).abs() < 0.001);
     }
 
     #[test]
