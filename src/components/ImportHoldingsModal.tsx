@@ -214,7 +214,7 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
     >
       <div
         style={{
-          width: '100%',
+          width: '90vw',
           maxWidth: 880,
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-primary)',

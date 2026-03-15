@@ -158,7 +158,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     return { best, worst, cashTotal };
   }, [filteredHoldings, portfolio]);
 
-  // #49 — Account allocation data (always uses full portfolio, not filtered)
+  // #49 — Account allocation data (always uses full portfolio, not filtered — #137)
   const accountData = useMemo(() => {
     if (!portfolio || portfolio.totalValue === 0) return [];
     const byAccount: Record<string, number> = {};

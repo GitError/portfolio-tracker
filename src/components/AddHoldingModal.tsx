@@ -343,7 +343,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         style={{
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-primary)',
-          width: '100%',
+          width: '90vw',
           maxWidth: 480,
           borderRadius: 0,
           padding: 24,

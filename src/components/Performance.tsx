@@ -272,7 +272,7 @@ export function Performance({ portfolio }: PerformanceProps) {
   if (filteredHoldings.length === 0) {
     return (
       <div style={{ ...PANEL }}>
-        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <div style={{ width: 180 }}>
             <Select
               value={accountFilter}
@@ -309,9 +309,15 @@ export function Performance({ portfolio }: PerformanceProps) {
       <div style={PANEL}>
         {/* Range buttons */}
         <div
-          style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 16,
+            marginBottom: 20,
+          }}
         >
-          <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ width: 180 }}>
               <Select
                 value={accountFilter}
