@@ -1,7 +1,7 @@
-/// Centralized configuration constants for the portfolio tracker backend.
-///
-/// All hardcoded values that may need tuning or are referenced in multiple
-/// places should live here, not inline in the modules that use them.
+//! Centralized configuration constants for the portfolio tracker backend.
+//!
+//! All hardcoded values that may need tuning or are referenced in multiple
+//! places should live here, not inline in the modules that use them.
 
 // ── Currency ──────────────────────────────────────────────────────────────────
 
@@ -10,6 +10,10 @@
 pub const BASE_CURRENCY: &str = "CAD";
 
 /// All currencies the app can hold positions in / fetch FX rates for.
+#[expect(
+    dead_code,
+    reason = "Centralized for the config refactor; not all call sites use it yet"
+)]
 pub const SUPPORTED_CURRENCIES: &[&str] = &["CAD", "USD", "EUR", "GBP", "JPY", "CHF", "AUD"];
 
 // ── External APIs ─────────────────────────────────────────────────────────────
@@ -31,9 +35,17 @@ pub const DB_FILE_NAME: &str = "portfolio.db";
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 
 /// How long (seconds) a cached price is considered fresh before re-fetching.
+#[expect(
+    dead_code,
+    reason = "Cache freshness logic is being centralized incrementally"
+)]
 pub const PRICE_CACHE_TTL_SECS: i64 = 300; // 5 minutes
 
 /// How long (seconds) a cached FX rate is considered fresh.
+#[expect(
+    dead_code,
+    reason = "Cache freshness logic is being centralized incrementally"
+)]
 pub const FX_CACHE_TTL_SECS: i64 = 900; // 15 minutes
 
 /// How long (seconds) a symbol search result is cached.
