@@ -8,6 +8,7 @@ import {
   Scale,
   Bell,
   Receipt,
+  BarChart2,
   Settings2,
   ChevronsLeft,
   ChevronsRight,
@@ -30,6 +31,7 @@ const NAV_ITEMS = [
   { to: '/rebalance', label: 'Rebalance', Icon: Scale },
   { to: '/alerts', label: 'Alerts', Icon: Bell },
   { to: '/transactions', label: 'Transactions', Icon: Receipt },
+  { to: '/analytics', label: 'Analytics', Icon: BarChart2 },
   { to: '/settings', label: 'Settings', Icon: Settings2 },
 ];
 
