@@ -127,6 +127,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   const [saving, setSaving] = useState(false);
   const [priceFetching, setPriceFetching] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const selectedSymbolRef = useRef<string>('');
 
   useEffect(() => {
     if (isOpen) {
@@ -141,10 +142,17 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           currency: editingHolding.currency,
           targetWeight: String(editingHolding.targetWeight ?? 0),
         });
+        selectedSymbolRef.current = editingHolding.symbol;
       } else {
         setForm(EMPTY_FORM);
+        selectedSymbolRef.current = '';
       }
       setErrors({});
+    } else {
+      // Cancel any in-flight fetch when the modal closes
+      abortRef.current?.abort();
+      selectedSymbolRef.current = '';
+      setPriceFetching(false);
     }
   }, [isOpen, editingHolding]);
 
@@ -164,6 +172,10 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
     abortRef.current?.abort();
     abortRef.current = new AbortController();
 
+    // Record which symbol triggered this fetch so we can discard stale responses
+    const fetchedForSymbol = result.symbol;
+    selectedSymbolRef.current = result.symbol;
+
     setPriceFetching(true);
     try {
       let price: number | null = null;
@@ -175,13 +187,17 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       } else {
         price = MOCK_PRICES[result.symbol] ?? null;
       }
-      if (price !== null) {
+      // Only apply if this response is still for the currently selected symbol
+      if (price !== null && selectedSymbolRef.current === fetchedForSymbol) {
         setForm((prev) => ({ ...prev, costBasis: String(price) }));
       }
     } catch {
       // non-fatal: user can enter cost basis manually
     } finally {
-      setPriceFetching(false);
+      // Only clear the fetching indicator if we are still the active request
+      if (selectedSymbolRef.current === fetchedForSymbol) {
+        setPriceFetching(false);
+      }
     }
   }
 
