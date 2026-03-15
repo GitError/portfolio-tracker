@@ -9,6 +9,7 @@ import {
   Bell,
   Receipt,
   BarChart2,
+  DollarSign,
   Settings2,
   ChevronsLeft,
   ChevronsRight,
@@ -32,6 +33,7 @@ const NAV_ITEMS = [
   { to: '/alerts', label: 'Alerts', Icon: Bell },
   { to: '/transactions', label: 'Transactions', Icon: Receipt },
   { to: '/analytics', label: 'Analytics', Icon: BarChart2 },
+  { to: '/dividends', label: 'Dividends', Icon: DollarSign },
   { to: '/settings', label: 'Settings', Icon: Settings2 },
 ];
 
