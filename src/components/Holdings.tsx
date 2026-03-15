@@ -9,6 +9,7 @@ import {
   Upload,
   Download,
   Clock,
+  Layers,
 } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
@@ -19,7 +20,7 @@ import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
 import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
 import { pnlColor } from '../lib/colors';
-import { ACCOUNT_OPTIONS } from '../lib/constants';
+import { ACCOUNT_OPTIONS, ACCOUNT_TYPE_CONFIG } from '../lib/constants';
 import type { AccountType, Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
 
 type SortKey = keyof Pick<
@@ -154,7 +155,10 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [txModalHolding, setTxModalHolding] = useState<Holding | undefined>(undefined);
+  const [groupByAccount, setGroupByAccount] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
   useEffect(() => {
@@ -170,7 +174,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       );
     }
   }, [searchParams, setSearchParams]);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
     () => [
@@ -283,9 +287,6 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
 
   async function handleDelete(id: string) {
     // Guard: only delete holdings that are currently visible in the filtered view.
-    // This prevents a race where the search/account filter changes after the user
-    // clicks the trash icon but before they confirm, which would silently delete a
-    // hidden row the user can no longer see.
     const isVisible = rows.some((h) => h.id === id);
     if (!isVisible) {
       setPendingDelete(null);
@@ -370,6 +371,35 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       suggestedSells: sells,
     };
   }, [portfolio, rows]);
+
+  // Grouped view: group rows by account name
+  const groupedRows = useMemo(() => {
+    if (!groupByAccount) return null;
+    const groups: Map<string, HoldingWithPrice[]> = new Map();
+    for (const row of rows) {
+      const key = row.account;
+      const existing = groups.get(key) ?? [];
+      groups.set(key, [...existing, row]);
+    }
+    return Array.from(groups.entries()).map(([account, accountHoldings]) => {
+      const totalValue = accountHoldings.reduce((s, h) => s + h.marketValueCad, 0);
+      const totalGainLoss = accountHoldings.reduce((s, h) => s + h.gainLoss, 0);
+      const totalWeight = accountHoldings.reduce((s, h) => s + h.weight, 0);
+      return { account, holdings: accountHoldings, totalValue, totalGainLoss, totalWeight };
+    });
+  }, [groupByAccount, rows]);
+
+  function toggleGroup(account: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(account)) {
+        next.delete(account);
+      } else {
+        next.add(account);
+      }
+      return next;
+    });
+  }
 
   const isEmpty = holdings.length === 0;
 
@@ -467,6 +497,28 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               </option>
             ))}
           </select>
+          <button
+            onClick={() => setGroupByAccount((prev) => !prev)}
+            title={groupByAccount ? 'Disable group by account' : 'Group by account'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              background: groupByAccount ? 'var(--color-accent)' : 'var(--bg-surface)',
+              border: groupByAccount
+                ? '1px solid var(--color-accent)'
+                : '1px solid var(--border-primary)',
+              color: groupByAccount ? '#fff' : 'var(--text-primary)',
+              borderRadius: '2px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              cursor: 'pointer',
+            }}
+          >
+            <Layers size={12} />
+            Group
+          </button>
           <button
             onClick={() => void handleExport()}
             style={{
@@ -604,8 +656,530 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               ))}
             </div>
           )}
-          {/* Bulk action bar */}
-          {selected.size > 0 && (
+
+          {/* Grouped-by-account view */}
+          {groupByAccount && groupedRows && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {groupedRows.map((group) => {
+                const isCollapsed = collapsedGroups.has(group.account);
+                const acctConfig = ACCOUNT_TYPE_CONFIG[group.account];
+                const acctColor = acctConfig?.color ?? 'var(--text-muted)';
+                const acctLabel = acctConfig?.label ?? group.account;
+                return (
+                  <div key={group.account} style={{ border: '1px solid var(--border-primary)' }}>
+                    {/* Section header */}
+                    <button
+                      onClick={() => toggleGroup(group.account)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10,
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'var(--bg-surface-alt)',
+                        border: 'none',
+                        borderBottom: isCollapsed ? 'none' : '1px solid var(--border-primary)',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                      }}
+                    >
+                      {isCollapsed ? (
+                        <ChevronDown
+                          size={13}
+                          style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                        />
+                      ) : (
+                        <ChevronUp
+                          size={13}
+                          style={{ color: 'var(--text-muted)', flexShrink: 0 }}
+                        />
+                      )}
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.08em',
+                          padding: '2px 6px',
+                          borderRadius: 2,
+                          background: `${acctColor}22`,
+                          color: acctColor,
+                          border: `1px solid ${acctColor}55`,
+                        }}
+                      >
+                        {acctLabel}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 11,
+                          color: 'var(--text-secondary)',
+                          flex: 1,
+                        }}
+                      >
+                        {group.holdings.length} holding{group.holdings.length !== 1 ? 's' : ''}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        {formatCurrency(group.totalValue, baseCurrency)}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 11,
+                          color: pnlColor(group.totalGainLoss),
+                          minWidth: 60,
+                          textAlign: 'right',
+                        }}
+                      >
+                        {group.totalGainLoss >= 0 ? '+' : ''}
+                        {formatCurrency(group.totalGainLoss, baseCurrency)}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'var(--font-mono)',
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                          minWidth: 44,
+                          textAlign: 'right',
+                        }}
+                      >
+                        {(group.totalWeight * 100).toFixed(1)}%
+                      </span>
+                    </button>
+                    {/* Holdings rows */}
+                    {!isCollapsed && (
+                      <div style={{ overflow: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              {columns.map(({ key, label, align }) => (
+                                <th
+                                  key={key}
+                                  onClick={() => toggleSort(key)}
+                                  style={{ ...TH, textAlign: align }}
+                                >
+                                  <span
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: 3,
+                                    }}
+                                  >
+                                    {label}
+                                    {sort.key === key ? (
+                                      sort.dir === 'asc' ? (
+                                        <ChevronUp size={10} />
+                                      ) : (
+                                        <ChevronDown size={10} />
+                                      )
+                                    ) : null}
+                                  </span>
+                                </th>
+                              ))}
+                              <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {group.holdings.map((h, i) => {
+                              const isDelGrp = deletingId === h.id;
+                              const isPendGrp = pendingDelete === h.id;
+                              const bgGrp =
+                                i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
+                              return (
+                                <tr
+                                  key={h.id}
+                                  style={{
+                                    background: isPendGrp
+                                      ? 'rgba(255,71,87,0.08)'
+                                      : isDelGrp
+                                        ? 'rgba(255,71,87,0.15)'
+                                        : bgGrp,
+                                    transition: 'background 200ms',
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isPendGrp && !isDelGrp)
+                                      (e.currentTarget as HTMLElement).style.background =
+                                        'var(--bg-surface-hover)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isPendGrp && !isDelGrp)
+                                      (e.currentTarget as HTMLElement).style.background = bgGrp;
+                                  }}
+                                >
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      fontFamily: 'var(--font-mono)',
+                                      fontWeight: 700,
+                                      color: 'var(--text-primary)',
+                                    }}
+                                  >
+                                    {h.symbol}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      color: 'var(--text-secondary)',
+                                      maxWidth: 140,
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                    }}
+                                  >
+                                    {h.name}
+                                  </td>
+                                  <td style={TD}>
+                                    <Badge type={h.assetType} />
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      color: 'var(--text-secondary)',
+                                      fontFamily: 'var(--font-mono)',
+                                      textTransform: 'uppercase',
+                                    }}
+                                  >
+                                    {ACCOUNT_OPTIONS.find((opt) => opt.value === h.account)
+                                      ?.label ?? h.account}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      color: h.exchange
+                                        ? 'var(--text-secondary)'
+                                        : 'var(--text-muted)',
+                                      fontFamily: 'var(--font-mono)',
+                                      textTransform: 'uppercase',
+                                    }}
+                                  >
+                                    {h.exchange || '—'}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: 'var(--text-secondary)',
+                                    }}
+                                  >
+                                    {formatNumber(h.quantity, h.assetType === 'crypto' ? 4 : 2)}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: 'var(--text-secondary)',
+                                    }}
+                                  >
+                                    {formatNumber(h.costBasis, 2)} {h.currency}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: 'var(--text-primary)',
+                                    }}
+                                  >
+                                    {h.assetType === 'cash' ? (
+                                      '—'
+                                    ) : (
+                                      <span
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          gap: 4,
+                                        }}
+                                      >
+                                        {formatNumber(h.currentPrice, 2)} {h.currency}
+                                        {isPriceStale(portfolio?.lastUpdated) && (
+                                          <span title="Price may be stale (last refreshed over 2h ago)">
+                                            <Clock
+                                              size={10}
+                                              style={{
+                                                color: 'var(--color-warning)',
+                                                flexShrink: 0,
+                                              }}
+                                            />
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: 'var(--text-primary)',
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {formatCurrency(h.marketValueCad, baseCurrency)}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: 'var(--text-secondary)',
+                                    }}
+                                  >
+                                    {(h.weight * 100).toFixed(1)}%
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color:
+                                        h.targetWeight > 0
+                                          ? 'var(--text-primary)'
+                                          : 'var(--text-muted)',
+                                    }}
+                                  >
+                                    {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: pnlColor(h.targetDeltaPercent),
+                                    }}
+                                  >
+                                    {h.targetWeight > 0 || h.assetType === 'cash'
+                                      ? formatPercent(h.targetDeltaPercent)
+                                      : '—'}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color: pnlColor(h.targetDeltaValue),
+                                      fontWeight: 600,
+                                    }}
+                                  >
+                                    {h.targetWeight > 0 || h.assetType === 'cash'
+                                      ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
+                                      : '—'}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color:
+                                        h.assetType === 'cash'
+                                          ? 'var(--text-muted)'
+                                          : pnlColor(h.gainLoss),
+                                    }}
+                                  >
+                                    {h.assetType === 'cash'
+                                      ? '—'
+                                      : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss, baseCurrency)}`}
+                                  </td>
+                                  <td
+                                    style={{
+                                      ...TD,
+                                      textAlign: 'right',
+                                      fontFamily: 'var(--font-mono)',
+                                      color:
+                                        h.assetType === 'cash'
+                                          ? 'var(--text-muted)'
+                                          : pnlColor(h.gainLossPercent),
+                                    }}
+                                  >
+                                    {h.assetType === 'cash'
+                                      ? '—'
+                                      : formatPercent(h.gainLossPercent)}
+                                  </td>
+                                  <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
+                                    {isPendGrp ? (
+                                      <span
+                                        style={{
+                                          display: 'inline-flex',
+                                          gap: 6,
+                                          alignItems: 'center',
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            fontSize: 11,
+                                            color: 'var(--color-loss)',
+                                            fontFamily: 'var(--font-mono)',
+                                          }}
+                                        >
+                                          Delete?
+                                        </span>
+                                        <button
+                                          onClick={() => handleDelete(h.id)}
+                                          style={{
+                                            fontSize: 11,
+                                            color: 'var(--color-loss)',
+                                            background: 'none',
+                                            border: '1px solid var(--color-loss)',
+                                            padding: '2px 6px',
+                                            borderRadius: '2px',
+                                            cursor: 'pointer',
+                                            fontFamily: 'var(--font-mono)',
+                                          }}
+                                        >
+                                          Confirm
+                                        </button>
+                                        <button
+                                          onClick={() => setPendingDelete(null)}
+                                          style={{
+                                            fontSize: 11,
+                                            color: 'var(--text-secondary)',
+                                            background: 'none',
+                                            border: '1px solid var(--border-primary)',
+                                            padding: '2px 6px',
+                                            borderRadius: '2px',
+                                            cursor: 'pointer',
+                                            fontFamily: 'var(--font-mono)',
+                                          }}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </span>
+                                    ) : (
+                                      <span
+                                        style={{
+                                          display: 'inline-flex',
+                                          gap: 8,
+                                          alignItems: 'center',
+                                        }}
+                                      >
+                                        <button
+                                          onClick={() => setTxModalHolding(h)}
+                                          title="Log transaction"
+                                          style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: 'var(--text-muted)',
+                                            cursor: 'pointer',
+                                            padding: 3,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                          }}
+                                        >
+                                          <Plus size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => {
+                                            setEditing(h);
+                                            setModalOpen(true);
+                                          }}
+                                          title="Edit"
+                                          style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: 'var(--text-muted)',
+                                            cursor: 'pointer',
+                                            padding: 3,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                          }}
+                                        >
+                                          <Pencil size={13} />
+                                        </button>
+                                        <button
+                                          onClick={() => setPendingDelete(h.id)}
+                                          title="Delete"
+                                          style={{
+                                            background: 'none',
+                                            border: 'none',
+                                            color: 'var(--text-muted)',
+                                            cursor: 'pointer',
+                                            padding: 3,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                          }}
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          {/* Subtotal row */}
+                          <tfoot>
+                            <tr style={{ background: 'var(--bg-surface-alt)' }}>
+                              <td
+                                colSpan={8}
+                                style={{
+                                  ...TD,
+                                  fontFamily: 'var(--font-mono)',
+                                  fontWeight: 600,
+                                  color: 'var(--text-muted)',
+                                  fontSize: 10,
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.06em',
+                                }}
+                              >
+                                Subtotal
+                              </td>
+                              <td
+                                style={{
+                                  ...TD,
+                                  textAlign: 'right',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontWeight: 700,
+                                  color: 'var(--text-primary)',
+                                }}
+                              >
+                                {formatCurrency(group.totalValue, baseCurrency)}
+                              </td>
+                              <td
+                                style={{
+                                  ...TD,
+                                  textAlign: 'right',
+                                  fontFamily: 'var(--font-mono)',
+                                  color: 'var(--text-secondary)',
+                                }}
+                              >
+                                {(group.totalWeight * 100).toFixed(2)}%
+                              </td>
+                              <td colSpan={3} style={TD} />
+                              <td
+                                style={{
+                                  ...TD,
+                                  textAlign: 'right',
+                                  fontFamily: 'var(--font-mono)',
+                                  fontWeight: 600,
+                                  color: pnlColor(group.totalGainLoss),
+                                }}
+                              >
+                                {group.totalGainLoss >= 0 ? '+' : ''}
+                                {formatCurrency(group.totalGainLoss, baseCurrency)}
+                              </td>
+                              <td colSpan={2} style={TD} />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Bulk action bar (flat view only) */}
+          {!groupByAccount && selected.size > 0 && (
             <div
               style={{
                 display: 'flex',
@@ -663,8 +1237,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             </div>
           )}
 
-          {/* Bulk delete confirmation */}
-          {bulkDeletePending && (
+          {/* Bulk delete confirmation (flat view only) */}
+          {!groupByAccount && bulkDeletePending && (
             <div
               style={{
                 display: 'flex',
@@ -723,471 +1297,482 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             </div>
           )}
 
-          <div
-            style={{
-              border: '1px solid var(--border-primary)',
-              overflow: 'auto',
-              maxHeight: 'calc(100vh - 260px)',
-            }}
-          >
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
-                <tr>
-                  <th style={{ ...TH, textAlign: 'center', width: 36, cursor: 'default' }}>
-                    <input
-                      type="checkbox"
-                      checked={selected.size === rows.length && rows.length > 0}
-                      onChange={toggleSelectAll}
-                      title="Select all"
-                      style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
-                    />
-                  </th>
-                  {columns.map(({ key, label, align }) => (
-                    <th
-                      key={key}
-                      onClick={() => toggleSort(key)}
-                      style={{ ...TH, textAlign: align }}
-                    >
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                        {label}
-                        {sort.key === key ? (
-                          sort.dir === 'asc' ? (
-                            <ChevronUp size={10} />
-                          ) : (
-                            <ChevronDown size={10} />
-                          )
-                        ) : null}
-                      </span>
+          {/* Flat table view */}
+          {!groupByAccount && (
+            <div
+              style={{
+                border: '1px solid var(--border-primary)',
+                overflow: 'auto',
+                maxHeight: 'calc(100vh - 260px)',
+              }}
+            >
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
+                  <tr>
+                    <th style={{ ...TH, textAlign: 'center', width: 36, cursor: 'default' }}>
+                      <input
+                        type="checkbox"
+                        checked={selected.size === rows.length && rows.length > 0}
+                        onChange={toggleSelectAll}
+                        title="Select all"
+                        style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
+                      />
                     </th>
-                  ))}
-                  <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((h, i) => {
-                  const isDeleting = deletingId === h.id;
-                  const isPending = pendingDelete === h.id;
-                  const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
-                  return (
-                    <tr
-                      key={h.id}
-                      style={{
-                        background: isPending
-                          ? 'rgba(255,71,87,0.08)'
-                          : isDeleting
-                            ? 'rgba(255,71,87,0.15)'
-                            : selected.has(h.id)
+                    {columns.map(({ key, label, align }) => (
+                      <th
+                        key={key}
+                        onClick={() => toggleSort(key)}
+                        style={{ ...TH, textAlign: align }}
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                          {label}
+                          {sort.key === key ? (
+                            sort.dir === 'asc' ? (
+                              <ChevronUp size={10} />
+                            ) : (
+                              <ChevronDown size={10} />
+                            )
+                          ) : null}
+                        </span>
+                      </th>
+                    ))}
+                    <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((h, i) => {
+                    const isDeleting = deletingId === h.id;
+                    const isPending = pendingDelete === h.id;
+                    const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
+                    return (
+                      <tr
+                        key={h.id}
+                        style={{
+                          background: isPending
+                            ? 'rgba(255,71,87,0.08)'
+                            : isDeleting
+                              ? 'rgba(255,71,87,0.15)'
+                              : selected.has(h.id)
+                                ? 'rgba(59,130,246,0.08)'
+                                : bg,
+                          transition: 'background 200ms',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!isPending && !isDeleting && !selected.has(h.id))
+                            (e.currentTarget as HTMLElement).style.background =
+                              'var(--bg-surface-hover)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!isPending && !isDeleting)
+                            (e.currentTarget as HTMLElement).style.background = selected.has(h.id)
                               ? 'rgba(59,130,246,0.08)'
-                              : bg,
-                        transition: 'background 200ms',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isPending && !isDeleting && !selected.has(h.id))
-                          (e.currentTarget as HTMLElement).style.background =
-                            'var(--bg-surface-hover)';
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isPending && !isDeleting)
-                          (e.currentTarget as HTMLElement).style.background = selected.has(h.id)
-                            ? 'rgba(59,130,246,0.08)'
-                            : bg;
+                              : bg;
+                        }}
+                      >
+                        <td
+                          style={{ ...TD, textAlign: 'center', width: 36 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected.has(h.id)}
+                            onChange={() => toggleRow(h.id)}
+                            style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
+                          />
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            fontFamily: 'var(--font-mono)',
+                            fontWeight: 700,
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          {h.symbol}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            color: 'var(--text-secondary)',
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          {h.name}
+                        </td>
+                        <td style={TD}>
+                          <Badge type={h.assetType} />
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            color: 'var(--text-secondary)',
+                            fontFamily: 'var(--font-mono)',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {ACCOUNT_OPTIONS.find((option) => option.value === h.account)?.label ??
+                            h.account}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            color: h.exchange ? 'var(--text-secondary)' : 'var(--text-muted)',
+                            fontFamily: 'var(--font-mono)',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {h.exchange || '—'}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          {formatNumber(h.quantity, h.assetType === 'crypto' ? 4 : 2)}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          {formatNumber(h.costBasis, 2)} {h.currency}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--text-primary)',
+                          }}
+                        >
+                          {h.assetType === 'cash' ? (
+                            '—'
+                          ) : (
+                            <span
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            >
+                              {formatNumber(h.currentPrice, 2)} {h.currency}
+                              {isPriceStale(portfolio?.lastUpdated) && (
+                                <span title="Price may be stale (last refreshed over 2h ago)">
+                                  <Clock
+                                    size={10}
+                                    style={{ color: 'var(--color-warning)', flexShrink: 0 }}
+                                  />
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--text-primary)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          {formatCurrency(h.marketValueCad, baseCurrency)}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          {h.weight.toFixed(1)}%
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color:
+                              h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                          }}
+                        >
+                          {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: pnlColor(h.targetDeltaPercent),
+                          }}
+                        >
+                          {h.targetWeight > 0 || h.assetType === 'cash'
+                            ? formatPercent(h.targetDeltaPercent)
+                            : '—'}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color: pnlColor(h.targetDeltaValue),
+                            fontWeight: 600,
+                          }}
+                        >
+                          {h.targetWeight > 0 || h.assetType === 'cash'
+                            ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
+                            : '—'}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color:
+                              h.assetType === 'cash' ? 'var(--text-muted)' : pnlColor(h.gainLoss),
+                          }}
+                        >
+                          {h.assetType === 'cash'
+                            ? '—'
+                            : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss, baseCurrency)}`}
+                        </td>
+                        <td
+                          style={{
+                            ...TD,
+                            textAlign: 'right',
+                            fontFamily: 'var(--font-mono)',
+                            color:
+                              h.assetType === 'cash'
+                                ? 'var(--text-muted)'
+                                : pnlColor(h.gainLossPercent),
+                          }}
+                        >
+                          {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}
+                        </td>
+                        <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
+                          {isPending ? (
+                            <span
+                              style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--color-loss)',
+                                  fontFamily: 'var(--font-mono)',
+                                }}
+                              >
+                                Delete?
+                              </span>
+                              <button
+                                onClick={() => handleDelete(h.id)}
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--color-loss)',
+                                  background: 'none',
+                                  border: '1px solid var(--color-loss)',
+                                  padding: '2px 6px',
+                                  borderRadius: '2px',
+                                  cursor: 'pointer',
+                                  fontFamily: 'var(--font-mono)',
+                                }}
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setPendingDelete(null)}
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-secondary)',
+                                  background: 'none',
+                                  border: '1px solid var(--border-primary)',
+                                  padding: '2px 6px',
+                                  borderRadius: '2px',
+                                  cursor: 'pointer',
+                                  fontFamily: 'var(--font-mono)',
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <span
+                              style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}
+                            >
+                              <button
+                                onClick={() => setTxModalHolding(h)}
+                                title="Log transaction"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  padding: 3,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <Plus size={13} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditing(h);
+                                  setModalOpen(true);
+                                }}
+                                title="Edit"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  padding: 3,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <Pencil size={13} />
+                              </button>
+                              <button
+                                onClick={() => setPendingDelete(h.id)}
+                                title="Delete"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  color: 'var(--text-muted)',
+                                  cursor: 'pointer',
+                                  padding: 3,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot style={{ position: 'sticky', bottom: 0 }}>
+                  <tr
+                    style={{
+                      background: 'var(--bg-surface-alt)',
+                      borderTop: '2px solid var(--border-primary)',
+                    }}
+                  >
+                    <td style={TD} />
+                    <td
+                      colSpan={8}
+                      style={{
+                        ...TD,
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: 'var(--text-secondary)',
+                        fontSize: 10,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.06em',
                       }}
                     >
-                      <td
-                        style={{ ...TD, textAlign: 'center', width: 36 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selected.has(h.id)}
-                          onChange={() => toggleRow(h.id)}
-                          style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
-                        />
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          fontFamily: 'var(--font-mono)',
-                          fontWeight: 700,
-                          color: 'var(--text-primary)',
-                        }}
-                      >
-                        {h.symbol}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          color: 'var(--text-secondary)',
-                          maxWidth: 160,
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                        }}
-                      >
-                        {h.name}
-                      </td>
-                      <td style={TD}>
-                        <Badge type={h.assetType} />
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          color: 'var(--text-secondary)',
-                          fontFamily: 'var(--font-mono)',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {ACCOUNT_OPTIONS.find((option) => option.value === h.account)?.label ??
-                          h.account}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          color: h.exchange ? 'var(--text-secondary)' : 'var(--text-muted)',
-                          fontFamily: 'var(--font-mono)',
-                          textTransform: 'uppercase',
-                        }}
-                      >
-                        {h.exchange || '—'}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--text-secondary)',
-                        }}
-                      >
-                        {formatNumber(h.quantity, h.assetType === 'crypto' ? 4 : 2)}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--text-secondary)',
-                        }}
-                      >
-                        {formatNumber(h.costBasis, 2)} {h.currency}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--text-primary)',
-                        }}
-                      >
-                        {h.assetType === 'cash' ? (
-                          '—'
-                        ) : (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            {formatNumber(h.currentPrice, 2)} {h.currency}
-                            {isPriceStale(portfolio?.lastUpdated) && (
-                              <span title="Price may be stale (last refreshed over 2h ago)">
-                                <Clock
-                                  size={10}
-                                  style={{ color: 'var(--color-warning)', flexShrink: 0 }}
-                                />
-                              </span>
-                            )}
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--text-primary)',
-                          fontWeight: 600,
-                        }}
-                      >
-                        {formatCurrency(h.marketValueCad, baseCurrency)}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: 'var(--text-secondary)',
-                        }}
-                      >
-                        {h.weight.toFixed(1)}%
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                        }}
-                      >
-                        {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: pnlColor(h.targetDeltaPercent),
-                        }}
-                      >
-                        {h.targetWeight > 0 || h.assetType === 'cash'
-                          ? formatPercent(h.targetDeltaPercent)
-                          : '—'}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: pnlColor(h.targetDeltaValue),
-                          fontWeight: 600,
-                        }}
-                      >
-                        {h.targetWeight > 0 || h.assetType === 'cash'
-                          ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
-                          : '—'}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color:
-                            h.assetType === 'cash' ? 'var(--text-muted)' : pnlColor(h.gainLoss),
-                        }}
-                      >
-                        {h.assetType === 'cash'
-                          ? '—'
-                          : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss, baseCurrency)}`}
-                      </td>
-                      <td
-                        style={{
-                          ...TD,
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color:
-                            h.assetType === 'cash'
-                              ? 'var(--text-muted)'
-                              : pnlColor(h.gainLossPercent),
-                        }}
-                      >
-                        {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}
-                      </td>
-                      <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
-                        {isPending ? (
-                          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                color: 'var(--color-loss)',
-                                fontFamily: 'var(--font-mono)',
-                              }}
-                            >
-                              Delete?
-                            </span>
-                            <button
-                              onClick={() => handleDelete(h.id)}
-                              style={{
-                                fontSize: 11,
-                                color: 'var(--color-loss)',
-                                background: 'none',
-                                border: '1px solid var(--color-loss)',
-                                padding: '2px 6px',
-                                borderRadius: '2px',
-                                cursor: 'pointer',
-                                fontFamily: 'var(--font-mono)',
-                              }}
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setPendingDelete(null)}
-                              style={{
-                                fontSize: 11,
-                                color: 'var(--text-secondary)',
-                                background: 'none',
-                                border: '1px solid var(--border-primary)',
-                                padding: '2px 6px',
-                                borderRadius: '2px',
-                                cursor: 'pointer',
-                                fontFamily: 'var(--font-mono)',
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                            <button
-                              onClick={() => setTxModalHolding(h)}
-                              title="Log transaction"
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--text-muted)',
-                                cursor: 'pointer',
-                                padding: 3,
-                                display: 'flex',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <Plus size={13} />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditing(h);
-                                setModalOpen(true);
-                              }}
-                              title="Edit"
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--text-muted)',
-                                cursor: 'pointer',
-                                padding: 3,
-                                display: 'flex',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <Pencil size={13} />
-                            </button>
-                            <button
-                              onClick={() => setPendingDelete(h.id)}
-                              title="Delete"
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                color: 'var(--text-muted)',
-                                cursor: 'pointer',
-                                padding: 3,
-                                display: 'flex',
-                                alignItems: 'center',
-                              }}
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot style={{ position: 'sticky', bottom: 0 }}>
-                <tr
-                  style={{
-                    background: 'var(--bg-surface-alt)',
-                    borderTop: '2px solid var(--border-primary)',
-                  }}
-                >
-                  <td style={TD} />
-                  <td
-                    colSpan={8}
-                    style={{
-                      ...TD,
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: 'var(--text-secondary)',
-                      fontSize: 10,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                    }}
-                  >
-                    Total ({rows.length} positions)
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: 'var(--text-primary)',
-                      fontSize: 13,
-                    }}
-                  >
-                    {formatCurrency(totals.marketValueCad, baseCurrency)}
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: 'var(--text-secondary)',
-                      fontSize: 13,
-                    }}
-                  >
-                    100.0%
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: totals.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                      fontSize: 13,
-                    }}
-                  >
-                    {totals.targetWeight > 0 ? `${totals.targetWeight.toFixed(1)}%` : '—'}
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: pnlColor(100 - totals.targetWeight),
-                      fontSize: 13,
-                    }}
-                  >
-                    {formatPercent(totals.targetWeight - 100)}
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: pnlColor(totals.targetDeltaValue),
-                      fontSize: 13,
-                    }}
-                  >
-                    {totals.targetDeltaValue >= 0 ? '+' : ''}
-                    {formatCurrency(totals.targetDeltaValue, baseCurrency)}
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: pnlColor(totals.gainLoss),
-                      fontSize: 13,
-                    }}
-                  >
-                    {totals.gainLoss >= 0 ? '+' : ''}
-                    {formatCurrency(totals.gainLoss, baseCurrency)}
-                  </td>
-                  <td
-                    style={{
-                      ...TD,
-                      textAlign: 'right',
-                      fontFamily: 'var(--font-mono)',
-                      fontWeight: 700,
-                      color: pnlColor(totals.gainLossPercent),
-                      fontSize: 13,
-                    }}
-                  >
-                    {formatPercent(totals.gainLossPercent)}
-                  </td>
-                  <td colSpan={2} style={TD} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+                      Total ({rows.length} positions)
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: 'var(--text-primary)',
+                        fontSize: 13,
+                      }}
+                    >
+                      {formatCurrency(totals.marketValueCad, baseCurrency)}
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: 'var(--text-secondary)',
+                        fontSize: 13,
+                      }}
+                    >
+                      100.0%
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color:
+                          totals.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                        fontSize: 13,
+                      }}
+                    >
+                      {totals.targetWeight > 0 ? `${totals.targetWeight.toFixed(1)}%` : '—'}
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: pnlColor(100 - totals.targetWeight),
+                        fontSize: 13,
+                      }}
+                    >
+                      {formatPercent(totals.targetWeight - 100)}
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: pnlColor(totals.targetDeltaValue),
+                        fontSize: 13,
+                      }}
+                    >
+                      {totals.targetDeltaValue >= 0 ? '+' : ''}
+                      {formatCurrency(totals.targetDeltaValue, baseCurrency)}
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: pnlColor(totals.gainLoss),
+                        fontSize: 13,
+                      }}
+                    >
+                      {totals.gainLoss >= 0 ? '+' : ''}
+                      {formatCurrency(totals.gainLoss, baseCurrency)}
+                    </td>
+                    <td
+                      style={{
+                        ...TD,
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-mono)',
+                        fontWeight: 700,
+                        color: pnlColor(totals.gainLossPercent),
+                        fontSize: 13,
+                      }}
+                    >
+                      {formatPercent(totals.gainLossPercent)}
+                    </td>
+                    <td colSpan={2} style={TD} />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
         </>
       )}
 

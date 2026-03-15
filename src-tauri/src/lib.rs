@@ -73,6 +73,10 @@ pub fn run() {
             commands::add_dividend,
             commands::delete_dividend,
             commands::get_realized_gains,
+            commands::get_accounts,
+            commands::add_account,
+            commands::update_account,
+            commands::delete_account,
         ])
         .run(tauri::generate_context!());
 

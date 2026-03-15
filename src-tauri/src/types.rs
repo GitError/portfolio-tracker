@@ -122,8 +122,11 @@ impl std::str::FromStr for AssetType {
 pub enum AccountType {
     Tfsa,
     Rrsp,
+    Fhsa,
     Taxable,
+    Crypto,
     Cash,
+    Other,
 }
 
 impl AccountType {
@@ -131,8 +134,11 @@ impl AccountType {
         match self {
             AccountType::Tfsa => "tfsa",
             AccountType::Rrsp => "rrsp",
+            AccountType::Fhsa => "fhsa",
             AccountType::Taxable => "taxable",
+            AccountType::Crypto => "crypto",
             AccountType::Cash => "cash",
+            AccountType::Other => "other",
         }
     }
 }
@@ -144,11 +150,32 @@ impl std::str::FromStr for AccountType {
         match s {
             "tfsa" => Ok(AccountType::Tfsa),
             "rrsp" => Ok(AccountType::Rrsp),
+            "fhsa" => Ok(AccountType::Fhsa),
             "taxable" => Ok(AccountType::Taxable),
+            "crypto" => Ok(AccountType::Crypto),
             "cash" => Ok(AccountType::Cash),
+            "other" => Ok(AccountType::Other),
             other => Err(format!("Unknown account type: {}", other)),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Account {
+    pub id: String,
+    pub name: String,
+    pub account_type: String,
+    pub institution: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAccountRequest {
+    pub name: String,
+    pub account_type: String,
+    pub institution: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

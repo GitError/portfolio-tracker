@@ -4,9 +4,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    AccountType, AlertDirection, AssetType, Dividend, DividendInput, FxRate, Holding, HoldingInput,
-    PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolResult, Transaction,
-    TransactionInput, TransactionType,
+    Account, AccountType, AlertDirection, AssetType, Dividend, DividendInput, FxRate, Holding,
+    HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolResult,
+    Transaction, TransactionInput, TransactionType,
 };
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -123,6 +123,15 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
 
         CREATE INDEX IF NOT EXISTS idx_dividends_holding_id
             ON dividends(holding_id);
+
+        CREATE TABLE IF NOT EXISTS accounts (
+            id          TEXT PRIMARY KEY,
+            name        TEXT NOT NULL,
+            type        TEXT NOT NULL DEFAULT 'other'
+                        CHECK(type IN ('tfsa','rrsp','fhsa','taxable','crypto','other')),
+            institution TEXT,
+            created_at  TEXT NOT NULL
+        );
         ",
     )
     .map_err(|e| e.to_string())?;
@@ -915,6 +924,95 @@ pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
     Ok(rows.next().map_err(|e| e.to_string())?.is_some())
 }
 
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+pub fn insert_account(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    account_type: &str,
+    institution: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    let created_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO accounts (id, name, type, institution, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, name, account_type, institution, created_at],
+    )?;
+    Ok(())
+}
+
+pub fn get_accounts(conn: &Connection) -> Result<Vec<Account>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, type, institution, created_at FROM accounts ORDER BY created_at ASC",
+    )?;
+
+    let accounts = stmt
+        .query_map([], |row| {
+            Ok(Account {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                account_type: row.get(2)?,
+                institution: row.get(3)?,
+                created_at: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(accounts)
+}
+
+pub fn update_account(
+    conn: &Connection,
+    id: &str,
+    name: &str,
+    account_type: &str,
+    institution: Option<&str>,
+) -> Result<(), rusqlite::Error> {
+    let rows = conn.execute(
+        "UPDATE accounts SET name=?1, type=?2, institution=?3 WHERE id=?4",
+        params![name, account_type, institution, id],
+    )?;
+    if rows == 0 {
+        return Err(rusqlite::Error::QueryReturnedNoRows);
+    }
+    Ok(())
+}
+
+/// Delete an account by id. Returns an error if any holding references this account's name.
+pub fn delete_account(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
+    // Look up the account name first
+    let name: String = conn.query_row(
+        "SELECT name FROM accounts WHERE id=?1",
+        params![id],
+        |row| row.get(0),
+    )?;
+
+    // Guard: refuse deletion when holdings reference this account name
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM holdings WHERE account=?1",
+        params![name],
+        |row| row.get(0),
+    )?;
+
+    if count > 0 {
+        return Err(rusqlite::Error::SqliteFailure(
+            rusqlite::ffi::Error {
+                code: rusqlite::ffi::ErrorCode::ConstraintViolation,
+                extended_code: 0,
+            },
+            Some(format!(
+                "Cannot delete account '{}': {} holding(s) still reference it",
+                name, count
+            )),
+        ));
+    }
+
+    conn.execute("DELETE FROM accounts WHERE id=?1", params![id])?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1374,5 +1472,63 @@ mod tests {
         delete_holding(&conn, &holding.id).expect("delete holding");
         let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
         assert_eq!(txs.len(), 0);
+    }
+
+    // ── Account CRUD ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn insert_and_get_accounts() {
+        let conn = open_test_db();
+        insert_account(&conn, "acc-1", "My TFSA", "tfsa", Some("Questrade")).expect("insert");
+        insert_account(&conn, "acc-2", "RRSP", "rrsp", None).expect("insert");
+        let accounts = get_accounts(&conn).expect("get accounts");
+        assert_eq!(accounts.len(), 2);
+        let names: Vec<&str> = accounts.iter().map(|a| a.name.as_str()).collect();
+        assert!(names.contains(&"My TFSA"));
+        assert!(names.contains(&"RRSP"));
+        let tfsa = accounts.iter().find(|a| a.id == "acc-1").unwrap();
+        assert_eq!(tfsa.institution, Some("Questrade".to_string()));
+        assert_eq!(tfsa.account_type, "tfsa");
+    }
+
+    #[test]
+    fn update_account_changes_fields() {
+        let conn = open_test_db();
+        insert_account(&conn, "acc-1", "Old Name", "taxable", None).expect("insert");
+        update_account(&conn, "acc-1", "New Name", "rrsp", Some("TD")).expect("update");
+        let accounts = get_accounts(&conn).expect("get accounts");
+        let acct = accounts.iter().find(|a| a.id == "acc-1").unwrap();
+        assert_eq!(acct.name, "New Name");
+        assert_eq!(acct.account_type, "rrsp");
+        assert_eq!(acct.institution, Some("TD".to_string()));
+    }
+
+    #[test]
+    fn delete_account_succeeds_when_no_holdings() {
+        let conn = open_test_db();
+        insert_account(&conn, "acc-1", "Empty Account", "tfsa", None).expect("insert");
+        delete_account(&conn, "acc-1").expect("delete should succeed");
+        let accounts = get_accounts(&conn).expect("get accounts");
+        assert_eq!(accounts.len(), 0);
+    }
+
+    #[test]
+    fn delete_account_fails_when_holdings_reference_it() {
+        let conn = open_test_db();
+        // Insert an account named "taxable" — this matches make_input's AccountType::Taxable
+        insert_account(&conn, "acc-1", "taxable", "taxable", None).expect("insert account");
+        // Insert a holding that references account "taxable" (the default in make_input)
+        let input = make_input("AAPL");
+        insert_holding(&conn, input).expect("insert holding");
+        // Attempt deletion should fail
+        let result = delete_account(&conn, "acc-1");
+        assert!(result.is_err(), "delete should fail with referenced holdings");
+    }
+
+    #[test]
+    fn update_account_returns_error_for_nonexistent_id() {
+        let conn = open_test_db();
+        let result = update_account(&conn, "nonexistent", "Name", "tfsa", None);
+        assert!(result.is_err());
     }
 }

@@ -3,7 +3,12 @@ import { useSearchParams } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
-import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG, CURRENCY_COLORS } from '../lib/constants';
+import {
+  ACCOUNT_OPTIONS,
+  ACCOUNT_TYPE_CONFIG,
+  ASSET_TYPE_CONFIG,
+  CURRENCY_COLORS,
+} from '../lib/constants';
 import { EmptyState } from './ui/EmptyState';
 import { config } from '../lib/config';
 import { Select } from './ui/Select';
@@ -101,6 +106,8 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     };
   }, [filteredHoldings]);
 
+  const [allocView, setAllocView] = useState<'type' | 'account'>('type');
+
   const allocationData = useMemo(() => {
     if (!portfolio || totals.totalValue === 0) return [];
     const byType: Record<string, number> = {};
@@ -111,6 +118,21 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
       name: ASSET_TYPE_CONFIG[type as keyof typeof ASSET_TYPE_CONFIG]?.label ?? type,
       value: Math.round(value * 100) / 100,
       color: ASSET_TYPE_CONFIG[type as keyof typeof ASSET_TYPE_CONFIG]?.color ?? '#888',
+      pct: (value / totals.totalValue) * 100,
+    }));
+  }, [filteredHoldings, portfolio, totals]);
+
+  const accountAllocationData = useMemo(() => {
+    if (!portfolio || totals.totalValue === 0) return [];
+    const byAccount: Record<string, number> = {};
+    for (const h of filteredHoldings) {
+      const key = h.account ?? 'other';
+      byAccount[key] = (byAccount[key] ?? 0) + h.marketValueCad;
+    }
+    return Object.entries(byAccount).map(([account, value]) => ({
+      name: ACCOUNT_TYPE_CONFIG[account]?.label ?? account,
+      value: Math.round(value * 100) / 100,
+      color: ACCOUNT_TYPE_CONFIG[account]?.color ?? 'var(--text-muted)',
       pct: (value / totals.totalValue) * 100,
     }));
   }, [filteredHoldings, portfolio, totals]);
@@ -355,12 +377,45 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           overflow: 'hidden',
         }}
       >
-        <div style={{ ...LABEL, flexShrink: 0 }}>Allocation ({baseCurrency})</div>
+        <div
+          style={{
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ ...LABEL, marginBottom: 0 }}>Allocation ({baseCurrency})</div>
+          <div style={{ display: 'flex', gap: 0 }}>
+            {(['type', 'account'] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setAllocView(view)}
+                style={{
+                  padding: '2px 8px',
+                  fontSize: 10,
+                  fontFamily: 'var(--font-mono)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  background: allocView === view ? 'var(--color-accent)' : 'transparent',
+                  border: '1px solid var(--border-primary)',
+                  borderLeft: view === 'account' ? 'none' : '1px solid var(--border-primary)',
+                  color: allocView === view ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  borderRadius: 0,
+                }}
+              >
+                {view === 'type' ? 'Asset Type' : 'Account'}
+              </button>
+            ))}
+          </div>
+        </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={allocationData}
+                data={allocView === 'type' ? allocationData : accountAllocationData}
                 cx="50%"
                 cy="50%"
                 innerRadius={50}
@@ -368,11 +423,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 dataKey="value"
                 strokeWidth={0}
               >
-                {allocationData.map((entry, i) => (
+                {(allocView === 'type' ? allocationData : accountAllocationData).map((entry, i) => (
                   <Cell key={i} fill={entry.color} />
                 ))}
               </Pie>
-              <CenterLabel text="Allocation" />
+              <CenterLabel text={allocView === 'type' ? 'Allocation' : 'Accounts'} />
               <Tooltip
                 contentStyle={{
                   background: 'var(--bg-surface)',
@@ -389,7 +444,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         <div
           style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}
         >
-          {allocationData.map((d) => (
+          {(allocView === 'type' ? allocationData : accountAllocationData).map((d) => (
             <div
               key={d.name}
               style={{

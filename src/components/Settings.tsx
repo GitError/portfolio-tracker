@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Download, Upload } from 'lucide-react';
 import { useConfig } from '../hooks/useConfig';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { AccountsModal } from './AccountsModal';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
 
@@ -456,6 +457,7 @@ export function Settings() {
     'cost_basis_method',
     'AVCO'
   );
+  const [accountsOpen, setAccountsOpen] = useState(false);
 
   // Auto-refresh controls — reads/writes the same config keys as useAutoRefresh
   // in AppRoutes, so changes take effect immediately app-wide.
@@ -492,6 +494,41 @@ export function Settings() {
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
         Configure display, refresh, and calculation preferences.
       </p>
+
+      {/* General */}
+      <SectionHeader title="General" />
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: 2,
+          padding: '0 16px',
+        }}
+      >
+        <SettingRow
+          label="Accounts"
+          description="Create and manage named accounts (TFSA, RRSP, etc.) to group your holdings."
+        >
+          <button
+            onClick={() => setAccountsOpen(true)}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--color-accent)',
+              border: 'none',
+              color: '#fff',
+              borderRadius: 2,
+              fontFamily: 'var(--font-sans)',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Manage Accounts
+          </button>
+        </SettingRow>
+      </div>
+
+      <AccountsModal isOpen={accountsOpen} onClose={() => setAccountsOpen(false)} />
 
       {/* Display */}
       <SectionHeader title="Display" />
