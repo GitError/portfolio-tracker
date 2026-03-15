@@ -13,25 +13,23 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data directory");
+            let app_data_dir = app.path().app_data_dir()?;
 
-            std::fs::create_dir_all(&app_data_dir).expect("Failed to create app data directory");
+            std::fs::create_dir_all(&app_data_dir)?;
 
             let db_path = app_data_dir.join("portfolio.db");
-            let conn = Connection::open(&db_path).expect("Failed to open SQLite database");
+            let conn = Connection::open(&db_path)
+                .map_err(|e| format!("Failed to open SQLite database: {e}"))?;
 
-            db::init_db(&conn).expect("Failed to initialize database schema");
+            db::init_db(&conn).map_err(|e| format!("Failed to initialize database schema: {e}"))?;
 
             let http_client = reqwest::Client::builder()
                 .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
                 .build()
-                .expect("Failed to create HTTP client");
+                .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
             app.manage(DbState(Mutex::new(conn)));
             app.manage(HttpClient(http_client));
@@ -56,6 +54,10 @@ pub fn run() {
             commands::get_config_cmd,
             commands::set_config_cmd,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .run(tauri::generate_context!());
+
+    if let Err(e) = result {
+        eprintln!("error while running tauri application: {e}");
+        std::process::exit(1);
+    }
 }
