@@ -249,6 +249,16 @@ export function Holdings() {
   }
 
   async function handleDelete(id: string) {
+    // Guard: only delete holdings that are currently visible in the filtered view.
+    // This prevents a race where the search/account filter changes after the user
+    // clicks the trash icon but before they confirm, which would silently delete a
+    // hidden row the user can no longer see.
+    const isVisible = rows.some((h) => h.id === id);
+    if (!isVisible) {
+      setPendingDelete(null);
+      showToast('Holding is no longer visible — clear filters and try again', 'error');
+      return;
+    }
     setDeletingId(id);
     try {
       await deleteHolding(id);
