@@ -10,13 +10,20 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts';
+import { HelpCircle } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useStressTest } from '../hooks/useStressTest';
-import { createPresetScenarios, fxShockKey, ASSET_TYPE_CONFIG } from '../lib/constants';
+import {
+  createPresetScenarioInfo,
+  createPresetScenarios,
+  fxShockKey,
+  ASSET_TYPE_CONFIG,
+} from '../lib/constants';
 import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
+import { StressTestInfo } from './StressTestInfo';
 import type { StressScenario } from '../types/portfolio';
 
 // ─── Shock state keyed as the scenario.shocks keys ───────────────────────────
@@ -193,6 +200,7 @@ export function StressTest() {
   const { portfolio, holdings } = usePortfolio();
   const { result, loading, runTest } = useStressTest();
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
+  const presetScenarioInfo = useMemo(() => createPresetScenarioInfo(baseCurrency), [baseCurrency]);
   const presetScenarios = useMemo(() => createPresetScenarios(baseCurrency), [baseCurrency]);
   const presetNames = useMemo(
     () => [...presetScenarios.map((s) => s.name), 'Custom'],
@@ -201,7 +209,12 @@ export function StressTest() {
   const [presetName, setPresetName] = useState<string>('Mild Correction');
   const [shocks, setShocks] = useState<ShockMap>(ZERO_SHOCKS);
   const [showComparison, setShowComparison] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activePresetInfo = useMemo(
+    () => presetScenarioInfo.find((scenario) => scenario.name === presetName) ?? null,
+    [presetName, presetScenarioInfo]
+  );
 
   // Detect which FX sliders are relevant to held currencies
   const activeFxSliders = useMemo(() => {
@@ -320,7 +333,39 @@ export function StressTest() {
         >
           {/* Preset selector */}
           <div style={{ marginBottom: 20 }}>
-            <div style={SECTION_TITLE}>Preset Scenario</div>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ ...SECTION_TITLE, flex: 1, marginBottom: 0 }}>Preset Scenario</div>
+              {activePresetInfo && (
+                <button
+                  onClick={() => setInfoOpen(true)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'transparent',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-secondary)',
+                    padding: '5px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  <HelpCircle size={12} />
+                  Info
+                </button>
+              )}
+            </div>
             <Select
               value={presetName}
               onChange={handlePresetChange}
@@ -353,7 +398,8 @@ export function StressTest() {
                   marginBottom: 10,
                 }}
               >
-                Positive = {baseCurrency} weakens (foreign assets worth more in {baseCurrency})
+                Positive = {baseCurrency} weakens. Foreign holdings convert into more {baseCurrency}
+                . Negative = {baseCurrency} strengthens.
               </div>
               {activeFxSliders.map(({ key, label }) => (
                 <ShockSlider
@@ -728,6 +774,12 @@ export function StressTest() {
           )}
         </div>
       </div>
+
+      <StressTestInfo
+        isOpen={infoOpen}
+        scenario={activePresetInfo}
+        onClose={() => setInfoOpen(false)}
+      />
 
       {/* Slider thumb global style injection */}
       <style>{`
