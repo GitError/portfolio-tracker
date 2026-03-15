@@ -1,13 +1,22 @@
 import { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Upload,
+  Download,
+  Clock,
+} from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
-import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
+import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS } from '../lib/constants';
 import type { AccountType, Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
@@ -824,9 +833,21 @@ export function Holdings() {
                           color: 'var(--text-primary)',
                         }}
                       >
-                        {h.assetType === 'cash'
-                          ? '—'
-                          : `${formatNumber(h.currentPrice, 2)} ${h.currency}`}
+                        {h.assetType === 'cash' ? (
+                          '—'
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {formatNumber(h.currentPrice, 2)} {h.currency}
+                            {isPriceStale(portfolio?.lastUpdated) && (
+                              <span title="Price may be stale (last refreshed over 2h ago)">
+                                <Clock
+                                  size={10}
+                                  style={{ color: 'var(--color-warning)', flexShrink: 0 }}
+                                />
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </td>
                       <td
                         style={{

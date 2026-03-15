@@ -25,6 +25,15 @@ export function formatNumber(n: number | null | undefined, decimals = 2): string
   }).format(n);
 }
 
+/** Returns true if the price timestamp is older than the given threshold (default 2 hours). */
+export function isPriceStale(
+  updatedAt: string | null | undefined,
+  thresholdMs = 2 * 60 * 60 * 1000
+): boolean {
+  if (!updatedAt) return true;
+  return Date.now() - new Date(updatedAt).getTime() > thresholdMs;
+}
+
 export function formatCompact(n: number | null | undefined): string {
   if (n == null || !isFinite(n)) return '—';
   const abs = Math.abs(n);
