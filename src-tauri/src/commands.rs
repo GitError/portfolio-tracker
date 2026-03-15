@@ -12,10 +12,11 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AccountType, AssetType, CreateTransactionRequest, FxRate, Holding, HoldingInput,
-    HoldingWithPrice, ImportError, ImportResult, PerformancePoint, PortfolioSnapshot,
-    PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData, RebalanceSuggestion,
-    RefreshResult, StressResult, StressScenario, SymbolResult, Transaction,
+    AccountType, AssetType, CountryWeight, CreateTransactionRequest, FxRate, Holding, HoldingInput,
+    HoldingWithPrice, ImportError, ImportResult, PerformancePoint, PortfolioAnalytics,
+    PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
+    PriceAlertInput, PriceData, RebalanceSuggestion, RefreshResult, SectorWeight, StressResult,
+    StressScenario, SymbolMetadata, SymbolResult, Transaction,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -1260,6 +1261,267 @@ pub async fn get_rebalance_suggestions(
     });
 
     Ok(suggestions)
+}
+
+// ── Analytics Commands ────────────────────────────────────────────────────────
+
+/// Fetch enriched symbol metadata (sector, industry, country, market cap, etc.)
+/// from Yahoo Finance's v7 quote endpoint.
+pub(crate) async fn get_symbol_metadata_internal(
+    client: &reqwest::Client,
+    symbols: &[String],
+) -> Result<Vec<SymbolMetadata>, String> {
+    if symbols.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let joined = symbols.join(",");
+    let url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", crate::config::USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("Metadata request failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Metadata request returned HTTP {}",
+            response.status()
+        ));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse metadata response: {}", e))?;
+
+    let results = json
+        .pointer("/quoteResponse/result")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let metadata: Vec<SymbolMetadata> = results
+        .into_iter()
+        .map(|item| {
+            let symbol = item
+                .get("symbol")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            SymbolMetadata {
+                symbol,
+                sector: item
+                    .get("sector")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                industry: item
+                    .get("industry")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                country: item
+                    .get("country")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string()),
+                market_cap: item.get("marketCap").and_then(|v| v.as_f64()),
+                pe_ratio: item.get("trailingPE").and_then(|v| v.as_f64()),
+                dividend_yield: item
+                    .get("trailingAnnualDividendYield")
+                    .and_then(|v| v.as_f64()),
+                beta: item.get("beta").and_then(|v| v.as_f64()),
+            }
+        })
+        .collect();
+
+    Ok(metadata)
+}
+
+#[tauri::command]
+pub async fn get_symbol_metadata(
+    _state: State<'_, DbState>,
+    http: State<'_, HttpClient>,
+    symbols: Vec<String>,
+) -> Result<Vec<SymbolMetadata>, String> {
+    get_symbol_metadata_internal(&http.0, &symbols).await
+}
+
+fn compute_portfolio_analytics(
+    snapshot: &PortfolioSnapshot,
+    metadata: &[SymbolMetadata],
+) -> PortfolioAnalytics {
+    let total_value = snapshot.total_value;
+
+    // Build a lookup map from symbol → metadata
+    let meta_map: HashMap<String, &SymbolMetadata> =
+        metadata.iter().map(|m| (m.symbol.clone(), m)).collect();
+
+    // Sector and country accumulators (symbol → (sector, country, market_value_cad))
+    let mut sector_values: HashMap<String, f64> = HashMap::new();
+    let mut country_values: HashMap<String, f64> = HashMap::new();
+
+    let mut weighted_beta_sum = 0.0_f64;
+    let mut weighted_beta_weight = 0.0_f64;
+    let mut weighted_yield_sum = 0.0_f64;
+    let mut largest_position_weight = 0.0_f64;
+
+    for holding in &snapshot.holdings {
+        let weight_fraction = if total_value > 0.0 {
+            holding.market_value_cad / total_value
+        } else {
+            0.0
+        };
+
+        if holding.weight > largest_position_weight {
+            largest_position_weight = holding.weight;
+        }
+
+        let (sector, country) = match holding.asset_type.as_str() {
+            "cash" => ("Cash".to_string(), "N/A".to_string()),
+            _ => {
+                let sector = meta_map
+                    .get(&holding.symbol)
+                    .and_then(|m| m.sector.clone())
+                    .unwrap_or_else(|| "Other".to_string());
+                let country = meta_map
+                    .get(&holding.symbol)
+                    .and_then(|m| m.country.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                (sector, country)
+            }
+        };
+
+        *sector_values.entry(sector).or_insert(0.0) += holding.market_value_cad;
+        *country_values.entry(country).or_insert(0.0) += holding.market_value_cad;
+
+        if let Some(meta) = meta_map.get(&holding.symbol) {
+            if let Some(beta) = meta.beta {
+                weighted_beta_sum += beta * weight_fraction;
+                weighted_beta_weight += weight_fraction;
+            }
+            if let Some(div_yield) = meta.dividend_yield {
+                weighted_yield_sum += div_yield * weight_fraction;
+            }
+        }
+    }
+
+    // Convert value accumulators to weight percentages
+    let mut sector_breakdown: Vec<SectorWeight> = sector_values
+        .into_iter()
+        .map(|(sector, value)| SectorWeight {
+            sector,
+            weight_percent: if total_value > 0.0 {
+                (value / total_value) * 100.0
+            } else {
+                0.0
+            },
+        })
+        .collect();
+    sector_breakdown.sort_by(|a, b| {
+        b.weight_percent
+            .partial_cmp(&a.weight_percent)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut country_breakdown: Vec<CountryWeight> = country_values
+        .into_iter()
+        .map(|(country, value)| CountryWeight {
+            country,
+            weight_percent: if total_value > 0.0 {
+                (value / total_value) * 100.0
+            } else {
+                0.0
+            },
+        })
+        .collect();
+    country_breakdown.sort_by(|a, b| {
+        b.weight_percent
+            .partial_cmp(&a.weight_percent)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // HHI: sum of (weight_fraction^2) * 10000
+    let concentration_hhi: f64 = snapshot
+        .holdings
+        .iter()
+        .map(|h| {
+            let w = if total_value > 0.0 {
+                h.market_value_cad / total_value
+            } else {
+                0.0
+            };
+            w * w * 10000.0
+        })
+        .sum();
+
+    let top_sector = sector_breakdown.first().map(|s| s.sector.clone());
+
+    let weighted_beta = if weighted_beta_weight > 0.0 {
+        Some(weighted_beta_sum / weighted_beta_weight)
+    } else {
+        None
+    };
+
+    let risk_metrics = PortfolioRiskMetrics {
+        weighted_beta,
+        portfolio_yield: weighted_yield_sum,
+        largest_position_weight,
+        top_sector,
+        concentration_hhi,
+    };
+
+    PortfolioAnalytics {
+        metadata: metadata.to_vec(),
+        risk_metrics,
+        sector_breakdown,
+        country_breakdown,
+    }
+}
+
+#[tauri::command]
+pub async fn get_portfolio_analytics(
+    db: State<'_, DbState>,
+    http: State<'_, HttpClient>,
+) -> Result<PortfolioAnalytics, String> {
+    let base_currency = get_base_currency(&db);
+
+    let holdings = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_all_holdings(&conn)?
+    };
+
+    let (cached_prices, cached_fx) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
+    };
+
+    let snapshot = build_portfolio_snapshot(
+        &holdings,
+        &cached_prices,
+        &cached_fx,
+        &base_currency,
+        Utc::now().to_rfc3339(),
+    );
+
+    // Only fetch metadata for non-cash symbols
+    let non_cash_symbols: Vec<String> = snapshot
+        .holdings
+        .iter()
+        .filter(|h| h.asset_type.as_str() != "cash")
+        .map(|h| h.symbol.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    let metadata = get_symbol_metadata_internal(&http.0, &non_cash_symbols)
+        .await
+        .unwrap_or_default();
+
+    Ok(compute_portfolio_analytics(&snapshot, &metadata))
 }
 
 #[cfg(test)]

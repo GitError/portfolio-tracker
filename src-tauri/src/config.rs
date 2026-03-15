@@ -25,6 +25,8 @@ pub const YAHOO_CHART_URL: &str =
 pub const YAHOO_SEARCH_URL: &str =
     "https://query1.finance.yahoo.com/v1/finance/search?q={}&quotesCount=8&newsCount=0&enableFuzzyQuery=false";
 
+pub const YAHOO_QUOTE_URL: &str = "https://query1.finance.yahoo.com/v7/finance/quote?symbols={}";
+
 /// User-Agent sent with every outbound HTTP request.
 /// Yahoo Finance returns 403 without a browser-like UA string.
 pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";

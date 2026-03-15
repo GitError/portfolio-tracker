@@ -9,6 +9,7 @@ import { Rebalance } from './components/Rebalance';
 import { Alerts } from './components/Alerts';
 import { Settings } from './components/Settings';
 import { TransactionHistory } from './components/TransactionHistory';
+import { Analytics } from './components/Analytics';
 import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
 import { KeyboardShortcutsOverlay } from './components/ui/KeyboardShortcutsOverlay';
@@ -133,6 +134,7 @@ function AppRoutes() {
           <Route path="/rebalance" element={<Rebalance />} />
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/transactions" element={<TransactionHistory />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>

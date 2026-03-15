@@ -313,6 +313,52 @@ pub struct RefreshResult {
     pub failed_symbols: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct SymbolMetadata {
+    pub symbol: String,
+    pub sector: Option<String>,
+    pub industry: Option<String>,
+    pub country: Option<String>,
+    pub market_cap: Option<f64>,
+    pub pe_ratio: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub beta: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SectorWeight {
+    pub sector: String,
+    pub weight_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountryWeight {
+    pub country: String,
+    pub weight_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortfolioRiskMetrics {
+    pub weighted_beta: Option<f64>,
+    pub portfolio_yield: f64,
+    pub largest_position_weight: f64,
+    pub top_sector: Option<String>,
+    pub concentration_hhi: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortfolioAnalytics {
+    pub metadata: Vec<SymbolMetadata>,
+    pub risk_metrics: PortfolioRiskMetrics,
+    pub sector_breakdown: Vec<SectorWeight>,
+    pub country_breakdown: Vec<CountryWeight>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RebalanceSuggestion {
