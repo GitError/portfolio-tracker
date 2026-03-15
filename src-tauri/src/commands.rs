@@ -390,13 +390,27 @@ fn build_portfolio_snapshot(
             holding.currency.to_uppercase(),
             base_currency.to_uppercase()
         );
-        let fx_rate = if holding.currency.eq_ignore_ascii_case(base_currency) {
-            1.0
+        let fx_rate_result = if holding.currency.eq_ignore_ascii_case(base_currency) {
+            Ok(1.0f64)
         } else {
-            fx_map.get(&fx_pair).map(|r| r.rate).unwrap_or_else(|| {
-                convert_to_base(1.0, &holding.currency, base_currency, cached_fx)
-            })
+            fx_map
+                .get(&fx_pair)
+                .map(|r| Ok(r.rate))
+                .unwrap_or_else(|| convert_to_base(1.0, &holding.currency, base_currency, cached_fx))
         };
+
+        let fx_rate = match fx_rate_result {
+            Ok(rate) => rate,
+            Err(ref e) => {
+                eprintln!(
+                    "FX conversion error for holding {} ({}): {}; setting market/cost values to 0",
+                    holding.symbol, holding.currency, e
+                );
+                0.0
+            }
+        };
+
+        let fx_available = fx_rate_result.is_ok();
 
         let current_price_cad = current_price * fx_rate;
         let market_value_cad = holding.quantity * current_price_cad;
@@ -408,9 +422,11 @@ fn build_portfolio_snapshot(
             0.0
         };
 
-        total_value += market_value_cad;
-        total_cost += cost_value_cad;
-        daily_pnl += market_value_cad * (change_percent / 100.0);
+        if fx_available {
+            total_value += market_value_cad;
+            total_cost += cost_value_cad;
+            daily_pnl += market_value_cad * (change_percent / 100.0);
+        }
 
         holdings_with_price.push(HoldingWithPrice {
             id: holding.id.clone(),
@@ -1174,5 +1190,54 @@ mod tests {
         assert!((snapshot.holdings[0].target_delta_value + 180.0).abs() < 0.001);
         assert!((snapshot.holdings[1].target_delta_value + 330.0).abs() < 0.001);
         assert!((snapshot.target_cash_delta - 330.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_zeroes_holding_when_fx_rate_missing() {
+        // One CAD holding (base), one USD holding with NO fx rate provided.
+        let holdings = vec![
+            make_holding("SHOP.TO", AssetType::Stock, 10.0, 100.0, "CAD"),
+            make_holding("AAPL", AssetType::Stock, 5.0, 100.0, "USD"),
+        ];
+        let prices = vec![
+            PriceData {
+                symbol: "SHOP.TO".to_string(),
+                price: 110.0,
+                currency: "CAD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+            },
+            PriceData {
+                symbol: "AAPL".to_string(),
+                price: 150.0,
+                currency: "USD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+            },
+        ];
+
+        // No FX rates — USDCAD is missing
+        let snapshot = build_portfolio_snapshot(
+            &holdings,
+            &prices,
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+        );
+
+        // CAD holding is unaffected
+        assert!((snapshot.holdings[0].market_value_cad - 1100.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].cost_value_cad - 1000.0).abs() < 0.001);
+
+        // USD holding with missing FX rate gets zeroed out — NOT a 1:1 conversion
+        assert_eq!(snapshot.holdings[1].market_value_cad, 0.0);
+        assert_eq!(snapshot.holdings[1].cost_value_cad, 0.0);
+        assert_eq!(snapshot.holdings[1].gain_loss, 0.0);
+
+        // Portfolio totals exclude the holding with missing FX
+        assert!((snapshot.total_value - 1100.0).abs() < 0.001);
+        assert!((snapshot.total_cost - 1000.0).abs() < 0.001);
     }
 }

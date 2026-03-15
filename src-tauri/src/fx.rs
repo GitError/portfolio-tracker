@@ -46,23 +46,25 @@ pub async fn fetch_all_fx_rates(
         .collect()
 }
 
-pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[FxRate]) -> f64 {
+pub fn convert_to_base(
+    amount: f64,
+    from_currency: &str,
+    base: &str,
+    rates: &[FxRate],
+) -> Result<f64, String> {
     let from_upper = from_currency.to_uppercase();
     let base_upper = base.to_uppercase();
     if from_upper == base_upper {
-        return amount;
+        return Ok(amount);
     }
 
     let pair = format!("{}{}", from_upper, base_upper);
     match rates.iter().find(|r| r.pair == pair) {
-        Some(rate) => amount * rate.rate,
-        None => {
-            eprintln!(
-                "FX rate not found for {} → {}, returning unconverted amount",
-                from_currency, base
-            );
-            amount
-        }
+        Some(rate) => Ok(amount * rate.rate),
+        None => Err(format!(
+            "FX rate not found for {} → {}",
+            from_currency, base
+        )),
     }
 }
 
@@ -81,29 +83,44 @@ mod tests {
     #[test]
     fn base_passthrough_returns_amount_unchanged() {
         let rates = vec![make_rate("USDCAD", 1.36)];
-        assert_eq!(convert_to_base(100.0, "CAD", "CAD", &rates), 100.0);
-        assert_eq!(convert_to_base(100.0, "cad", "CAD", &rates), 100.0);
-        assert_eq!(convert_to_base(100.0, "USD", "USD", &rates), 100.0);
+        assert_eq!(convert_to_base(100.0, "CAD", "CAD", &rates), Ok(100.0));
+        assert_eq!(convert_to_base(100.0, "cad", "CAD", &rates), Ok(100.0));
+        assert_eq!(convert_to_base(100.0, "USD", "USD", &rates), Ok(100.0));
     }
 
     #[test]
     fn usd_converts_to_cad_correctly() {
         let rates = vec![make_rate("USDCAD", 1.36)];
-        let result = convert_to_base(100.0, "USD", "CAD", &rates);
+        let result = convert_to_base(100.0, "USD", "CAD", &rates).expect("rate should be found");
         assert!((result - 136.0).abs() < 0.001);
     }
 
     #[test]
     fn cad_converts_to_usd_correctly() {
         let rates = vec![make_rate("CADUSD", 0.735)];
-        let result = convert_to_base(100.0, "CAD", "USD", &rates);
+        let result = convert_to_base(100.0, "CAD", "USD", &rates).expect("rate should be found");
         assert!((result - 73.5).abs() < 0.001);
     }
 
     #[test]
-    fn missing_rate_returns_amount_unchanged() {
+    fn missing_rate_returns_err() {
         let result = convert_to_base(200.0, "EUR", "CAD", &[]);
-        assert_eq!(result, 200.0);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("EUR") && err.contains("CAD"),
+            "error message should name the currencies, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn present_rate_returns_ok_with_converted_value() {
+        let rates = vec![make_rate("EURCAD", 1.45)];
+        let result = convert_to_base(100.0, "EUR", "CAD", &rates);
+        assert!(result.is_ok());
+        let value = result.unwrap();
+        assert!((value - 145.0).abs() < 0.001);
     }
 
     #[test]
