@@ -24,6 +24,7 @@ import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { StressTestInfo } from './StressTestInfo';
+import { config } from '../lib/config';
 import type { PortfolioSnapshot, StressScenario, StressScenarioInfo } from '../types/portfolio';
 
 // ─── Shock state keyed as the scenario.shocks keys ───────────────────────────
@@ -585,7 +586,7 @@ export function StressTest() {
           shocks: Object.fromEntries(Object.entries(nextShocks).filter(([, v]) => v !== 0)),
         };
         runTest(scenario, portfolio);
-      }, 150);
+      }, config.stressTestDebounceMs);
     },
     [portfolio, presetName, runTest]
   );

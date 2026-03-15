@@ -26,7 +26,7 @@ fn get_base_currency(db: &State<'_, DbState>) -> String {
     db.0.lock()
         .ok()
         .and_then(|conn| db::get_config(&conn, "base_currency").ok().flatten())
-        .unwrap_or_else(|| "CAD".to_string())
+        .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
 }
 
 #[allow(dead_code)]
@@ -62,7 +62,9 @@ impl SearchCacheState {
     fn get(&self, key: &str) -> Option<Vec<SymbolResult>> {
         let cache = self.0.lock().ok()?;
         let entry = cache.get(key)?;
-        if entry.cached_at.elapsed() > Duration::from_secs(300) {
+        if entry.cached_at.elapsed()
+            > Duration::from_secs(crate::config::SEARCH_CACHE_TTL_SECS as u64)
+        {
             return None;
         }
         Some(entry.results.clone())
@@ -70,7 +72,7 @@ impl SearchCacheState {
 
     fn set(&self, key: String, results: Vec<SymbolResult>) {
         if let Ok(mut cache) = self.0.lock() {
-            if cache.len() >= 200 {
+            if cache.len() >= crate::config::SEARCH_CACHE_MAX_ENTRIES {
                 cache.clear();
             }
             cache.insert(
@@ -93,6 +95,7 @@ struct ParsedImportRow {
     quantity: f64,
     cost_basis: f64,
     currency: String,
+    exchange: String,
     target_weight: f64,
 }
 
@@ -107,6 +110,7 @@ fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
             "quantity",
             "cost_basis",
             "currency",
+            "exchange",
             "target_weight",
         ])
         .map_err(|e| e.to_string())?;
@@ -121,6 +125,7 @@ fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
                 holding.quantity.to_string(),
                 holding.cost_basis.to_string(),
                 holding.currency.clone(),
+                holding.exchange.clone(),
                 holding.target_weight.to_string(),
             ])
             .map_err(|e| e.to_string())?;
@@ -206,6 +211,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
         .ok_or_else(|| "Missing required column: symbol".to_string())?;
     let name_index = find_column_index(&headers, "name");
     let account_index = find_column_index(&headers, "account");
+    let exchange_index = find_column_index(&headers, "exchange");
     let type_index = find_column_index(&headers, "type")
         .ok_or_else(|| "Missing required column: type".to_string())?;
     let quantity_index = find_column_index(&headers, "quantity")
@@ -297,6 +303,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             quantity,
             cost_basis,
             currency,
+            exchange: parse_optional_field(&record, exchange_index).to_uppercase(),
             target_weight,
         });
     }
@@ -414,6 +421,7 @@ fn build_portfolio_snapshot(
             quantity: holding.quantity,
             cost_basis: holding.cost_basis,
             currency: holding.currency.clone(),
+            exchange: holding.exchange.clone(),
             target_weight: holding.target_weight,
             created_at: holding.created_at.clone(),
             updated_at: holding.updated_at.clone(),
@@ -571,6 +579,7 @@ pub async fn import_holdings_csv(
                 quantity: row.quantity,
                 cost_basis: row.cost_basis,
                 currency: row.currency,
+                exchange: row.exchange,
                 target_weight: row.target_weight,
             });
             continue;
@@ -622,6 +631,11 @@ pub async fn import_holdings_csv(
             quantity: row.quantity,
             cost_basis: row.cost_basis,
             currency: row.currency,
+            exchange: if row.exchange.is_empty() {
+                validated.exchange
+            } else {
+                row.exchange
+            },
             target_weight: row.target_weight,
         });
     }
@@ -933,6 +947,7 @@ mod tests {
             quantity,
             cost_basis,
             currency: currency.to_string(),
+            exchange: String::new(),
             target_weight: 0.0,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),

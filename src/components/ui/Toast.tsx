@@ -1,5 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
+import { config } from '../../lib/config';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -27,7 +28,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    timerRef.current = setTimeout(() => onDismiss(toast.id), 4000);
+    timerRef.current = setTimeout(() => onDismiss(toast.id), config.toastDismissMs);
     return () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
     };
