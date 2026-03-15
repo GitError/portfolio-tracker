@@ -34,12 +34,12 @@ function assetTypeBadge(type: string) {
 
 function downloadTemplate() {
   const template = [
-    'symbol,name,type,account,quantity,cost_basis,currency',
-    'AAPL,Apple Inc.,stock,tfsa,50,142.50,USD',
-    'BMO:CA,Bank of Montreal,stock,rrsp,100,80.00,CAD',
-    'VOO,Vanguard S&P 500 ETF,etf,rrsp,20,380.00,USD',
-    'BTC-USD,Bitcoin,crypto,taxable,0.5,45000.00,USD',
-    ',US Dollar Cash,cash,taxable,5000,1.00,USD',
+    'symbol,name,type,account,quantity,cost_basis,currency,target_weight',
+    'AAPL,Apple Inc.,stock,tfsa,50,142.50,USD,20',
+    'BMO:CA,Bank of Montreal,stock,rrsp,100,80.00,CAD,15',
+    'VOO,Vanguard S&P 500 ETF,etf,rrsp,20,380.00,USD,35',
+    'BTC-USD,Bitcoin,crypto,taxable,0.5,45000.00,USD,5',
+    ',US Dollar Cash,cash,taxable,5000,1.00,USD,10',
   ].join('\n');
 
   const blob = new Blob([template], { type: 'text/csv;charset=utf-8' });
@@ -73,6 +73,7 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               'CCY',
               'Qty',
               'Cost',
+              'Target %',
               'Status',
             ].map((h) => (
               <th
@@ -134,6 +135,9 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               </td>
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
                 {r.costBasis.toFixed(2)}
+              </td>
+              <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                {r.targetWeight.toFixed(1)}%
               </td>
               <td style={TD}>{statusCell(r.status)}</td>
             </tr>
@@ -242,7 +246,9 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
             <div style={{ ...MONO, fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
               Supports <code style={{ color: 'var(--text-secondary)' }}>SYMBOL:COUNTRY</code> (e.g.{' '}
               <code style={{ color: 'var(--text-secondary)' }}>BMO:CA</code>), plain symbols, and
-              cash rows.
+              cash rows. Optional{' '}
+              <code style={{ color: 'var(--text-secondary)' }}>target_weight</code> values are
+              preserved on import and export.
             </div>
           </div>
           <button

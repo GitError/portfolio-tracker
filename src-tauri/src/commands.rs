@@ -93,6 +93,41 @@ struct ParsedImportRow {
     quantity: f64,
     cost_basis: f64,
     currency: String,
+    target_weight: f64,
+}
+
+fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
+    let mut writer = WriterBuilder::new().from_writer(vec![]);
+    writer
+        .write_record([
+            "symbol",
+            "name",
+            "type",
+            "account",
+            "quantity",
+            "cost_basis",
+            "currency",
+            "target_weight",
+        ])
+        .map_err(|e| e.to_string())?;
+
+    for holding in holdings {
+        writer
+            .write_record([
+                holding.symbol.clone(),
+                holding.name.clone(),
+                holding.asset_type.as_str().to_string(),
+                holding.account.as_str().to_string(),
+                holding.quantity.to_string(),
+                holding.cost_basis.to_string(),
+                holding.currency.clone(),
+                holding.target_weight.to_string(),
+            ])
+            .map_err(|e| e.to_string())?;
+    }
+
+    let bytes = writer.into_inner().map_err(|e| e.to_string())?;
+    String::from_utf8(bytes).map_err(|e| e.to_string())
 }
 
 fn detect_csv_delimiter(content: &str) -> u8 {
@@ -179,6 +214,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
         .ok_or_else(|| "Missing required column: cost_basis".to_string())?;
     let currency_index = find_column_index(&headers, "currency")
         .ok_or_else(|| "Missing required column: currency".to_string())?;
+    let target_weight_index = find_column_index(&headers, "target_weight");
 
     let mut rows = Vec::new();
 
@@ -239,6 +275,19 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             return Err(format!("Row {}: invalid_cost_basis", row));
         }
 
+        let target_weight = parse_optional_field(&record, target_weight_index);
+        let target_weight = if target_weight.is_empty() {
+            0.0
+        } else {
+            let parsed = target_weight
+                .parse::<f64>()
+                .map_err(|_| format!("Row {}: invalid_target_weight", row))?;
+            if !(0.0..=100.0).contains(&parsed) {
+                return Err(format!("Row {}: invalid_target_weight", row));
+            }
+            parsed
+        };
+
         rows.push(ParsedImportRow {
             row,
             symbol,
@@ -248,6 +297,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             quantity,
             cost_basis,
             currency,
+            target_weight,
         });
     }
 
@@ -475,36 +525,7 @@ pub async fn export_holdings_csv(db: State<'_, DbState>) -> Result<String, Strin
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
     };
-
-    let mut writer = WriterBuilder::new().from_writer(vec![]);
-    writer
-        .write_record([
-            "symbol",
-            "name",
-            "type",
-            "account",
-            "quantity",
-            "cost_basis",
-            "currency",
-        ])
-        .map_err(|e| e.to_string())?;
-
-    for holding in holdings {
-        writer
-            .write_record([
-                holding.symbol,
-                holding.name,
-                holding.asset_type.as_str().to_string(),
-                holding.account.as_str().to_string(),
-                holding.quantity.to_string(),
-                holding.cost_basis.to_string(),
-                holding.currency,
-            ])
-            .map_err(|e| e.to_string())?;
-    }
-
-    let bytes = writer.into_inner().map_err(|e| e.to_string())?;
-    String::from_utf8(bytes).map_err(|e| e.to_string())
+    build_holdings_csv(&holdings)
 }
 
 #[tauri::command]
@@ -550,7 +571,7 @@ pub async fn import_holdings_csv(
                 quantity: row.quantity,
                 cost_basis: row.cost_basis,
                 currency: row.currency,
-                target_weight: 0.0,
+                target_weight: row.target_weight,
             });
             continue;
         }
@@ -601,7 +622,7 @@ pub async fn import_holdings_csv(
             quantity: row.quantity,
             cost_basis: row.cost_basis,
             currency: row.currency,
-            target_weight: 0.0,
+            target_weight: row.target_weight,
         });
     }
 
@@ -652,6 +673,7 @@ pub async fn preview_import_csv(
                 exchange: String::new(),
                 quantity: row.quantity,
                 cost_basis: row.cost_basis,
+                target_weight: row.target_weight,
                 status: "duplicate".to_string(),
             });
             continue;
@@ -673,6 +695,7 @@ pub async fn preview_import_csv(
                 exchange: String::new(),
                 quantity: row.quantity,
                 cost_basis: row.cost_basis,
+                target_weight: row.target_weight,
                 status: "ready".to_string(),
             });
             continue;
@@ -695,6 +718,7 @@ pub async fn preview_import_csv(
                     exchange: result.exchange,
                     quantity: row.quantity,
                     cost_basis: row.cost_basis,
+                    target_weight: row.target_weight,
                     status: "ready".to_string(),
                 });
             }
@@ -709,6 +733,7 @@ pub async fn preview_import_csv(
                     exchange: String::new(),
                     quantity: row.quantity,
                     cost_basis: row.cost_basis,
+                    target_weight: row.target_weight,
                     status: "invalid_symbol".to_string(),
                 });
             }
@@ -723,6 +748,7 @@ pub async fn preview_import_csv(
                     exchange: String::new(),
                     quantity: row.quantity,
                     cost_basis: row.cost_basis,
+                    target_weight: row.target_weight,
                     status: "validation_failed".to_string(),
                 });
             }
@@ -966,11 +992,33 @@ mod tests {
     }
 
     #[test]
+    fn parse_import_rows_reads_optional_target_weight() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\nAAPL,Apple Inc.,stock,5,120,USD,12.5\n";
+        let rows = parse_import_rows(csv).expect("parse csv");
+
+        assert_eq!(rows.len(), 1);
+        assert!((rows[0].target_weight - 12.5).abs() < 0.001);
+    }
+
+    #[test]
     fn parse_import_rows_rejects_missing_required_columns() {
         let csv = "symbol,name,type,quantity,currency\nAAPL,Apple Inc.,stock,5,USD\n";
         let error = parse_import_rows(csv).expect_err("missing cost_basis should fail");
 
         assert!(error.contains("Missing required column: cost_basis"));
+    }
+
+    #[test]
+    fn build_holdings_csv_includes_target_weight_column() {
+        let mut holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
+        holding.target_weight = 22.5;
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+
+        assert!(
+            csv.starts_with("symbol,name,type,account,quantity,cost_basis,currency,target_weight")
+        );
+        assert!(csv.contains(",22.5"));
     }
 
     #[test]

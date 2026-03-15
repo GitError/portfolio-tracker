@@ -230,6 +230,7 @@ pub struct PreviewRow {
     pub exchange: String,
     pub quantity: f64,
     pub cost_basis: f64,
+    pub target_weight: f64,
     /// "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed"
     pub status: String,
 }
