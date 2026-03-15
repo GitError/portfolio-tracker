@@ -12,12 +12,17 @@ import {
 } from 'recharts';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useStressTest } from '../hooks/useStressTest';
-import { createPresetScenarios, fxShockKey, ASSET_TYPE_CONFIG } from '../lib/constants';
+import {
+  createPresetScenarios,
+  fxShockKey,
+  ASSET_TYPE_CONFIG,
+  type PresetScenarioConfig,
+} from '../lib/constants';
 import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
-import type { StressScenario } from '../types/portfolio';
+import type { PortfolioSnapshot, StressScenario } from '../types/portfolio';
 
 // ─── Shock state keyed as the scenario.shocks keys ───────────────────────────
 type ShockMap = Record<string, number>; // values are decimals e.g. -0.20
@@ -125,65 +130,405 @@ function ShockSlider({
   );
 }
 
-// ─── Comparison chart ─────────────────────────────────────────────────────────
-function ComparisonChart({
-  totalValue,
-  currency,
+// ─── Compute stressed value for a scenario inline ─────────────────────────────
+function computeScenarioLocally(
+  snapshot: PortfolioSnapshot,
+  scenario: StressScenario
+): {
+  stressedValue: number;
+  totalImpact: number;
+  totalImpactPercent: number;
+  topImpacted: { symbol: string; impact: number }[];
+} {
+  let totalStressed = 0;
+  const breakdown: { symbol: string; impact: number }[] = [];
+
+  for (const h of snapshot.holdings) {
+    const assetShock = scenario.shocks[h.assetType] ?? 0;
+    const fxKey = fxShockKey(h.currency, snapshot.baseCurrency);
+    const fxShock =
+      h.currency.toUpperCase() === snapshot.baseCurrency.toUpperCase()
+        ? 0
+        : (scenario.shocks[fxKey] ?? 0);
+
+    const currentValue = h.marketValueCad;
+    const stressedValue = currentValue * (1 + assetShock) * (1 + fxShock);
+    const impact = stressedValue - currentValue;
+    totalStressed += stressedValue;
+    breakdown.push({ symbol: h.symbol, impact });
+  }
+
+  const currentValue = snapshot.totalValue;
+  const totalImpact = totalStressed - currentValue;
+  const totalImpactPercent = currentValue !== 0 ? (totalImpact / currentValue) * 100 : 0;
+
+  const topImpacted = [...breakdown]
+    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+    .slice(0, 2);
+
+  return { stressedValue: totalStressed, totalImpact, totalImpactPercent, topImpacted };
+}
+
+// ─── Scenario comparison table ────────────────────────────────────────────────
+function ScenarioComparison({
+  portfolio,
   scenarios,
 }: {
-  totalValue: number;
-  currency: string;
-  scenarios: StressScenario[];
+  portfolio: PortfolioSnapshot;
+  scenarios: PresetScenarioConfig[];
 }) {
-  const data = scenarios.map((s) => {
-    let stressed = 0;
-    // crude estimate: no holdings breakdown, use asset shock weighted avg
-    const avg =
-      Object.values(s.shocks).reduce((a, b) => a + b, 0) /
-      Math.max(Object.keys(s.shocks).length, 1);
-    stressed = totalValue * (1 + avg);
-    const impact = stressed - totalValue;
-    return { name: s.name, impact: Math.round(impact), pct: (impact / totalValue) * 100 };
-  });
+  const baseCurrency = portfolio.baseCurrency;
+
+  const rows = useMemo(
+    () =>
+      scenarios.map((s) => {
+        const result = computeScenarioLocally(portfolio, s);
+        return {
+          name: s.name,
+          description: s.description,
+          stressedValue: result.stressedValue,
+          totalImpact: result.totalImpact,
+          totalImpactPercent: result.totalImpactPercent,
+          topImpacted: result.topImpacted,
+        };
+      }),
+    [portfolio, scenarios]
+  );
 
   return (
-    <div style={{ ...PANEL, marginTop: 1 }}>
+    <div style={{ ...PANEL, marginBottom: 1 }}>
       <div style={SECTION_TITLE}>Scenario Comparison</div>
-      <ResponsiveContainer width="100%" height={140}>
-        <BarChart data={data} margin={{ top: 0, right: 0, left: 10, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
-          <XAxis
-            dataKey="name"
-            tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'var(--font-mono)' }}
-            axisLine={{ stroke: 'var(--border-primary)' }}
-            tickLine={false}
-          />
-          <YAxis
-            tickFormatter={(v) => formatCompact(v)}
-            tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'var(--font-mono)' }}
-            axisLine={false}
-            tickLine={false}
-            width={58}
-          />
-          <ReferenceLine y={0} stroke="var(--border-primary)" />
-          <Tooltip
-            contentStyle={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-primary)',
-              borderRadius: 0,
-              fontSize: 11,
-              fontFamily: 'var(--font-mono)',
-            }}
-            formatter={(v: unknown) => [formatCurrency(Number(v), currency), 'Impact']}
-            labelStyle={{ color: 'var(--text-secondary)' }}
-          />
-          <Bar dataKey="impact" maxBarSize={40}>
-            {data.map((d, i) => (
-              <Cell key={i} fill={d.impact >= 0 ? 'var(--color-gain)' : 'var(--color-loss)'} />
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr>
+              {[
+                'Scenario',
+                `Stressed Value (${baseCurrency})`,
+                `Impact (${baseCurrency})`,
+                'Impact (%)',
+                'Top Impacted Holdings',
+              ].map((col) => (
+                <th
+                  key={col}
+                  style={{
+                    ...TD,
+                    background: 'var(--bg-surface-alt)',
+                    color: 'var(--text-secondary)',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    fontSize: 9,
+                    textAlign:
+                      col === 'Scenario' || col === 'Top Impacted Holdings' ? 'left' : 'right',
+                    borderBottom: '1px solid var(--border-primary)',
+                  }}
+                >
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {/* Current value reference row */}
+            <tr style={{ background: 'var(--bg-surface-alt)' }}>
+              <td
+                style={{
+                  ...TD,
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                }}
+              >
+                Current Value
+              </td>
+              <td
+                style={{
+                  ...TD,
+                  textAlign: 'right',
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                }}
+              >
+                {formatCurrency(portfolio.totalValue, baseCurrency)}
+              </td>
+              <td
+                style={{
+                  ...TD,
+                  textAlign: 'right',
+                  color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                —
+              </td>
+              <td
+                style={{
+                  ...TD,
+                  textAlign: 'right',
+                  color: 'var(--text-muted)',
+                  fontFamily: 'var(--font-mono)',
+                }}
+              >
+                —
+              </td>
+              <td style={{ ...TD, color: 'var(--text-muted)', borderRight: 'none' }}>—</td>
+            </tr>
+
+            {/* Scenario rows */}
+            {rows.map((row, i) => (
+              <tr
+                key={row.name}
+                style={{ background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)' }}
+              >
+                <td style={{ ...TD, fontFamily: 'var(--font-mono)' }}>
+                  <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{row.name}</div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: 'var(--text-muted)',
+                      marginTop: 2,
+                      fontFamily: 'var(--font-sans)',
+                      whiteSpace: 'normal',
+                      maxWidth: 220,
+                    }}
+                  >
+                    {row.description}
+                  </div>
+                </td>
+                <td
+                  style={{
+                    ...TD,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    color: pnlColor(row.totalImpact),
+                  }}
+                >
+                  {formatCurrency(row.stressedValue, baseCurrency)}
+                </td>
+                <td
+                  style={{
+                    ...TD,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 600,
+                    color: pnlColor(row.totalImpact),
+                  }}
+                >
+                  {row.totalImpact >= 0 ? '+' : ''}
+                  {formatCurrency(row.totalImpact, baseCurrency)}
+                </td>
+                <td
+                  style={{
+                    ...TD,
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    fontWeight: 600,
+                    color: pnlColor(row.totalImpact),
+                  }}
+                >
+                  {formatPercent(row.totalImpactPercent)}
+                </td>
+                <td style={{ ...TD, borderRight: 'none' }}>
+                  {row.topImpacted.length === 0 ? (
+                    <span style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      —
+                    </span>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      {row.topImpacted.map((h) => (
+                        <div
+                          key={h.symbol}
+                          style={{
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 10,
+                            color: pnlColor(h.impact),
+                          }}
+                        >
+                          <span style={{ fontWeight: 700 }}>{h.symbol}</span>{' '}
+                          <span>
+                            {h.impact >= 0 ? '+' : ''}
+                            {formatCompact(h.impact)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </td>
+              </tr>
             ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Resilience summary ───────────────────────────────────────────────────────
+function ResilienceSummary({ portfolio }: { portfolio: PortfolioSnapshot | null }) {
+  if (!portfolio || portfolio.holdings.length === 0) return null;
+
+  const baseCurrency = portfolio.baseCurrency;
+
+  // Largest single-holding risk by weight
+  const largestHolding = [...portfolio.holdings].sort((a, b) => b.weight - a.weight)[0];
+
+  // Max hit: holding with highest market value (worst case if it goes to zero)
+  const maxHitHolding = [...portfolio.holdings].sort(
+    (a, b) => b.marketValueCad - a.marketValueCad
+  )[0];
+
+  // Diversification score: 1 - HHI, normalized
+  // Only non-cash holdings for diversification computation
+  const nonCash = portfolio.holdings.filter((h) => h.assetType !== 'cash');
+  const n = nonCash.length;
+  let diversificationScore = 0;
+  if (n > 1) {
+    const totalNonCash = nonCash.reduce((sum, h) => sum + h.marketValueCad, 0);
+    if (totalNonCash > 0) {
+      const hhi = nonCash.reduce((sum, h) => {
+        const w = h.marketValueCad / totalNonCash;
+        return sum + w * w;
+      }, 0);
+      diversificationScore = ((1 - hhi) / (1 - 1 / n)) * 100;
+    }
+  } else if (n === 1) {
+    diversificationScore = 0;
+  }
+
+  // FX exposure: % of portfolio in non-base-currency holdings
+  const fxExposureValue = portfolio.holdings
+    .filter((h) => h.currency.toUpperCase() !== baseCurrency.toUpperCase())
+    .reduce((sum, h) => sum + h.marketValueCad, 0);
+  const fxExposurePct =
+    portfolio.totalValue > 0 ? (fxExposureValue / portfolio.totalValue) * 100 : 0;
+
+  // Cash buffer: % of portfolio in cash positions
+  const cashValue = portfolio.holdings
+    .filter((h) => h.assetType === 'cash')
+    .reduce((sum, h) => sum + h.marketValueCad, 0);
+  const cashPct = portfolio.totalValue > 0 ? (cashValue / portfolio.totalValue) * 100 : 0;
+
+  const STAT_CARD: React.CSSProperties = {
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-primary)',
+    padding: '14px 16px',
+    flex: '1 1 0',
+    minWidth: 160,
+  };
+
+  const STAT_LABEL: React.CSSProperties = {
+    fontSize: 10,
+    color: 'var(--text-muted)',
+    fontFamily: 'var(--font-mono)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.08em',
+    marginBottom: 6,
+  };
+
+  const STAT_VALUE: React.CSSProperties = {
+    fontSize: 20,
+    fontFamily: 'var(--font-mono)',
+    fontWeight: 700,
+    color: 'var(--text-primary)',
+    lineHeight: 1.2,
+  };
+
+  const STAT_SUB: React.CSSProperties = {
+    fontSize: 11,
+    fontFamily: 'var(--font-mono)',
+    color: 'var(--text-secondary)',
+    marginTop: 4,
+  };
+
+  return (
+    <div style={{ marginTop: 1 }}>
+      <div
+        style={{
+          ...PANEL,
+          paddingBottom: 16,
+          background: 'var(--bg-surface)',
+        }}
+      >
+        <div style={SECTION_TITLE}>Portfolio Resilience</div>
+        <div
+          style={{ display: 'flex', gap: 1, flexWrap: 'wrap', background: 'var(--border-primary)' }}
+        >
+          {/* Largest single-holding risk */}
+          <div style={STAT_CARD}>
+            <div style={STAT_LABEL}>Largest Position</div>
+            <div style={STAT_VALUE}>
+              {largestHolding ? `${(largestHolding.weight * 100).toFixed(1)}%` : '—'}
+            </div>
+            <div style={STAT_SUB}>{largestHolding ? largestHolding.symbol : '—'} of portfolio</div>
+          </div>
+
+          {/* Max hit from one holding */}
+          <div style={STAT_CARD}>
+            <div style={STAT_LABEL}>Max Single-Holding Loss</div>
+            <div style={{ ...STAT_VALUE, color: 'var(--color-loss)' }}>
+              {maxHitHolding ? formatCompact(maxHitHolding.marketValueCad) : '—'}
+            </div>
+            <div style={STAT_SUB}>{maxHitHolding ? `${maxHitHolding.symbol} at zero` : '—'}</div>
+          </div>
+
+          {/* Diversification score */}
+          <div style={STAT_CARD}>
+            <div style={STAT_LABEL}>Diversification Score</div>
+            <div
+              style={{
+                ...STAT_VALUE,
+                color:
+                  diversificationScore >= 70
+                    ? 'var(--color-gain)'
+                    : diversificationScore >= 40
+                      ? 'var(--color-warning)'
+                      : 'var(--color-loss)',
+              }}
+            >
+              {n > 0 ? `${diversificationScore.toFixed(0)} / 100` : '—'}
+            </div>
+            <div style={STAT_SUB}>
+              {n > 0
+                ? diversificationScore >= 70
+                  ? 'Well diversified'
+                  : diversificationScore >= 40
+                    ? 'Moderate concentration'
+                    : 'Highly concentrated'
+                : 'No non-cash holdings'}
+            </div>
+          </div>
+
+          {/* FX exposure */}
+          <div style={STAT_CARD}>
+            <div style={STAT_LABEL}>Foreign Currency Exposure</div>
+            <div style={STAT_VALUE}>{fxExposurePct.toFixed(1)}%</div>
+            <div style={STAT_SUB}>
+              {formatCompact(fxExposureValue)} in non-{baseCurrency}
+            </div>
+          </div>
+
+          {/* Cash buffer */}
+          <div style={STAT_CARD}>
+            <div style={STAT_LABEL}>Cash Buffer</div>
+            <div
+              style={{
+                ...STAT_VALUE,
+                color:
+                  cashPct >= 5
+                    ? 'var(--color-gain)'
+                    : cashPct > 0
+                      ? 'var(--color-warning)'
+                      : 'var(--text-secondary)',
+              }}
+            >
+              {cashPct.toFixed(1)}%
+            </div>
+            <div style={STAT_SUB}>{formatCompact(cashValue)} in cash positions</div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -291,12 +636,8 @@ export function StressTest() {
         </button>
       </div>
 
-      {showComparison && (
-        <ComparisonChart
-          totalValue={portfolio?.totalValue ?? 0}
-          currency={baseCurrency}
-          scenarios={presetScenarios}
-        />
+      {showComparison && portfolio && (
+        <ScenarioComparison portfolio={portfolio} scenarios={presetScenarios} />
       )}
 
       {/* Main two-column layout */}
@@ -326,6 +667,24 @@ export function StressTest() {
               onChange={handlePresetChange}
               options={presetNames.map((n) => ({ value: n, label: n }))}
             />
+            {/* Scenario description */}
+            {presetName !== 'Custom' &&
+              (() => {
+                const preset = presetScenarios.find((s) => s.name === presetName);
+                return preset ? (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 10,
+                      color: 'var(--text-muted)',
+                      fontFamily: 'var(--font-sans)',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {preset.description}
+                  </div>
+                ) : null;
+              })()}
           </div>
 
           {/* Asset class shocks */}
@@ -728,6 +1087,9 @@ export function StressTest() {
           )}
         </div>
       </div>
+
+      {/* Resilience summary */}
+      <ResilienceSummary portfolio={portfolio} />
 
       {/* Slider thumb global style injection */}
       <style>{`
