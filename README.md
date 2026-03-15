@@ -161,9 +161,25 @@ Located in `.githooks/`, activated by `git config core.hooksPath .githooks` duri
 
 | Hook | Runs |
 |------|------|
-| pre-commit | ESLint, TypeScript check, Prettier check, `cargo fmt --check` |
-| pre-push | Full test suite — Vitest + `cargo test` |
+| pre-commit | ESLint, TypeScript check, Prettier check, `cargo fmt --check` (fast, ~5s) |
+| pre-push | Staged: lint → build (`npm run build` + `cargo build`) → tests → clippy → Claude review on main/dev |
 | post-merge | Reinstalls deps if `package-lock.json` or `Cargo.lock` changed |
+
+The pre-push hook runs in stages so failures surface early:
+
+1. **Lint + format** (~5s) — ESLint, Prettier, `cargo fmt`
+2. **Build** (~30–60s warm) — `npm run build` (tsc strict + Vite) and `cargo build` (full compilation)
+3. **Tests** (~15–30s) — Vitest and `cargo test`
+4. **Clippy** (~10–20s) — `cargo clippy -D warnings`
+5. **Claude review** (main/dev only) — AI review of the diff with a proceed/abort prompt
+
+**Escape hatch:** if you need to push urgently (e.g. a docs fix) and don't want to wait, use:
+
+```bash
+git push --no-verify
+```
+
+CI will still catch any issues — `--no-verify` only skips local hooks.
 
 ---
 
