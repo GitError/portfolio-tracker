@@ -126,6 +126,25 @@ export interface SymbolResult {
   currency: string;
 }
 
+export type AlertDirection = 'above' | 'below';
+
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  direction: AlertDirection;
+  threshold: number;
+  note: string;
+  triggered: boolean;
+  createdAt: string;
+}
+
+export interface PriceAlertInput {
+  symbol: string;
+  direction: AlertDirection;
+  threshold: number;
+  note: string;
+}
+
 export interface PreviewRow {
   row: number;
   originalSymbol: string;

@@ -4,8 +4,8 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingInput, PerformancePoint, PriceData,
-    SymbolResult,
+    AccountType, AlertDirection, AssetType, FxRate, Holding, HoldingInput, PerformancePoint,
+    PriceAlert, PriceAlertInput, PriceData, SymbolResult,
 };
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -82,6 +82,16 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
 
         CREATE INDEX IF NOT EXISTS idx_snapshots_recorded_at
             ON portfolio_snapshots(recorded_at);
+
+        CREATE TABLE IF NOT EXISTS price_alerts (
+            id          TEXT PRIMARY KEY,
+            symbol      TEXT NOT NULL,
+            direction   TEXT NOT NULL,
+            threshold   REAL NOT NULL,
+            note        TEXT NOT NULL DEFAULT '',
+            triggered   INTEGER NOT NULL DEFAULT 0,
+            created_at  TEXT NOT NULL
+        );
         ",
     )
     .map_err(|e| e.to_string())?;
@@ -221,6 +231,33 @@ pub fn delete_holding(conn: &Connection, id: &str) -> Result<bool, String> {
         .execute("DELETE FROM holdings WHERE id=?1", params![id])
         .map_err(|e| e.to_string())?;
     Ok(rows > 0)
+}
+
+pub fn delete_all_holdings(conn: &Connection) -> Result<(), rusqlite::Error> {
+    conn.execute("DELETE FROM holdings", [])?;
+    Ok(())
+}
+
+pub fn insert_holding_with_id(conn: &Connection, holding: Holding) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "INSERT OR REPLACE INTO holdings (id, symbol, name, asset_type, account, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            holding.id,
+            holding.symbol,
+            holding.name,
+            holding.asset_type.as_str(),
+            holding.account.as_str(),
+            holding.quantity,
+            holding.cost_basis,
+            holding.currency,
+            holding.exchange,
+            holding.target_weight,
+            holding.created_at,
+            holding.updated_at
+        ],
+    )?;
+    Ok(())
 }
 
 pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
@@ -541,6 +578,137 @@ pub fn sum_target_weights(conn: &Connection, exclude_id: Option<&str>) -> Result
             .map_err(|e| e.to_string())?,
     };
     Ok(sum)
+}
+
+// ── Price Alerts ──────────────────────────────────────────────────────────────
+
+pub fn insert_alert(conn: &Connection, input: PriceAlertInput) -> Result<PriceAlert, String> {
+    let id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO price_alerts (id, symbol, direction, threshold, note, triggered, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6)",
+        params![
+            id,
+            input.symbol,
+            input.direction.as_str(),
+            input.threshold,
+            input.note,
+            created_at
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(PriceAlert {
+        id,
+        symbol: input.symbol,
+        direction: input.direction,
+        threshold: input.threshold,
+        note: input.note,
+        triggered: false,
+        created_at,
+    })
+}
+
+pub fn get_alerts(conn: &Connection) -> Result<Vec<PriceAlert>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, symbol, direction, threshold, note, triggered, created_at
+             FROM price_alerts ORDER BY created_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let alerts = stmt
+        .query_map([], |row| {
+            let direction_str: String = row.get(2)?;
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                direction_str,
+                row.get::<_, f64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, bool>(5)?,
+                row.get::<_, String>(6)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .filter_map(
+            |(id, symbol, dir_str, threshold, note, triggered, created_at)| {
+                let direction = dir_str.parse::<AlertDirection>().ok()?;
+                Some(PriceAlert {
+                    id,
+                    symbol,
+                    direction,
+                    threshold,
+                    note,
+                    triggered,
+                    created_at,
+                })
+            },
+        )
+        .collect();
+
+    Ok(alerts)
+}
+
+pub fn delete_alert(conn: &Connection, id: &str) -> Result<bool, String> {
+    let n = conn
+        .execute("DELETE FROM price_alerts WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(n > 0)
+}
+
+/// Mark alerts as triggered for a symbol when threshold is crossed.
+/// Returns the IDs of newly-triggered alerts.
+pub fn check_and_trigger_alerts(
+    conn: &Connection,
+    symbol: &str,
+    price: f64,
+) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, direction, threshold FROM price_alerts
+             WHERE symbol = ?1 AND triggered = 0",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let candidates: Vec<(String, String, f64)> = stmt
+        .query_map(params![symbol], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut triggered = Vec::new();
+    for (id, dir_str, threshold) in candidates {
+        let crossed = match dir_str.as_str() {
+            "above" => price >= threshold,
+            "below" => price <= threshold,
+            _ => false,
+        };
+        if crossed {
+            conn.execute(
+                "UPDATE price_alerts SET triggered = 1 WHERE id = ?1",
+                params![id],
+            )
+            .map_err(|e| e.to_string())?;
+            triggered.push(id);
+        }
+    }
+
+    Ok(triggered)
+}
+
+pub fn reset_alert(conn: &Connection, id: &str) -> Result<bool, String> {
+    let n = conn
+        .execute(
+            "UPDATE price_alerts SET triggered = 0 WHERE id = ?1",
+            params![id],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(n > 0)
 }
 
 #[allow(dead_code)]

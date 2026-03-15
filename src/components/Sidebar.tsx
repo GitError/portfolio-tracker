@@ -5,6 +5,8 @@ import {
   Table2,
   TrendingUp,
   AlertTriangle,
+  Scale,
+  Bell,
   Settings2,
   ChevronsLeft,
   ChevronsRight,
@@ -24,6 +26,8 @@ const NAV_ITEMS = [
   { to: '/holdings', label: 'Holdings', Icon: Table2 },
   { to: '/performance', label: 'Performance', Icon: TrendingUp },
   { to: '/stress', label: 'Stress Test', Icon: AlertTriangle },
+  { to: '/rebalance', label: 'Rebalance', Icon: Scale },
+  { to: '/alerts', label: 'Alerts', Icon: Bell },
   { to: '/settings', label: 'Settings', Icon: Settings2 },
 ];
 

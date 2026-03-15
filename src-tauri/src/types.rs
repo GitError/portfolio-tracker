@@ -253,6 +253,56 @@ pub struct PerformancePoint {
     pub value: f64,
 }
 
+/// Direction for a price alert threshold.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AlertDirection {
+    Above,
+    Below,
+}
+
+impl AlertDirection {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            AlertDirection::Above => "above",
+            AlertDirection::Below => "below",
+        }
+    }
+}
+
+impl std::str::FromStr for AlertDirection {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "above" => Ok(AlertDirection::Above),
+            "below" => Ok(AlertDirection::Below),
+            other => Err(format!("Unknown alert direction: {}", other)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlert {
+    pub id: String,
+    pub symbol: String,
+    pub direction: AlertDirection,
+    pub threshold: f64,
+    pub note: String,
+    pub triggered: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlertInput {
+    pub symbol: String,
+    pub direction: AlertDirection,
+    pub threshold: f64,
+    pub note: String,
+}
+
 /// Returned by the `refresh_prices` command.
 /// Separates successfully refreshed prices from symbols that failed.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -13,8 +13,8 @@ use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData,
-    RefreshResult, StressResult, StressScenario, SymbolResult,
+    ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
+    PriceAlertInput, PriceData, RefreshResult, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -926,6 +926,13 @@ pub async fn refresh_prices(
         if let Err(e) = db::prune_snapshots(&conn) {
             eprintln!("Failed to prune portfolio snapshots: {}", e);
         }
+
+        // Check price alerts — log but don't fail
+        for price in &prices {
+            if let Err(e) = db::check_and_trigger_alerts(&conn, &price.symbol, price.price) {
+                eprintln!("Failed to check alerts for {}: {}", price.symbol, e);
+            }
+        }
     }
 
     Ok(RefreshResult {
@@ -1017,6 +1024,55 @@ pub async fn get_performance(
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())
+}
+
+// ── Price Alert Commands ───────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_alerts(db: State<'_, DbState>) -> Result<Vec<PriceAlert>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::get_alerts(&conn)
+}
+
+#[tauri::command]
+pub async fn add_alert(
+    db: State<'_, DbState>,
+    alert: PriceAlertInput,
+) -> Result<PriceAlert, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::insert_alert(&conn, alert)
+}
+
+#[tauri::command]
+pub async fn delete_alert(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::delete_alert(&conn, &id)
+}
+
+#[tauri::command]
+pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::reset_alert(&conn, &id)
+}
+
+#[tauri::command]
+pub async fn export_data(state: State<'_, DbState>) -> Result<String, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let holdings = db::get_all_holdings(&conn)?;
+    serde_json::to_string(&holdings).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usize, String> {
+    let holdings: Vec<Holding> =
+        serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {e}"))?;
+    let count = holdings.len();
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::delete_all_holdings(&conn).map_err(|e| e.to_string())?;
+    for holding in holdings {
+        db::insert_holding_with_id(&conn, holding).map_err(|e| e.to_string())?;
+    }
+    Ok(count)
 }
 
 #[cfg(test)]
