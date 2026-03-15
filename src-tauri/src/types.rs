@@ -262,3 +262,24 @@ pub struct RefreshResult {
     /// Symbols for which the price fetch failed (network error, HTTP error, parse failure).
     pub failed_symbols: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriceAlert {
+    pub id: i64,
+    pub holding_id: String,
+    pub alert_type: String,
+    pub target_price: f64,
+    pub currency: String,
+    pub triggered: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateAlertRequest {
+    pub holding_id: String,
+    pub alert_type: String,
+    pub target_price: f64,
+    pub currency: String,
+}

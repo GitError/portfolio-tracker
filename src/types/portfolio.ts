@@ -146,6 +146,23 @@ export interface PreviewImportResult {
   readyCount: number;
   skipCount: number;
 }
+export interface PriceAlert {
+  id: number;
+  holdingId: string;
+  alertType: 'above' | 'below';
+  targetPrice: number;
+  currency: string;
+  triggered: boolean;
+  createdAt: string;
+}
+
+export interface CreateAlertRequest {
+  holdingId: string;
+  alertType: 'above' | 'below';
+  targetPrice: number;
+  currency: string;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
@@ -158,3 +175,6 @@ export interface PreviewImportResult {
 // invoke('run_stress_test_cmd', { scenario }) → StressResult
 // invoke('search_symbols', { query }) → SymbolResult[]
 // invoke('get_symbol_price', { symbol }) → PriceData
+// invoke('add_price_alert', { alert }) → PriceAlert
+// invoke('get_price_alerts', { includeTriggered }) → PriceAlert[]
+// invoke('delete_price_alert', { id }) → boolean

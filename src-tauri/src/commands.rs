@@ -12,9 +12,9 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData,
-    RefreshResult, StressResult, StressScenario, SymbolResult,
+    AccountType, AssetType, CreateAlertRequest, FxRate, Holding, HoldingInput, HoldingWithPrice,
+    ImportError, ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult,
+    PreviewRow, PriceAlert, PriceData, RefreshResult, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -844,6 +844,7 @@ pub async fn preview_import_csv(
 
 #[tauri::command]
 pub async fn refresh_prices(
+    app: tauri::AppHandle,
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
 ) -> Result<RefreshResult, String> {
@@ -927,6 +928,9 @@ pub async fn refresh_prices(
             eprintln!("Failed to prune portfolio snapshots: {}", e);
         }
     }
+
+    // Check active price alerts against freshly cached prices
+    check_price_alerts(&app, &db).await;
 
     Ok(RefreshResult {
         prices,
@@ -1017,6 +1021,167 @@ pub async fn get_performance(
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())
+}
+
+/// Emitted to the frontend when a price alert is triggered.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PriceAlertTriggeredPayload {
+    alert_id: i64,
+    holding_id: String,
+    symbol: String,
+    alert_type: String,
+    target_price: f64,
+    current_price: f64,
+    currency: String,
+}
+
+/// Check all active (non-triggered) alerts against the current price cache.
+/// Triggers and emits events for any alerts that have crossed their threshold.
+/// Errors are logged but never propagated — price refresh must not fail due to alert issues.
+async fn check_price_alerts(app: &tauri::AppHandle, db: &State<'_, DbState>) {
+    use tauri::Emitter;
+
+    let (alerts, holdings, cached_prices) = {
+        let conn = match db.0.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Alert check: failed to lock DB: {}", e);
+                return;
+            }
+        };
+        let alerts = match db::get_alerts(&conn, false) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Alert check: failed to load alerts: {}", e);
+                return;
+            }
+        };
+        let holdings = match db::get_all_holdings(&conn) {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("Alert check: failed to load holdings: {}", e);
+                return;
+            }
+        };
+        let prices = match db::get_cached_prices(&conn) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Alert check: failed to load prices: {}", e);
+                return;
+            }
+        };
+        (alerts, holdings, prices)
+    };
+
+    // Build lookup maps
+    let holding_map: HashMap<String, &crate::types::Holding> =
+        holdings.iter().map(|h| (h.id.clone(), h)).collect();
+    let price_map: HashMap<String, f64> =
+        cached_prices.iter().map(|p| (p.symbol.clone(), p.price)).collect();
+
+    for alert in &alerts {
+        let holding = match holding_map.get(&alert.holding_id) {
+            Some(h) => h,
+            None => continue,
+        };
+
+        let current_price = match price_map.get(&holding.symbol) {
+            Some(&p) => p,
+            None => continue,
+        };
+
+        let triggered = match alert.alert_type.as_str() {
+            "above" => current_price >= alert.target_price,
+            "below" => current_price <= alert.target_price,
+            _ => false,
+        };
+
+        if triggered {
+            {
+                let conn = match db.0.lock() {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("Alert check: failed to lock DB for update: {}", e);
+                        continue;
+                    }
+                };
+                if let Err(e) = db::mark_alert_triggered(&conn, alert.id) {
+                    eprintln!("Alert check: failed to mark alert {} triggered: {}", alert.id, e);
+                    continue;
+                }
+            }
+
+            let payload = PriceAlertTriggeredPayload {
+                alert_id: alert.id,
+                holding_id: alert.holding_id.clone(),
+                symbol: holding.symbol.clone(),
+                alert_type: alert.alert_type.clone(),
+                target_price: alert.target_price,
+                current_price,
+                currency: alert.currency.clone(),
+            };
+
+            if let Err(e) = app.emit("price-alert-triggered", &payload) {
+                eprintln!("Alert check: failed to emit event for alert {}: {}", alert.id, e);
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn add_price_alert(
+    state: tauri::State<'_, DbState>,
+    alert: CreateAlertRequest,
+) -> Result<PriceAlert, String> {
+    if alert.target_price <= 0.0 {
+        return Err("Target price must be greater than 0".to_string());
+    }
+    if alert.alert_type != "above" && alert.alert_type != "below" {
+        return Err("Alert type must be 'above' or 'below'".to_string());
+    }
+    if alert.holding_id.is_empty() {
+        return Err("Holding ID is required".to_string());
+    }
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let id = db::insert_alert(
+        &conn,
+        &alert.holding_id,
+        &alert.alert_type,
+        alert.target_price,
+        &alert.currency,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let created_at = chrono::Utc::now().to_rfc3339();
+    Ok(PriceAlert {
+        id,
+        holding_id: alert.holding_id,
+        alert_type: alert.alert_type,
+        target_price: alert.target_price,
+        currency: alert.currency,
+        triggered: false,
+        created_at,
+    })
+}
+
+#[tauri::command]
+pub async fn get_price_alerts(
+    state: tauri::State<'_, DbState>,
+    include_triggered: bool,
+) -> Result<Vec<PriceAlert>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::get_alerts(&conn, include_triggered).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_price_alert(
+    state: tauri::State<'_, DbState>,
+    id: i64,
+) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::delete_alert(&conn, id).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

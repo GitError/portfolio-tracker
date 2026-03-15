@@ -4,7 +4,7 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingInput, PerformancePoint, PriceData,
+    AccountType, AssetType, FxRate, Holding, HoldingInput, PerformancePoint, PriceAlert, PriceData,
     SymbolResult,
 };
 
@@ -82,6 +82,16 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
 
         CREATE INDEX IF NOT EXISTS idx_snapshots_recorded_at
             ON portfolio_snapshots(recorded_at);
+
+        CREATE TABLE IF NOT EXISTS price_alerts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            holding_id   TEXT    NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+            alert_type   TEXT    NOT NULL CHECK(alert_type IN ('above','below')),
+            target_price REAL    NOT NULL,
+            currency     TEXT    NOT NULL,
+            triggered    INTEGER NOT NULL DEFAULT 0,
+            created_at   TEXT    NOT NULL
+        );
         ",
     )
     .map_err(|e| e.to_string())?;
@@ -543,6 +553,66 @@ pub fn sum_target_weights(conn: &Connection, exclude_id: Option<&str>) -> Result
     Ok(sum)
 }
 
+pub fn insert_alert(
+    conn: &Connection,
+    holding_id: &str,
+    alert_type: &str,
+    target_price: f64,
+    currency: &str,
+) -> Result<i64, rusqlite::Error> {
+    let created_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO price_alerts (holding_id, alert_type, target_price, currency, triggered, created_at)
+         VALUES (?1, ?2, ?3, ?4, 0, ?5)",
+        params![holding_id, alert_type, target_price, currency, created_at],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_alerts(
+    conn: &Connection,
+    include_triggered: bool,
+) -> Result<Vec<PriceAlert>, rusqlite::Error> {
+    let sql = if include_triggered {
+        "SELECT id, holding_id, alert_type, target_price, currency, triggered, created_at
+         FROM price_alerts ORDER BY created_at ASC"
+    } else {
+        "SELECT id, holding_id, alert_type, target_price, currency, triggered, created_at
+         FROM price_alerts WHERE triggered = 0 ORDER BY created_at ASC"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let alerts = stmt
+        .query_map([], |row| {
+            let triggered_int: i64 = row.get(5)?;
+            Ok(PriceAlert {
+                id: row.get(0)?,
+                holding_id: row.get(1)?,
+                alert_type: row.get(2)?,
+                target_price: row.get(3)?,
+                currency: row.get(4)?,
+                triggered: triggered_int != 0,
+                created_at: row.get(6)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(alerts)
+}
+
+pub fn mark_alert_triggered(conn: &Connection, alert_id: i64) -> Result<(), rusqlite::Error> {
+    conn.execute(
+        "UPDATE price_alerts SET triggered = 1 WHERE id = ?1",
+        params![alert_id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_alert(conn: &Connection, alert_id: i64) -> Result<bool, rusqlite::Error> {
+    let rows = conn.execute("DELETE FROM price_alerts WHERE id = ?1", params![alert_id])?;
+    Ok(rows > 0)
+}
+
 #[allow(dead_code)]
 pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
     let mut stmt = conn
@@ -870,5 +940,74 @@ mod tests {
         set_config(&conn, "greeting", "").expect("set empty");
         let val = get_config(&conn, "greeting").expect("get config");
         assert_eq!(val, Some(String::new()));
+    }
+
+    // ── Price alert tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn insert_alert_and_get_active_alerts() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("AAPL")).expect("insert holding");
+
+        let id = insert_alert(&conn, &holding.id, "above", 200.0, "USD").expect("insert alert");
+        assert!(id > 0);
+
+        let alerts = get_alerts(&conn, false).expect("get active alerts");
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].holding_id, holding.id);
+        assert_eq!(alerts[0].alert_type, "above");
+        assert!((alerts[0].target_price - 200.0).abs() < 0.001);
+        assert_eq!(alerts[0].currency, "USD");
+        assert!(!alerts[0].triggered);
+    }
+
+    #[test]
+    fn mark_alert_triggered_hides_from_active_query() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("MSFT")).expect("insert holding");
+        let id = insert_alert(&conn, &holding.id, "below", 100.0, "USD").expect("insert alert");
+
+        mark_alert_triggered(&conn, id).expect("mark triggered");
+
+        let active = get_alerts(&conn, false).expect("get active");
+        assert_eq!(active.len(), 0);
+
+        let all = get_alerts(&conn, true).expect("get all");
+        assert_eq!(all.len(), 1);
+        assert!(all[0].triggered);
+    }
+
+    #[test]
+    fn delete_alert_removes_row() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("TSLA")).expect("insert holding");
+        let id = insert_alert(&conn, &holding.id, "above", 300.0, "USD").expect("insert alert");
+
+        let deleted = delete_alert(&conn, id).expect("delete alert");
+        assert!(deleted);
+
+        let alerts = get_alerts(&conn, true).expect("get all after delete");
+        assert_eq!(alerts.len(), 0);
+    }
+
+    #[test]
+    fn delete_nonexistent_alert_returns_false() {
+        let conn = open_test_db();
+        let deleted = delete_alert(&conn, 9999).expect("delete nonexistent");
+        assert!(!deleted);
+    }
+
+    #[test]
+    fn alert_cascade_deleted_with_holding() {
+        let conn = open_test_db();
+        // Enable foreign keys for the cascade to fire
+        conn.execute_batch("PRAGMA foreign_keys = ON;").expect("fk on");
+        let holding = insert_holding(&conn, make_input("NVDA")).expect("insert holding");
+        insert_alert(&conn, &holding.id, "above", 500.0, "USD").expect("insert alert");
+
+        delete_holding(&conn, &holding.id).expect("delete holding");
+
+        let alerts = get_alerts(&conn, true).expect("get alerts after cascade");
+        assert_eq!(alerts.len(), 0);
     }
 }

@@ -9,6 +9,7 @@ import { Settings } from './components/Settings';
 import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
 import { KeyboardShortcutsOverlay } from './components/ui/KeyboardShortcutsOverlay';
+import { AlertBanner } from './components/ui/AlertBanner';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { PortfolioProvider, usePortfolio } from './hooks/usePortfolio';
 import { useConfig } from './hooks/useConfig';
@@ -144,6 +145,7 @@ export default function App() {
       <PortfolioProvider>
         <BrowserRouter>
           <AppRoutes />
+          <AlertBanner />
         </BrowserRouter>
       </PortfolioProvider>
     </ToastProvider>

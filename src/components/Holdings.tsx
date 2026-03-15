@@ -4,6 +4,7 @@ import {
   Plus,
   Pencil,
   Trash2,
+  Bell,
   ChevronUp,
   ChevronDown,
   Upload,
@@ -13,6 +14,7 @@ import {
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
+import { PriceAlertModal } from './PriceAlertModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
@@ -153,6 +155,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [alertHolding, setAlertHolding] = useState<HoldingWithPrice | null>(null);
 
   // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
   useEffect(() => {
@@ -1037,6 +1040,21 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               <Pencil size={13} />
                             </button>
                             <button
+                              onClick={() => setAlertHolding(h)}
+                              title="Set Price Alert"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: 3,
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Bell size={13} />
+                            </button>
+                            <button
                               onClick={() => setPendingDelete(h.id)}
                               title="Delete"
                               style={{
@@ -1189,6 +1207,17 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
         onImport={handleImport}
         onPreview={previewImportCsv}
       />
+      {alertHolding && (
+        <PriceAlertModal
+          holding={alertHolding}
+          isOpen={true}
+          onClose={() => setAlertHolding(null)}
+          onSaved={() => {
+            setAlertHolding(null);
+            showToast('Price alert set', 'success');
+          }}
+        />
+      )}
     </div>
   );
 }

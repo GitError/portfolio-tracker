@@ -54,6 +54,9 @@ pub fn run() {
             commands::get_symbol_price,
             commands::get_config_cmd,
             commands::set_config_cmd,
+            commands::add_price_alert,
+            commands::get_price_alerts,
+            commands::delete_price_alert,
         ])
         .run(tauri::generate_context!());
 
