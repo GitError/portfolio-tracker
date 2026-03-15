@@ -191,8 +191,8 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     return { positions, totalCash, cashPct };
   }, [filteredHoldings, portfolio, totals]);
 
-  if (!portfolio && !loading) {
-    return <EmptyState message="No portfolio data available" />;
+  if ((!portfolio || portfolio.holdings.length === 0) && !loading) {
+    return <EmptyState message="Add your first holding to get started." />;
   }
 
   return (
