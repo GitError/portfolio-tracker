@@ -12,10 +12,10 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
-    PriceAlertInput, PriceData, RebalanceSuggestion, RefreshResult, StressResult, StressScenario,
-    SymbolResult,
+    AccountType, AssetType, CreateTransactionRequest, FxRate, Holding, HoldingInput,
+    HoldingWithPrice, ImportError, ImportResult, PerformancePoint, PortfolioSnapshot,
+    PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData, RebalanceSuggestion,
+    RefreshResult, StressResult, StressScenario, SymbolResult, Transaction,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -1666,4 +1666,79 @@ mod tests {
             snapshot.daily_pnl
         );
     }
+}
+
+// ── Transaction commands ──────────────────────────────────────────────────────
+
+const VALID_TX_TYPES: &[&str] = &["buy", "sell", "deposit", "withdrawal"];
+
+#[tauri::command]
+pub async fn add_transaction(
+    state: State<'_, DbState>,
+    tx: CreateTransactionRequest,
+) -> Result<Transaction, String> {
+    if tx.quantity <= 0.0 {
+        return Err("quantity must be greater than 0".to_string());
+    }
+    if tx.price < 0.0 {
+        return Err("price must be >= 0".to_string());
+    }
+    if tx.fee < 0.0 {
+        return Err("fee must be >= 0".to_string());
+    }
+    if !VALID_TX_TYPES.contains(&tx.transaction_type.as_str()) {
+        return Err(format!(
+            "transaction_type must be one of: {}",
+            VALID_TX_TYPES.join(", ")
+        ));
+    }
+    if tx.transacted_at.trim().is_empty() {
+        return Err("transacted_at must not be empty".to_string());
+    }
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let id = db::insert_transaction(
+        &conn,
+        &tx.holding_id,
+        &tx.transaction_type,
+        tx.quantity,
+        tx.price,
+        &tx.currency,
+        tx.fee,
+        &tx.transacted_at,
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(Transaction {
+        id,
+        holding_id: tx.holding_id,
+        transaction_type: tx.transaction_type,
+        quantity: tx.quantity,
+        price: tx.price,
+        currency: tx.currency,
+        fee: tx.fee,
+        transacted_at: tx.transacted_at,
+    })
+}
+
+#[tauri::command]
+pub async fn get_transactions(
+    state: State<'_, DbState>,
+    holding_id: Option<String>,
+) -> Result<Vec<Transaction>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    match holding_id {
+        Some(id) => db::get_transactions_for_holding(&conn, &id).map_err(|e| e.to_string()),
+        None => db::get_all_transactions(&conn).map_err(|e| e.to_string()),
+    }
+}
+
+#[tauri::command]
+pub async fn delete_transaction(
+    state: State<'_, DbState>,
+    id: i64,
+) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::delete_transaction(&conn, id).map_err(|e| e.to_string())?;
+    Ok(true)
 }
