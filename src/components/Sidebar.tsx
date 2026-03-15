@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Scale,
   Bell,
+  DollarSign,
   Settings2,
   ChevronsLeft,
   ChevronsRight,
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { to: '/stress', label: 'Stress Test', Icon: AlertTriangle },
   { to: '/rebalance', label: 'Rebalance', Icon: Scale },
   { to: '/alerts', label: 'Alerts', Icon: Bell },
+  { to: '/dividends', label: 'Dividends', Icon: DollarSign },
   { to: '/settings', label: 'Settings', Icon: Settings2 },
 ];
 

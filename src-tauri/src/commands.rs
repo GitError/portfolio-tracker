@@ -12,10 +12,10 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
-    PriceAlertInput, PriceData, RebalanceSuggestion, RefreshResult, StressResult, StressScenario,
-    SymbolResult,
+    AccountType, AssetType, Dividend, DividendInput, FxRate, Holding, HoldingInput,
+    HoldingWithPrice, ImportError, ImportResult, PerformancePoint, PortfolioSnapshot,
+    PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData, RebalanceSuggestion,
+    RefreshResult, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -1025,6 +1025,37 @@ pub async fn get_performance(
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())
+}
+
+// ── Dividend Commands ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_dividends(db: State<'_, DbState>) -> Result<Vec<Dividend>, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::get_dividends(&conn)
+}
+
+#[tauri::command]
+pub async fn add_dividend(
+    db: State<'_, DbState>,
+    dividend: DividendInput,
+) -> Result<Dividend, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    // Look up the symbol for the holding
+    let holdings = db::get_all_holdings(&conn)?;
+    let symbol = holdings
+        .iter()
+        .find(|h| h.id == dividend.holding_id)
+        .map(|h| h.symbol.as_str())
+        .unwrap_or("")
+        .to_string();
+    db::insert_dividend(&conn, dividend, &symbol)
+}
+
+#[tauri::command]
+pub async fn delete_dividend(db: State<'_, DbState>, id: i64) -> Result<bool, String> {
+    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    db::delete_dividend(&conn, id)
 }
 
 // ── Price Alert Commands ───────────────────────────────────────────────────────

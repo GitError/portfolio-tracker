@@ -7,6 +7,7 @@ import { Performance } from './components/Performance';
 import { StressTest } from './components/StressTest';
 import { Rebalance } from './components/Rebalance';
 import { Alerts } from './components/Alerts';
+import { Dividends } from './components/Dividends';
 import { Settings } from './components/Settings';
 import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
@@ -131,6 +132,7 @@ function AppRoutes() {
           <Route path="/stress" element={<StressTest />} />
           <Route path="/rebalance" element={<Rebalance />} />
           <Route path="/alerts" element={<Alerts />} />
+          <Route path="/dividends" element={<Dividends />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
