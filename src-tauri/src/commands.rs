@@ -1150,7 +1150,7 @@ pub async fn restore_database(
         f.read_exact(&mut header)
             .map_err(|_| "File is too small to be a valid SQLite database".to_string())?;
     }
-    if &header != SQLITE_MAGIC {
+    if header != SQLITE_MAGIC {
         return Err("The selected file is not a valid SQLite database".to_string());
     }
 
