@@ -74,6 +74,11 @@ export interface StressScenario {
   shocks: Record<string, number>; // keys: "stock"|"etf"|"crypto"|"fx_usd_cad"|"fx_cad_usd" etc, values: decimal (-0.10 = -10%)
 }
 
+export interface StressScenarioInfo extends StressScenario {
+  description: string;
+  historicalParallel: string;
+}
+
 export interface StressHoldingResult {
   holdingId: string;
   symbol: string;
