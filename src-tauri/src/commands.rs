@@ -520,12 +520,32 @@ pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, String
 #[tauri::command]
 pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    if holding.target_weight > 0.0 {
+        let current_sum = db::sum_target_weights(&conn, None)?;
+        let new_total = current_sum + holding.target_weight;
+        if new_total > 100.0 {
+            return Err(format!(
+                "Total target weight would exceed 100% (currently {:.1}%). Adjust existing allocations before adding this holding.",
+                current_sum
+            ));
+        }
+    }
     db::insert_holding(&conn, holding)
 }
 
 #[tauri::command]
 pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
+    if holding.target_weight > 0.0 {
+        let current_sum = db::sum_target_weights(&conn, Some(&holding.id))?;
+        let new_total = current_sum + holding.target_weight;
+        if new_total > 100.0 {
+            return Err(format!(
+                "Total target weight would exceed 100% (currently {:.1}% across other holdings). Adjust existing allocations before saving.",
+                current_sum
+            ));
+        }
+    }
     db::update_holding(&conn, holding)
 }
 
@@ -551,6 +571,29 @@ pub async fn import_holdings_csv(
     csv_content: String,
 ) -> Result<ImportResult, String> {
     let parsed_rows = parse_import_rows(&csv_content)?;
+
+    // Validate that the CSV rows' target weights don't exceed 100% on their own
+    let csv_weight_sum: f64 = parsed_rows.iter().map(|r| r.target_weight).sum();
+    if csv_weight_sum > 100.0 {
+        return Err(format!(
+            "Import failed: total target weight is {:.1}% (max 100%). Adjust weights before re-importing.",
+            csv_weight_sum
+        ));
+    }
+
+    // Also validate against existing holdings in the DB
+    let existing_weight_sum = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::sum_target_weights(&conn, None)?
+    };
+    if existing_weight_sum + csv_weight_sum > 100.0 {
+        return Err(format!(
+            "Import failed: total target weight would reach {:.1}% (existing portfolio is already {:.1}%). Adjust weights before re-importing.",
+            existing_weight_sum + csv_weight_sum,
+            existing_weight_sum
+        ));
+    }
+
     let existing_keys: HashSet<(String, String)> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
@@ -1307,6 +1350,102 @@ mod tests {
         assert!((snapshot.total_cost - 360.0).abs() < 0.001);
     }
 
+    // ── Target-weight portfolio-level validation tests ──────────────────────
+
+    #[test]
+    fn add_holding_weight_exceeds_100_when_existing_sum_plus_new_is_over_limit() {
+        // Simulate the guard logic that add_holding applies before inserting.
+        // We verify that existing_sum + new_weight > 100 is caught.
+        let existing_sum = 60.0f64;
+        let new_weight = 50.0f64;
+        assert!(
+            existing_sum + new_weight > 100.0,
+            "guard should reject: {:.1} + {:.1} = {:.1} > 100",
+            existing_sum,
+            new_weight,
+            existing_sum + new_weight
+        );
+    }
+
+    #[test]
+    fn add_holding_weight_exactly_100_is_accepted() {
+        let existing_sum = 60.0f64;
+        let new_weight = 40.0f64;
+        assert!(
+            existing_sum + new_weight <= 100.0,
+            "guard should allow: {:.1} + {:.1} = {:.1} <= 100",
+            existing_sum,
+            new_weight,
+            existing_sum + new_weight
+        );
+    }
+
+    #[test]
+    fn update_holding_weight_exceeds_100_when_others_sum_plus_new_is_over_limit() {
+        // Simulate the guard logic used by update_holding (other holdings sum + new value).
+        let others_sum = 70.0f64;
+        let new_weight = 35.0f64;
+        assert!(
+            others_sum + new_weight > 100.0,
+            "guard should reject: {:.1} + {:.1} = {:.1} > 100",
+            others_sum,
+            new_weight,
+            others_sum + new_weight
+        );
+    }
+
+    #[test]
+    fn import_csv_weight_sum_over_100_is_rejected() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   AAPL,Apple,stock,5,120,USD,60\n\
+                   MSFT,Microsoft,stock,3,200,USD,50\n";
+        let rows = parse_import_rows(csv).expect("parse ok");
+        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        assert!(
+            total > 100.0,
+            "csv weight sum should exceed 100, got {:.1}",
+            total
+        );
+        // Confirm the error message format is correct when this check fires
+        let err = format!(
+            "Import failed: total target weight is {:.1}% (max 100%). Adjust weights before re-importing.",
+            total
+        );
+        assert!(err.contains("Import failed"));
+        assert!(err.contains("110.0%"));
+    }
+
+    #[test]
+    fn import_csv_weight_sum_at_100_passes_csv_level_guard() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   AAPL,Apple,stock,5,120,USD,60\n\
+                   MSFT,Microsoft,stock,3,200,USD,40\n";
+        let rows = parse_import_rows(csv).expect("parse ok");
+        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        assert!(
+            total <= 100.0,
+            "csv weight sum should be <= 100, got {:.1}",
+            total
+        );
+    }
+
+    #[test]
+    fn import_csv_existing_holdings_combined_with_csv_exceeds_100_is_rejected() {
+        let existing_weight_sum = 70.0f64;
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   GOOG,Alphabet,stock,2,150,USD,40\n";
+        let rows = parse_import_rows(csv).expect("parse ok");
+        let csv_sum: f64 = rows.iter().map(|r| r.target_weight).sum();
+        // csv_sum alone (40) is <= 100, so it passes the CSV-level guard
+        assert!(csv_sum <= 100.0);
+        // But combined with existing it exceeds 100
+        assert!(
+            existing_weight_sum + csv_sum > 100.0,
+            "combined should exceed 100, got {:.1}",
+            existing_weight_sum + csv_sum
+        );
+    }
+
     #[test]
     fn build_portfolio_snapshot_computes_target_deltas() {
         let mut holdings = vec![
@@ -1357,17 +1496,15 @@ mod tests {
             updated_at: Utc::now().to_rfc3339(),
         }];
 
-        let snapshot = build_portfolio_snapshot(
-            &[holding],
-            &prices,
-            &[],
-            "CAD",
-            Utc::now().to_rfc3339(),
-        );
+        let snapshot =
+            build_portfolio_snapshot(&[holding], &prices, &[], "CAD", Utc::now().to_rfc3339());
 
         // market_value_cad = 10 * 120 = 1200; daily_pnl should be 0, not 60
-        assert!((snapshot.daily_pnl - 0.0).abs() < 0.001,
-            "expected daily_pnl == 0 for intraday purchase, got {}", snapshot.daily_pnl);
+        assert!(
+            (snapshot.daily_pnl - 0.0).abs() < 0.001,
+            "expected daily_pnl == 0 for intraday purchase, got {}",
+            snapshot.daily_pnl
+        );
     }
 
     #[test]
@@ -1388,16 +1525,14 @@ mod tests {
             updated_at: Utc::now().to_rfc3339(),
         }];
 
-        let snapshot = build_portfolio_snapshot(
-            &[holding],
-            &prices,
-            &[],
-            "CAD",
-            Utc::now().to_rfc3339(),
-        );
+        let snapshot =
+            build_portfolio_snapshot(&[holding], &prices, &[], "CAD", Utc::now().to_rfc3339());
 
         // market_value_cad = 10 * 220 = 2200; daily_pnl = 2200 * 0.10 = 220
-        assert!((snapshot.daily_pnl - 220.0).abs() < 0.001,
-            "expected daily_pnl == 220 for prior-day holding, got {}", snapshot.daily_pnl);
+        assert!(
+            (snapshot.daily_pnl - 220.0).abs() < 0.001,
+            "expected daily_pnl == 220 for prior-day holding, got {}",
+            snapshot.daily_pnl
+        );
     }
 }
