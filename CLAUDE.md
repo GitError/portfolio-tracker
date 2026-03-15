@@ -1,7 +1,7 @@
 # Portfolio Tracker — Project Contract
 
 ## Overview
-A macOS desktop portfolio tracker built with Tauri v2 (Rust backend + React/TypeScript frontend). Tracks stocks, ETFs, crypto, and multi-currency cash positions with live pricing and stress-test simulations. All values displayed in CAD (base currency).
+A macOS desktop portfolio tracker built with Tauri v2 (Rust backend + React/TypeScript frontend). Tracks stocks, ETFs, crypto, and multi-currency cash positions with live pricing, stress-test simulations, price alerts, dividend tracking, and portfolio rebalancing. Values displayed in the user's chosen base currency (default: CAD).
 
 ## Architecture
 
@@ -13,41 +13,55 @@ portfolio-tracker/
 │   ├── tauri.conf.json
 │   ├── build.rs
 │   └── src/
-│       ├── main.rs              ← Tauri bootstrap, state init, command registration
-│       ├── types.rs             ← Shared Rust types (Serialize/Deserialize)
-│       ├── db.rs                ← SQLite schema, migrations, CRUD
+│       ├── main.rs              ← Tauri entry point
+│       ├── lib.rs               ← App bootstrap, state init, command registration
+│       ├── config.rs            ← App-level constants (DB name, user-agent, TTLs)
+│       ├── types.rs             ← Shared Rust types (Serialize/Deserialize, camelCase)
+│       ├── db.rs                ← SQLite schema, migrations, CRUD (8 tables)
 │       ├── commands.rs          ← #[tauri::command] functions (thin wrappers)
 │       ├── price.rs             ← Yahoo Finance price fetching
 │       ├── fx.rs                ← FX rate fetching + conversion helpers
+│       ├── search.rs            ← Symbol search via Yahoo Finance
 │       └── stress.rs            ← Stress test engine
 ├── src/
-│   ├── App.tsx                  ← Router + Layout shell
+│   ├── App.tsx                  ← Router, providers, keyboard shortcut wiring
 │   ├── main.tsx                 ← React entry
 │   ├── index.css                ← Tailwind + global styles + design tokens
 │   ├── types/
 │   │   └── portfolio.ts         ← TypeScript types (mirrors Rust types exactly)
 │   ├── hooks/
-│   │   ├── usePortfolio.ts      ← Tauri invoke wrapper for portfolio commands
+│   │   ├── usePortfolio.ts      ← Tauri invoke wrapper + shared portfolio state
 │   │   ├── useStressTest.ts     ← Stress test invocation + state
-│   │   └── usePrices.ts         ← Price refresh logic
+│   │   ├── useConfig.ts         ← Persistent key/value config via Tauri
+│   │   ├── useAutoRefresh.ts    ← Interval-based auto price refresh + countdown
+│   │   └── useKeyboardShortcuts.ts ← Global keyboard shortcut handler
 │   ├── lib/
 │   │   ├── format.ts            ← Currency/number/percent formatters
 │   │   ├── colors.ts            ← PnL color helpers
-│   │   └── constants.ts         ← Preset scenarios, asset type configs
+│   │   ├── constants.ts         ← Preset scenarios, asset/account type configs
+│   │   └── currencyContext.tsx  ← Base currency React context
 │   └── components/
 │       ├── Layout.tsx            ← App shell: sidebar + topbar + content area
 │       ├── Sidebar.tsx           ← Icon nav, mini portfolio value
-│       ├── TopBar.tsx            ← Refresh button, last-updated, total value
+│       ├── TopBar.tsx            ← Refresh, base currency picker, daily P&L, countdown
 │       ├── Dashboard.tsx         ← Dashboard view (route: /)
 │       ├── Holdings.tsx          ← Holdings table view (route: /holdings)
-│       ├── AddHoldingModal.tsx   ← Add/edit holding modal
 │       ├── Performance.tsx       ← Performance charts (route: /performance)
 │       ├── StressTest.tsx        ← Stress test panel (route: /stress)
+│       ├── Rebalance.tsx         ← Rebalancing view (route: /rebalance)
+│       ├── Alerts.tsx            ← Price alerts view (route: /alerts)
+│       ├── Dividends.tsx         ← Dividend tracking view (route: /dividends)
+│       ├── Settings.tsx          ← Settings panel (route: /settings)
+│       ├── AddHoldingModal.tsx   ← Add/edit holding modal
+│       ├── ImportHoldingsModal.tsx ← CSV import with preview
 │       └── ui/
 │           ├── Toast.tsx         ← Notification toast
 │           ├── Badge.tsx         ← Asset type badge
 │           ├── Spinner.tsx       ← Loading spinner
-│           └── EmptyState.tsx    ← No-data placeholder
+│           ├── EmptyState.tsx    ← No-data placeholder
+│           ├── Select.tsx        ← Custom select component
+│           ├── SymbolSearch.tsx  ← Symbol search autocomplete
+│           └── KeyboardShortcutsOverlay.tsx ← `?` help overlay
 ├── public/
 ├── index.html
 ├── package.json
@@ -66,7 +80,7 @@ portfolio-tracker/
 | Styling   | Tailwind CSS v4                   |
 | Charts    | Recharts                          |
 | Icons     | lucide-react                      |
-| Router    | react-router-dom v6               |
+| Router    | react-router-dom v7               |
 
 ## Conventions
 

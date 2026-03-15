@@ -61,6 +61,9 @@ pub fn run() {
             commands::delete_alert,
             commands::reset_alert,
             commands::get_rebalance_suggestions,
+            commands::get_dividends,
+            commands::add_dividend,
+            commands::delete_dividend,
         ])
         .run(tauri::generate_context!());
 
