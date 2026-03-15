@@ -14,7 +14,8 @@ use crate::stress::run_stress_test;
 use crate::types::{
     AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
     ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
-    PriceAlertInput, PriceData, RefreshResult, StressResult, StressScenario, SymbolResult,
+    PriceAlertInput, PriceData, RebalanceSuggestion, RefreshResult, StressResult, StressScenario,
+    SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -1073,6 +1074,80 @@ pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usiz
         db::insert_holding_with_id(&conn, holding).map_err(|e| e.to_string())?;
     }
     Ok(count)
+}
+
+#[tauri::command]
+pub async fn get_rebalance_suggestions(
+    db: State<'_, DbState>,
+    drift_threshold: f64,
+) -> Result<Vec<RebalanceSuggestion>, String> {
+    let base_currency = get_base_currency(&db);
+
+    let holdings = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_all_holdings(&conn)?
+    };
+
+    let (cached_prices, cached_fx) = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
+    };
+
+    let snapshot = build_portfolio_snapshot(
+        &holdings,
+        &cached_prices,
+        &cached_fx,
+        &base_currency,
+        Utc::now().to_rfc3339(),
+    );
+
+    let total_value = snapshot.total_value;
+
+    let mut suggestions: Vec<RebalanceSuggestion> = snapshot
+        .holdings
+        .into_iter()
+        .filter(|h| {
+            // Exclude cash holdings and holdings with no target weight
+            h.asset_type.as_str() != "cash" && h.target_weight > 0.0
+        })
+        .filter_map(|h| {
+            let target_value_cad = total_value * (h.target_weight / 100.0);
+            let drift = h.weight - h.target_weight;
+            if drift.abs() < drift_threshold {
+                return None;
+            }
+            // positive = sell (over-weight), negative = buy (under-weight)
+            let suggested_trade_cad = h.market_value_cad - target_value_cad;
+            let suggested_units = if h.current_price_cad != 0.0 {
+                suggested_trade_cad / h.current_price_cad
+            } else {
+                0.0
+            };
+            Some(RebalanceSuggestion {
+                holding_id: h.id,
+                symbol: h.symbol,
+                name: h.name,
+                current_value_cad: h.market_value_cad,
+                target_value_cad,
+                current_weight: h.weight,
+                target_weight: h.target_weight,
+                drift,
+                suggested_trade_cad,
+                suggested_units,
+                current_price_cad: h.current_price_cad,
+            })
+        })
+        .collect();
+
+    // Sort by |drift| descending — biggest drifters first
+    suggestions.sort_by(|a, b| {
+        b.drift
+            .abs()
+            .partial_cmp(&a.drift.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    Ok(suggestions)
 }
 
 #[cfg(test)]

@@ -60,6 +60,7 @@ pub fn run() {
             commands::add_alert,
             commands::delete_alert,
             commands::reset_alert,
+            commands::get_rebalance_suggestions,
         ])
         .run(tauri::generate_context!());
 
