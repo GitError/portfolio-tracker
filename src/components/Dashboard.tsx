@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -46,7 +47,24 @@ function CenterLabel({ text }: { text: string }) {
 }
 
 export function Dashboard({ portfolio, loading }: DashboardProps) {
-  const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accountFilter = (searchParams.get('account') ?? 'all') as 'all' | AccountType;
+
+  function setAccountFilter(value: 'all' | AccountType) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === 'all') {
+          next.delete('account');
+        } else {
+          next.set('account', value);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const filteredHoldings = useMemo(() => {
     if (!portfolio) return [];
