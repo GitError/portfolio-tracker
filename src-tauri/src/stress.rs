@@ -17,7 +17,7 @@ pub fn run_stress_test(
 ) -> Result<StressResult, String> {
     // Validate all shock values are in range -1.0..=10.0
     for (key, &shock) in &scenario.shocks {
-        if shock < -1.0 || shock > 10.0 {
+        if !(-1.0..=10.0).contains(&shock) {
             return Err(format!(
                 "Shock value {:.4} for '{}' is out of valid range (-1.0 to 10.0)",
                 shock, key

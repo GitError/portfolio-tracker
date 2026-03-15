@@ -1,6 +1,6 @@
 use reqwest::Client;
 
-use crate::config::USER_AGENT;
+use crate::config::{USER_AGENT, YAHOO_SEARCH_URL};
 use crate::types::{AssetType, SymbolResult};
 
 pub async fn search_symbols_yahoo(
@@ -15,13 +15,10 @@ pub async fn search_symbols_yahoo(
             _ => format!("%{:02X}", c as u32),
         })
         .collect();
-    let url = format!(
-        "https://query1.finance.yahoo.com/v1/finance/search?q={}&quotesCount=8&newsCount=0&enableFuzzyQuery=false",
-        encoded_query
-    );
+    let url = YAHOO_SEARCH_URL.replace("{}", &encoded_query);
     let response = client
         .get(&url)
-        .header("User-Agent", crate::config::USER_AGENT)
+        .header("User-Agent", USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Symbol search request failed: {}", e))?;
