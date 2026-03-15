@@ -2,6 +2,13 @@ import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
 
+const navigateMock = vi.fn();
+
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigateMock,
+  useLocation: () => ({ pathname: '/' }),
+}));
+
 function fireKeydown(overrides: Partial<KeyboardEventInit> & { target?: EventTarget }): void {
   const { target, ...init } = overrides;
   const event = new KeyboardEvent('keydown', { bubbles: true, ...init });
@@ -14,6 +21,7 @@ function fireKeydown(overrides: Partial<KeyboardEventInit> & { target?: EventTar
 describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    navigateMock.mockReset();
   });
 
   afterEach(() => {
@@ -79,40 +87,36 @@ describe('useKeyboardShortcuts', () => {
     expect(onRefresh).not.toHaveBeenCalled();
   });
 
-  it('calls onNavigate("/") when metaKey+1 is pressed', () => {
-    const onNavigate = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onNavigate }));
+  it('navigates to "/" when metaKey+1 is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({}));
 
     fireKeydown({ key: '1', metaKey: true });
 
-    expect(onNavigate).toHaveBeenCalledWith('/');
+    expect(navigateMock).toHaveBeenCalledWith('/');
   });
 
-  it('calls onNavigate("/holdings") when metaKey+2 is pressed', () => {
-    const onNavigate = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onNavigate }));
+  it('navigates to "/holdings" when metaKey+2 is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({}));
 
     fireKeydown({ key: '2', metaKey: true });
 
-    expect(onNavigate).toHaveBeenCalledWith('/holdings');
+    expect(navigateMock).toHaveBeenCalledWith('/holdings');
   });
 
-  it('calls onNavigate("/performance") when metaKey+3 is pressed', () => {
-    const onNavigate = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onNavigate }));
+  it('navigates to "/performance" when metaKey+3 is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({}));
 
     fireKeydown({ key: '3', metaKey: true });
 
-    expect(onNavigate).toHaveBeenCalledWith('/performance');
+    expect(navigateMock).toHaveBeenCalledWith('/performance');
   });
 
-  it('calls onNavigate("/stress") when metaKey+4 is pressed', () => {
-    const onNavigate = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onNavigate }));
+  it('navigates to "/stress" when metaKey+4 is pressed', () => {
+    renderHook(() => useKeyboardShortcuts({}));
 
     fireKeydown({ key: '4', metaKey: true });
 
-    expect(onNavigate).toHaveBeenCalledWith('/stress');
+    expect(navigateMock).toHaveBeenCalledWith('/stress');
   });
 
   it('calls onToggleHelp when ? key is pressed without modifier', () => {
@@ -134,23 +138,23 @@ describe('useKeyboardShortcuts', () => {
     expect(onToggleHelp).not.toHaveBeenCalled();
   });
 
-  it('calls onAddHolding when metaKey+n is pressed', () => {
-    const onAddHolding = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onAddHolding }));
+  it('calls onOpenAddHolding when metaKey+n is pressed', () => {
+    const onOpenAddHolding = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ onOpenAddHolding }));
 
     fireKeydown({ key: 'n', metaKey: true });
 
-    expect(onAddHolding).toHaveBeenCalledOnce();
+    expect(onOpenAddHolding).toHaveBeenCalledOnce();
   });
 
-  it('does NOT call onAddHolding when target is an INPUT element', () => {
-    const onAddHolding = vi.fn();
-    renderHook(() => useKeyboardShortcuts({ onAddHolding }));
+  it('does NOT call onOpenAddHolding when target is an INPUT element', () => {
+    const onOpenAddHolding = vi.fn();
+    renderHook(() => useKeyboardShortcuts({ onOpenAddHolding }));
 
     const inputEl = document.createElement('input');
     fireKeydown({ key: 'n', metaKey: true, target: inputEl });
 
-    expect(onAddHolding).not.toHaveBeenCalled();
+    expect(onOpenAddHolding).not.toHaveBeenCalled();
   });
 
   it('removes the event listener on unmount', () => {
