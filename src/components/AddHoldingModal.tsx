@@ -7,6 +7,8 @@ import type {
   SymbolResult,
 } from '../types/portfolio';
 import { ACCOUNT_OPTIONS, SUPPORTED_CURRENCIES } from '../lib/constants';
+import { usePortfolio } from '../hooks/usePortfolio';
+import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
 import { SymbolSearch } from './ui/SymbolSearch';
 
@@ -124,6 +126,8 @@ function Field({
 }
 
 export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Props) {
+  const { holdings } = usePortfolio();
+  const { showToast } = useToast();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
@@ -196,8 +200,8 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       symbol: result.symbol,
       name: result.name,
       assetType: result.assetType,
-      currency: result.currency,
       exchange: result.exchange,
+      currency: result.currency,
     }));
     setErrors((prev) => ({ ...prev, symbol: undefined }));
 
@@ -252,6 +256,18 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
 
   async function handleSave() {
     if (!validate()) return;
+
+    const thisWeight = parseFloat(form.targetWeight) || 0;
+    const otherWeightsSum = holdings
+      .filter((h) => h.id !== editingHolding?.id)
+      .reduce((sum, h) => sum + (h.targetWeight ?? 0), 0);
+    if (otherWeightsSum + thisWeight > 100) {
+      showToast(
+        `Warning: total target weight will be ${(otherWeightsSum + thisWeight).toFixed(1)}% (exceeds 100%)`,
+        'info'
+      );
+    }
+
     setSaving(true);
     try {
       const input: HoldingInput = {
@@ -263,7 +279,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
         exchange: form.exchange.toUpperCase(),
-        targetWeight: parseFloat(form.targetWeight),
+        targetWeight: thisWeight,
       };
       await onSave(input);
       onClose();
@@ -287,6 +303,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           return {
             ...prev,
             assetType,
+            exchange: assetType === 'cash' ? '' : prev.exchange,
             account:
               assetType === 'cash' ? 'cash' : prev.account === 'cash' ? 'taxable' : prev.account,
           };
