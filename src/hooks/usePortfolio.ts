@@ -42,6 +42,24 @@ export interface UsePortfolioReturn {
 
 const PortfolioContext = createContext<UsePortfolioReturn | null>(null);
 
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const char of line) {
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function parseMockCsv(csvContent: string): HoldingInput[] {
   const lines = csvContent
     .trim()
@@ -51,11 +69,13 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
 
   if (lines.length < 2) return [];
 
-  const header = lines[0].split(/[;,]/).map((field) => field.trim().toLowerCase());
+  const rawHeader = lines[0];
+  const delimiter = rawHeader.includes(';') && !rawHeader.includes(',') ? ';' : ',';
+  const header = parseCSVLine(rawHeader, delimiter).map((field) => field.toLowerCase());
   const columnIndex = (field: string) => header.indexOf(field);
 
   return lines.slice(1).map((line) => {
-    const cells = line.split(/[;,]/).map((cell) => cell.trim());
+    const cells = parseCSVLine(line, delimiter);
     const assetType = cells[columnIndex('type')] as HoldingInput['assetType'];
     const currency = cells[columnIndex('currency')].toUpperCase();
     const rawSymbol = cells[columnIndex('symbol')];
