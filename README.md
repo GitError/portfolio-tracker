@@ -10,13 +10,24 @@ A macOS desktop portfolio tracker built with Tauri v2. Tracks stocks, ETFs, cryp
 
 The app runs as a native macOS window with a Bloomberg-inspired dark terminal UI. Holdings are stored locally in SQLite — no cloud account required.
 
-**Docs:** [Feature Guide](docs/features.md) · [Roadmap](docs/roadmap.md)
+**Docs:** [Feature Guide](docs/features.md) · [Roadmap](docs/roadmap.md) · [Release Guide](docs/releases.md)
 
 ---
 
 ## Screenshot
 
 ![Portfolio Tracker dashboard showing portfolio value, allocation, and holdings](docs/screenshot-dashboard.png)
+
+---
+
+## Download
+
+- Latest release: https://github.com/GitError/portfolio-tracker/releases/latest
+- All releases: https://github.com/GitError/portfolio-tracker/releases
+
+Release builds are published from tags matching `v*.*.*` and first appear as draft GitHub Releases for review.
+
+> **Signing note:** macOS and Windows installers may show platform security warnings until signing certificates are configured. See [docs/releases.md](docs/releases.md) for the signing secrets and release flow.
 
 ---
 
@@ -132,6 +143,17 @@ cargo test                # Unit tests (db, stress engine, fx)
 cargo clippy              # Linter
 cargo fmt                 # Formatter
 ```
+
+### Releases
+
+```bash
+./scripts/bump-version.sh 0.1.1
+git commit -am "chore: bump version to 0.1.1"
+git tag v0.1.1
+git push && git push --tags
+```
+
+Pushing a `v*.*.*` tag triggers `.github/workflows/release.yml`, which builds cross-platform Tauri installers and creates a draft GitHub Release with attached artifacts.
 
 ### Git hooks
 
