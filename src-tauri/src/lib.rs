@@ -64,6 +64,8 @@ pub fn run() {
             commands::add_transaction,
             commands::get_transactions,
             commands::delete_transaction,
+            commands::backup_database,
+            commands::restore_database,
         ])
         .run(tauri::generate_context!());
 

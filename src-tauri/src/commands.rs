@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
-use tauri::State;
+use tauri::{Manager, State};
 
 use crate::db;
 use crate::fx::{convert_to_base, fetch_all_fx_rates};
@@ -1074,6 +1074,117 @@ pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usiz
         db::insert_holding_with_id(&conn, holding).map_err(|e| e.to_string())?;
     }
     Ok(count)
+}
+
+/// SQLite magic bytes: first 16 bytes of a valid SQLite database file.
+const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
+
+#[tauri::command]
+pub async fn backup_database(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DbState>,
+    destination_path: String,
+) -> Result<String, String> {
+    // Flush WAL to ensure the file on disk is complete before we copy it.
+    {
+        let conn = state.0.lock().map_err(|e| e.to_string())?;
+        conn.execute_batch("PRAGMA wal_checkpoint(FULL);")
+            .map_err(|e| format!("WAL checkpoint failed: {e}"))?;
+    }
+
+    let source = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Could not resolve app data dir: {e}"))?
+        .join(crate::config::DB_FILE_NAME);
+
+    if !source.exists() {
+        return Err("Database file does not exist".to_string());
+    }
+
+    // Resolve the destination path. If only a filename is provided (no
+    // directory component), save the backup to the user's Desktop so it is
+    // easy to find.
+    let requested = std::path::PathBuf::from(&destination_path);
+    let dest = if requested.is_absolute() {
+        requested
+    } else {
+        let desktop = app
+            .path()
+            .desktop_dir()
+            .or_else(|_| app.path().home_dir())
+            .map_err(|e| format!("Could not resolve home/desktop dir: {e}"))?;
+        desktop.join(&requested)
+    };
+
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Could not create destination directory: {e}"))?;
+        }
+    }
+
+    std::fs::copy(&source, &dest)
+        .map_err(|e| format!("Failed to copy database: {e}"))?;
+
+    Ok(dest.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub async fn restore_database(
+    app: tauri::AppHandle,
+    _state: tauri::State<'_, DbState>,
+    source_path: String,
+) -> Result<String, String> {
+    // Verify the source file is a valid SQLite database.
+    let src = std::path::PathBuf::from(&source_path);
+    if !src.exists() {
+        return Err(format!("File not found: {source_path}"));
+    }
+
+    // Check SQLite magic bytes.
+    let mut header = [0u8; 16];
+    {
+        use std::io::Read;
+        let mut f = std::fs::File::open(&src)
+            .map_err(|e| format!("Cannot open backup file: {e}"))?;
+        f.read_exact(&mut header)
+            .map_err(|_| "File is too small to be a valid SQLite database".to_string())?;
+    }
+    if &header != SQLITE_MAGIC {
+        return Err("The selected file is not a valid SQLite database".to_string());
+    }
+
+    // Open the source file with rusqlite to verify it has a holdings table.
+    {
+        let verify_conn = rusqlite::Connection::open(&src)
+            .map_err(|e| format!("Cannot open backup as SQLite: {e}"))?;
+        verify_conn
+            .execute_batch("PRAGMA integrity_check;")
+            .map_err(|e| format!("Integrity check failed on backup: {e}"))?;
+        let has_holdings: bool = verify_conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='holdings'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|n| n > 0)
+            .map_err(|e| format!("Could not verify holdings table: {e}"))?;
+        if !has_holdings {
+            return Err("Backup file does not appear to be a portfolio database (no holdings table)".to_string());
+        }
+    }
+
+    let dest = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Could not resolve app data dir: {e}"))?
+        .join(crate::config::DB_FILE_NAME);
+
+    std::fs::copy(&src, &dest)
+        .map_err(|e| format!("Failed to restore database: {e}"))?;
+
+    Ok("Database restored. Please restart the app to apply changes.".to_string())
 }
 
 #[tauri::command]
