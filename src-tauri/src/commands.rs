@@ -1395,12 +1395,8 @@ fn compute_portfolio_analytics(
             }
         };
 
-        *sector_values
-            .entry(sector)
-            .or_insert(0.0) += holding.market_value_cad;
-        *country_values
-            .entry(country)
-            .or_insert(0.0) += holding.market_value_cad;
+        *sector_values.entry(sector).or_insert(0.0) += holding.market_value_cad;
+        *country_values.entry(country).or_insert(0.0) += holding.market_value_cad;
 
         if let Some(meta) = meta_map.get(&holding.symbol) {
             if let Some(beta) = meta.beta {
