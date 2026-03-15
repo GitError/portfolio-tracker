@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -68,7 +68,14 @@ const TD: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-export function Holdings() {
+interface HoldingsProps {
+  /** Called by parent (e.g. via keyboard shortcut) to open the Add Holding modal */
+  onOpenAddModal?: (handler: () => void) => void;
+  /** Called by parent (e.g. via keyboard shortcut) to trigger CSV export */
+  onExportRef?: (handler: () => void) => void;
+}
+
+export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const {
     portfolio,
     holdings,
@@ -146,6 +153,21 @@ export function Holdings() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+
+  // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
+  useEffect(() => {
+    if (searchParams.get('add') === '1') {
+      setModalOpen(true);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('add');
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
@@ -348,6 +370,24 @@ export function Holdings() {
   }, [portfolio, rows]);
 
   const isEmpty = holdings.length === 0;
+
+  // Register imperative handles so parent can trigger open/export via keyboard shortcuts
+  useEffect(() => {
+    if (onOpenAddModal) {
+      onOpenAddModal(() => {
+        setEditing(undefined);
+        setModalOpen(true);
+      });
+    }
+  }, [onOpenAddModal]);
+
+  useEffect(() => {
+    if (onExportRef) {
+      onExportRef(() => {
+        void handleExport();
+      });
+    }
+  }, [onExportRef]);
 
   return (
     <div>
