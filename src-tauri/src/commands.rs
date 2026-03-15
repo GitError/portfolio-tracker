@@ -410,7 +410,15 @@ fn build_portfolio_snapshot(
 
         total_value += market_value_cad;
         total_cost += cost_value_cad;
-        daily_pnl += market_value_cad * (change_percent / 100.0);
+
+        // Exclude intraday purchases from daily PnL: a holding created today has
+        // no prior-day close to compare against, so applying the day-over-day
+        // change_percent would overstate the gain.
+        let today = Utc::now().date_naive().to_string(); // "YYYY-MM-DD"
+        let created_date = &holding.created_at[..10]; // first 10 chars of ISO 8601
+        if created_date < today.as_str() {
+            daily_pnl += market_value_cad * (change_percent / 100.0);
+        }
 
         holdings_with_price.push(HoldingWithPrice {
             id: holding.id.clone(),
@@ -1212,5 +1220,65 @@ mod tests {
         assert!((snapshot.holdings[0].target_delta_value + 180.0).abs() < 0.001);
         assert!((snapshot.holdings[1].target_delta_value + 330.0).abs() < 0.001);
         assert!((snapshot.target_cash_delta - 330.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_excludes_intraday_purchase_from_daily_pnl() {
+        // A holding created today should contribute 0 to daily_pnl.
+        let today = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let mut holding = make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD");
+        holding.created_at = today;
+
+        let prices = vec![PriceData {
+            symbol: "AAPL".to_string(),
+            price: 120.0,
+            currency: "CAD".to_string(),
+            change: 2.0,
+            change_percent: 5.0, // would be 60.0 CAD if applied
+            updated_at: Utc::now().to_rfc3339(),
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            Utc::now().to_rfc3339(),
+        );
+
+        // market_value_cad = 10 * 120 = 1200; daily_pnl should be 0, not 60
+        assert!((snapshot.daily_pnl - 0.0).abs() < 0.001,
+            "expected daily_pnl == 0 for intraday purchase, got {}", snapshot.daily_pnl);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_includes_prior_day_holding_in_daily_pnl() {
+        // A holding created yesterday (or earlier) should contribute normally.
+        let yesterday = (Utc::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let mut holding = make_holding("MSFT", AssetType::Stock, 10.0, 200.0, "CAD");
+        holding.created_at = yesterday;
+
+        let prices = vec![PriceData {
+            symbol: "MSFT".to_string(),
+            price: 220.0,
+            currency: "CAD".to_string(),
+            change: 20.0,
+            change_percent: 10.0, // 10% of 2200 = 220
+            updated_at: Utc::now().to_rfc3339(),
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            Utc::now().to_rfc3339(),
+        );
+
+        // market_value_cad = 10 * 220 = 2200; daily_pnl = 2200 * 0.10 = 220
+        assert!((snapshot.daily_pnl - 220.0).abs() < 0.001,
+            "expected daily_pnl == 220 for prior-day holding, got {}", snapshot.daily_pnl);
     }
 }
