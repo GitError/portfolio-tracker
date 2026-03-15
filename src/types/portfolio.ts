@@ -65,6 +65,12 @@ export interface PriceData {
   updatedAt: string;
 }
 
+export interface RefreshResult {
+  prices: PriceData[];
+  /** Symbols for which the price fetch failed. Empty when all succeeded. */
+  failedSymbols: string[];
+}
+
 export interface FxRate {
   pair: string; // e.g. "USDCAD"
   rate: number;
@@ -147,7 +153,7 @@ export interface PreviewImportResult {
 // invoke('add_holding', { holding }) → Holding        (omit id, createdAt, updatedAt)
 // invoke('update_holding', { holding }) → Holding
 // invoke('delete_holding', { id })  → boolean
-// invoke('refresh_prices')          → PriceData[]
+// invoke('refresh_prices')          → RefreshResult
 // invoke('get_performance', { range }) → { date: string; value: number }[]
 // invoke('run_stress_test_cmd', { scenario }) → StressResult
 // invoke('search_symbols', { query }) → SymbolResult[]

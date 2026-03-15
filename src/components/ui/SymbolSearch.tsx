@@ -94,9 +94,17 @@ interface Props {
   onSelect: (result: SymbolResult) => void;
   placeholder?: string;
   disabled?: boolean;
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
-export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', disabled }: Props) {
+export function SymbolSearch({
+  value,
+  onChange,
+  onSelect,
+  placeholder = 'AAPL',
+  disabled,
+  inputRef,
+}: Props) {
   const [query, setQuery] = useState(value);
   const [results, setResults] = useState<SymbolResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -104,6 +112,8 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
   const [activeIndex, setActiveIndex] = useState(-1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Tracks the most recent query string so stale async responses can be discarded.
+  const currentQueryRef = useRef('');
 
   // Sync parent-controlled value (e.g. when editing an existing holding)
   useEffect(() => {
@@ -123,6 +133,7 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
 
   const search = useCallback(async (q: string) => {
     const trimmed = q.trim();
+    currentQueryRef.current = q;
     if (trimmed.length < config.symbolSearchMinChars) {
       setResults([]);
       setOpen(false);
@@ -132,6 +143,8 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
     try {
       if (isTauri()) {
         const res = await tauriInvoke<SymbolResult[]>('search_symbols', { query: trimmed });
+        // Discard the response if the user has already typed something newer.
+        if (q !== currentQueryRef.current) return;
         setResults(res);
         setOpen(res.length > 0);
       } else {
@@ -139,10 +152,13 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
         const filtered = MOCK_RESULTS.filter(
           (r) => r.symbol.toLowerCase().startsWith(lower) || r.name.toLowerCase().includes(lower)
         ).slice(0, 8);
+        // Discard the response if the user has already typed something newer.
+        if (q !== currentQueryRef.current) return;
         setResults(filtered);
         setOpen(filtered.length > 0);
       }
     } catch {
+      if (q !== currentQueryRef.current) return;
       setResults([]);
       setOpen(false);
     } finally {
@@ -188,6 +204,7 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
     <div ref={containerRef} style={{ position: 'relative' }}>
       <div style={{ position: 'relative' }}>
         <input
+          ref={inputRef}
           type="text"
           value={query}
           onChange={handleInput}
