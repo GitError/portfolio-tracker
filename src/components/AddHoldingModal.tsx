@@ -52,6 +52,7 @@ interface FormState {
   quantity: string;
   costBasis: string;
   currency: string;
+  exchange: string;
   targetWeight: string;
 }
 
@@ -71,6 +72,7 @@ const EMPTY_FORM: FormState = {
   quantity: '',
   costBasis: '',
   currency: 'USD',
+  exchange: '',
   targetWeight: '0',
 };
 
@@ -139,6 +141,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           quantity: String(editingHolding.quantity),
           costBasis: String(editingHolding.costBasis),
           currency: editingHolding.currency,
+          exchange: editingHolding.exchange,
           targetWeight: String(editingHolding.targetWeight ?? 0),
         });
       } else {
@@ -157,6 +160,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       name: result.name,
       assetType: result.assetType,
       currency: result.currency,
+      exchange: result.exchange,
     }));
     setErrors((prev) => ({ ...prev, symbol: undefined }));
 
@@ -213,6 +217,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         quantity: parseFloat(form.quantity),
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
+        exchange: form.exchange.toUpperCase(),
         targetWeight: parseFloat(form.targetWeight),
       };
       await onSave(input);
@@ -336,7 +341,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               <SymbolSearch
                 value={form.symbol}
                 onChange={(v) => {
-                  setForm((prev) => ({ ...prev, symbol: v }));
+                  setForm((prev) => ({ ...prev, symbol: v.toUpperCase() }));
                   setErrors((prev) => ({ ...prev, symbol: undefined }));
                 }}
                 onSelect={handleSymbolSelect}
@@ -357,6 +362,24 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
             />
           </Field>
+
+          {/* Exchange (non-cash only) */}
+          {!isCash && (
+            <Field label="Exchange (optional)">
+              <input
+                type="text"
+                value={form.exchange}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, exchange: e.target.value.toUpperCase() }))
+                }
+                placeholder="NYSE"
+                maxLength={10}
+                style={INPUT_STYLE}
+                onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
+                onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+              />
+            </Field>
+          )}
 
           {/* Qty + Cost row */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
