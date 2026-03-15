@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -9,21 +9,17 @@ import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
 import { PortfolioProvider, usePortfolio } from './hooks/usePortfolio';
 import { useConfig } from './hooks/useConfig';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsOverlay } from './components/KeyboardShortcutsOverlay';
 import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
-
-const ROUTE_KEYS: Record<string, string> = {
-  '1': '/',
-  '2': '/holdings',
-  '3': '/performance',
-  '4': '/stress',
-};
 
 function AppRoutes() {
   const { portfolio, loading, error, refreshPrices } = usePortfolio();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Dynamic document title
   useEffect(() => {
@@ -34,29 +30,21 @@ function AppRoutes() {
     }
   }, [portfolio]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      const isMeta = e.metaKey || e.ctrlKey;
-      const tag = (e.target as HTMLElement).tagName;
-      const isInput = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+  const handleAddHolding = useCallback(() => {
+    navigate('/holdings?add=1');
+  }, [navigate]);
 
-      // Cmd/Ctrl+R \u2014 refresh prices
-      if (isMeta && e.key === 'r' && !isInput) {
-        e.preventDefault();
-        refreshPrices();
-        return;
-      }
+  const handleToggleHelp = useCallback(() => {
+    setShowShortcutsHelp((prev) => !prev);
+  }, []);
 
-      // 1\u20134 \u2014 navigate views (when not in an input)
-      if (!isMeta && !isInput && ROUTE_KEYS[e.key]) {
-        navigate(ROUTE_KEYS[e.key]);
-      }
-    }
-
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [navigate, refreshPrices]);
+  // Keyboard shortcuts via dedicated hook
+  useKeyboardShortcuts({
+    onRefresh: refreshPrices,
+    onAddHolding: handleAddHolding,
+    onNavigate: navigate,
+    onToggleHelp: handleToggleHelp,
+  });
 
   // Wire errors to toast
   useEffect(() => {
@@ -83,6 +71,10 @@ function AppRoutes() {
           <Route path="/stress" element={<StressTest />} />
         </Route>
       </Routes>
+      <KeyboardShortcutsOverlay
+        isOpen={showShortcutsHelp}
+        onClose={() => setShowShortcutsHelp(false)}
+      />
     </CurrencyContext.Provider>
   );
 }
