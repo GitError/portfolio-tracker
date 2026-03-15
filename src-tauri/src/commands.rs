@@ -1030,9 +1030,9 @@ mod tests {
 
         let csv = build_holdings_csv(&[holding]).expect("build csv");
 
-        assert!(
-            csv.starts_with("symbol,name,type,account,quantity,cost_basis,currency,target_weight")
-        );
+        assert!(csv.starts_with(
+            "symbol,name,type,account,quantity,cost_basis,currency,exchange,target_weight"
+        ));
         assert!(csv.contains(",22.5"));
     }
 
