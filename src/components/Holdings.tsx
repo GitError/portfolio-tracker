@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
@@ -59,7 +59,14 @@ const TD: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-export function Holdings() {
+interface HoldingsProps {
+  /** Called by parent (e.g. via keyboard shortcut) to open the Add Holding modal */
+  onOpenAddModal?: (handler: () => void) => void;
+  /** Called by parent (e.g. via keyboard shortcut) to trigger CSV export */
+  onExportRef?: (handler: () => void) => void;
+}
+
+export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const {
     portfolio,
     holdings,
@@ -339,6 +346,24 @@ export function Holdings() {
   }, [portfolio, rows]);
 
   const isEmpty = holdings.length === 0;
+
+  // Register imperative handles so parent can trigger open/export via keyboard shortcuts
+  useEffect(() => {
+    if (onOpenAddModal) {
+      onOpenAddModal(() => {
+        setEditing(undefined);
+        setModalOpen(true);
+      });
+    }
+  }, [onOpenAddModal]);
+
+  useEffect(() => {
+    if (onExportRef) {
+      onExportRef(() => {
+        void handleExport();
+      });
+    }
+  }, [onExportRef]);
 
   return (
     <div>
