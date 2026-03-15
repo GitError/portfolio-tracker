@@ -19,10 +19,14 @@ function isInFormField(target: EventTarget | null): boolean {
 }
 
 export interface KeyboardShortcutsOptions {
-  onRefresh: () => void;
-  onOpenAddHolding: () => void;
-  onExportCsv: () => void;
-  onToggleHelp: () => void;
+  onRefresh?: () => void;
+  onOpenAddHolding?: () => void;
+  onExportCsv?: () => void;
+  onToggleHelp?: () => void;
+  /** @deprecated use onOpenAddHolding */
+  onAddHolding?: () => void;
+  /** @deprecated use individual navigate shortcuts */
+  onNavigate?: (path: string) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -43,21 +47,21 @@ export function useKeyboardShortcuts({
       // ⌘R / Ctrl+R — refresh prices
       if (isMeta && e.key === 'r') {
         e.preventDefault();
-        onRefresh();
+        onRefresh?.();
         return;
       }
 
       // ⌘N / Ctrl+N — open Add Holding modal
       if (isMeta && e.key === 'n') {
         e.preventDefault();
-        onOpenAddHolding();
+        onOpenAddHolding?.();
         return;
       }
 
       // ⌘E / Ctrl+E — export CSV (only relevant on holdings page, but fires globally)
       if (isMeta && e.key === 'e') {
         e.preventDefault();
-        onExportCsv();
+        onExportCsv?.();
         return;
       }
 
@@ -71,11 +75,11 @@ export function useKeyboardShortcuts({
       // ? — toggle keyboard shortcuts help overlay (no modifier)
       if (!isMeta && e.key === '?') {
         e.preventDefault();
-        onToggleHelp();
+        onToggleHelp?.();
         return;
       }
 
-      // 1–4 — navigate views without modifier (legacy compat, no meta required)
+      // 1–4 — navigate views without modifier
       if (!isMeta && ROUTE_KEYS[e.key]) {
         navigate(ROUTE_KEYS[e.key]);
         return;

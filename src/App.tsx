@@ -19,7 +19,6 @@ function AppRoutes() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
-
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
 
   // Refs for imperative handles registered by Holdings
