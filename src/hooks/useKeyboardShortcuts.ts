@@ -1,65 +1,92 @@
 import { useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
-export interface KeyboardShortcutCallbacks {
-  onRefresh?: () => void;
-  onAddHolding?: () => void;
-  onNavigate?: (path: string) => void;
-  onToggleHelp?: () => void;
-}
-
-const NAVIGATE_KEYS: Record<string, string> = {
+const ROUTE_KEYS: Record<string, string> = {
   '1': '/',
   '2': '/holdings',
   '3': '/performance',
   '4': '/stress',
 };
 
-function isEditableTarget(target: EventTarget | null): boolean {
+function isInFormField(target: EventTarget | null): boolean {
   if (!target) return false;
   const el = target as HTMLElement;
   const tag = el.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+  // Also check contenteditable
   if (el.isContentEditable) return true;
   return false;
 }
 
-export function useKeyboardShortcuts(callbacks: KeyboardShortcutCallbacks): void {
-  const { onRefresh, onAddHolding, onNavigate, onToggleHelp } = callbacks;
+export interface KeyboardShortcutsOptions {
+  onRefresh?: () => void;
+  onOpenAddHolding?: () => void;
+  onExportCsv?: () => void;
+  onToggleHelp?: () => void;
+  /** @deprecated use onOpenAddHolding */
+  onAddHolding?: () => void;
+  /** @deprecated use individual navigate shortcuts */
+  onNavigate?: (path: string) => void;
+}
+
+export function useKeyboardShortcuts({
+  onRefresh,
+  onOpenAddHolding,
+  onExportCsv,
+  onToggleHelp,
+}: KeyboardShortcutsOptions): void {
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent): void {
+    function handleKey(e: KeyboardEvent) {
+      if (isInFormField(e.target)) return;
+
       const isMeta = e.metaKey || e.ctrlKey;
 
-      if (isEditableTarget(e.target)) return;
-
-      // Cmd/Ctrl+R — refresh prices
+      // ⌘R / Ctrl+R — refresh prices
       if (isMeta && e.key === 'r') {
         e.preventDefault();
         onRefresh?.();
         return;
       }
 
-      // Cmd/Ctrl+N — add holding
+      // ⌘N / Ctrl+N — open Add Holding modal
       if (isMeta && e.key === 'n') {
         e.preventDefault();
-        onAddHolding?.();
+        onOpenAddHolding?.();
         return;
       }
 
-      // Cmd/Ctrl+1..4 — navigate
-      if (isMeta && NAVIGATE_KEYS[e.key]) {
-        onNavigate?.(NAVIGATE_KEYS[e.key]);
+      // ⌘E / Ctrl+E — export CSV (only relevant on holdings page, but fires globally)
+      if (isMeta && e.key === 'e') {
+        e.preventDefault();
+        onExportCsv?.();
         return;
       }
 
-      // ? (no modifier) — toggle help
+      // ⌘1–4 / Ctrl+1–4 — navigate between views
+      if (isMeta && ROUTE_KEYS[e.key]) {
+        e.preventDefault();
+        navigate(ROUTE_KEYS[e.key]);
+        return;
+      }
+
+      // ? — toggle keyboard shortcuts help overlay (no modifier)
       if (!isMeta && e.key === '?') {
+        e.preventDefault();
         onToggleHelp?.();
+        return;
+      }
+
+      // 1–4 — navigate views without modifier
+      if (!isMeta && ROUTE_KEYS[e.key]) {
+        navigate(ROUTE_KEYS[e.key]);
         return;
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onRefresh, onAddHolding, onNavigate, onToggleHelp]);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [navigate, location, onRefresh, onOpenAddHolding, onExportCsv, onToggleHelp]);
 }
