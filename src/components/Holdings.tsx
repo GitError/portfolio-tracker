@@ -17,6 +17,7 @@ type SortKey = keyof Pick<
   | 'name'
   | 'assetType'
   | 'account'
+  | 'exchange'
   | 'quantity'
   | 'costBasis'
   | 'currentPrice'
@@ -77,6 +78,9 @@ export function Holdings() {
   const [editing, setEditing] = useState<Holding | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
     () => [
@@ -84,6 +88,7 @@ export function Holdings() {
       { key: 'name', label: 'Name', align: 'left' },
       { key: 'assetType', label: 'Type', align: 'left' },
       { key: 'account', label: 'Account', align: 'left' },
+      { key: 'exchange', label: 'Exchange', align: 'left' },
       { key: 'quantity', label: 'Qty', align: 'right' },
       { key: 'costBasis', label: 'Cost Basis', align: 'right' },
       { key: 'currentPrice', label: 'Price', align: 'right' },
@@ -126,6 +131,49 @@ export function Holdings() {
     setSort((prev) =>
       prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'desc' }
     );
+    setSelected(new Set());
+  }
+
+  function handleAccountFilterChange(value: 'all' | AccountType) {
+    setAccountFilter(value);
+    setSelected(new Set());
+  }
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === rows.length && rows.length > 0) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(rows.map((r) => r.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true);
+    const ids = Array.from(selected);
+    try {
+      for (const id of ids) {
+        await deleteHolding(id);
+      }
+      showToast(`Deleted ${ids.length} holdings`, 'info');
+    } catch (e) {
+      showToast(String(e), 'error');
+    } finally {
+      setBulkDeleting(false);
+      setBulkDeletePending(false);
+      setSelected(new Set());
+    }
   }
 
   async function handleSave(input: HoldingInput) {
@@ -281,7 +329,7 @@ export function Holdings() {
           />
           <select
             value={accountFilter}
-            onChange={(e) => setAccountFilter(e.target.value as 'all' | AccountType)}
+            onChange={(e) => handleAccountFilterChange(e.target.value as 'all' | AccountType)}
             style={{
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-primary)',
@@ -436,6 +484,125 @@ export function Holdings() {
               ))}
             </div>
           )}
+          {/* Bulk action bar */}
+          {selected.size > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 12px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                borderBottom: 'none',
+                marginBottom: 0,
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  color: 'var(--text-secondary)',
+                  flex: 1,
+                }}
+              >
+                {selected.size} selected
+              </span>
+              <button
+                onClick={() => setBulkDeletePending(true)}
+                disabled={bulkDeleting}
+                style={{
+                  padding: '4px 12px',
+                  background: 'transparent',
+                  border: '1px solid var(--color-loss)',
+                  color: 'var(--color-loss)',
+                  borderRadius: '2px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  cursor: bulkDeleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Delete selected
+              </button>
+              <button
+                onClick={() => setSelected(new Set())}
+                disabled={bulkDeleting}
+                style={{
+                  padding: '4px 12px',
+                  background: 'transparent',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: '2px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  cursor: bulkDeleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Clear selection
+              </button>
+            </div>
+          )}
+
+          {/* Bulk delete confirmation */}
+          {bulkDeletePending && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 12px',
+                background: 'rgba(255,71,87,0.08)',
+                border: '1px solid var(--color-loss)',
+                borderBottom: 'none',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  color: 'var(--color-loss)',
+                  flex: 1,
+                }}
+              >
+                Delete {selected.size} holding{selected.size !== 1 ? 's' : ''}? This cannot be
+                undone.
+              </span>
+              <button
+                onClick={() => void handleBulkDelete()}
+                disabled={bulkDeleting}
+                style={{
+                  padding: '4px 12px',
+                  background: 'var(--color-loss)',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: '2px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: bulkDeleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {bulkDeleting ? 'Deleting...' : 'Confirm'}
+              </button>
+              <button
+                onClick={() => setBulkDeletePending(false)}
+                disabled={bulkDeleting}
+                style={{
+                  padding: '4px 12px',
+                  background: 'transparent',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-secondary)',
+                  borderRadius: '2px',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  cursor: bulkDeleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+
           <div
             style={{
               border: '1px solid var(--border-primary)',
@@ -446,6 +613,15 @@ export function Holdings() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                 <tr>
+                  <th style={{ ...TH, textAlign: 'center', width: 36, cursor: 'default' }}>
+                    <input
+                      type="checkbox"
+                      checked={selected.size === rows.length && rows.length > 0}
+                      onChange={toggleSelectAll}
+                      title="Select all"
+                      style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
+                    />
+                  </th>
                   {columns.map(({ key, label, align }) => (
                     <th
                       key={key}
@@ -480,19 +656,34 @@ export function Holdings() {
                           ? 'rgba(255,71,87,0.08)'
                           : isDeleting
                             ? 'rgba(255,71,87,0.15)'
-                            : bg,
+                            : selected.has(h.id)
+                              ? 'rgba(59,130,246,0.08)'
+                              : bg,
                         transition: 'background 200ms',
                       }}
                       onMouseEnter={(e) => {
-                        if (!isPending && !isDeleting)
+                        if (!isPending && !isDeleting && !selected.has(h.id))
                           (e.currentTarget as HTMLElement).style.background =
                             'var(--bg-surface-hover)';
                       }}
                       onMouseLeave={(e) => {
                         if (!isPending && !isDeleting)
-                          (e.currentTarget as HTMLElement).style.background = bg;
+                          (e.currentTarget as HTMLElement).style.background = selected.has(h.id)
+                            ? 'rgba(59,130,246,0.08)'
+                            : bg;
                       }}
                     >
+                      <td
+                        style={{ ...TD, textAlign: 'center', width: 36 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selected.has(h.id)}
+                          onChange={() => toggleRow(h.id)}
+                          style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
+                        />
+                      </td>
                       <td
                         style={{
                           ...TD,
@@ -527,6 +718,16 @@ export function Holdings() {
                       >
                         {ACCOUNT_OPTIONS.find((option) => option.value === h.account)?.label ??
                           h.account}
+                      </td>
+                      <td
+                        style={{
+                          ...TD,
+                          color: h.exchange ? 'var(--text-secondary)' : 'var(--text-muted)',
+                          fontFamily: 'var(--font-mono)',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {h.exchange || '—'}
                       </td>
                       <td
                         style={{
@@ -734,8 +935,9 @@ export function Holdings() {
                     borderTop: '2px solid var(--border-primary)',
                   }}
                 >
+                  <td style={TD} />
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       ...TD,
                       fontFamily: 'var(--font-mono)',

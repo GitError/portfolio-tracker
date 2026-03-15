@@ -1,20 +1,15 @@
 use chrono::Utc;
 use reqwest::Client;
 
+use crate::config::{USER_AGENT, YAHOO_CHART_URL};
 use crate::types::PriceData;
 
 pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, String> {
-    let url = format!(
-        "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=1d",
-        symbol
-    );
+    let url = YAHOO_CHART_URL.replace("{}", symbol);
 
     let response = client
         .get(&url)
-        .header(
-            "User-Agent",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
-        )
+        .header("User-Agent", USER_AGENT)
         .send()
         .await
         .map_err(|e| format!("Request failed for {}: {}", symbol, e))?;
