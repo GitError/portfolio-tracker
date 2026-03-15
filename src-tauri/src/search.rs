@@ -1,6 +1,5 @@
 use reqwest::Client;
 
-use crate::config::USER_AGENT;
 use crate::types::{AssetType, SymbolResult};
 
 pub async fn search_symbols_yahoo(

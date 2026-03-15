@@ -257,9 +257,7 @@ export function TopBar({
           }}
         >
           <AlertTriangle size={12} />
-          <span>
-            Price refresh failed for: {failedSymbols.join(', ')} — showing cached prices
-          </span>
+          <span>Price refresh failed for: {failedSymbols.join(', ')} — showing cached prices</span>
           <button
             onClick={onRefresh}
             disabled={loading}

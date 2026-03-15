@@ -193,7 +193,9 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
           </div>
 
           {/* Quantity + Price row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}
+          >
             <div>
               <label style={labelStyle}>Quantity</label>
               <input
@@ -223,7 +225,9 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
           </div>
 
           {/* Fee + Currency row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+          <div
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}
+          >
             <div>
               <label style={labelStyle}>Fee (optional)</label>
               <input

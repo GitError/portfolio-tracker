@@ -94,10 +94,7 @@ export function TransactionHistory() {
   const [modalHolding, setModalHolding] = useState<Holding | null>(null);
   const [selectorHoldingId, setSelectorHoldingId] = useState<string>('');
 
-  const holdings: Holding[] = useMemo(
-    () => (portfolio?.holdings ?? []) as Holding[],
-    [portfolio]
-  );
+  const holdings: Holding[] = useMemo(() => (portfolio?.holdings ?? []) as Holding[], [portfolio]);
 
   async function loadTransactions() {
     setLoading(true);
@@ -178,8 +175,7 @@ export function TransactionHistory() {
   }
 
   function openAddModal() {
-    const holding =
-      selectorHoldingId ? holdingById.get(selectorHoldingId) : undefined;
+    const holding = selectorHoldingId ? holdingById.get(selectorHoldingId) : undefined;
     if (!holding) {
       showToast('Select a holding first', 'error');
       return;
@@ -327,9 +323,7 @@ export function TransactionHistory() {
         <EmptyState
           message="No transactions recorded yet."
           action={
-            holdings.length > 0
-              ? { label: '+ Add Transaction', onClick: openAddModal }
-              : undefined
+            holdings.length > 0 ? { label: '+ Add Transaction', onClick: openAddModal } : undefined
           }
         />
       ) : (

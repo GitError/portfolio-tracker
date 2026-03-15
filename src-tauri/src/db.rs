@@ -725,6 +725,7 @@ pub fn reset_alert(conn: &Connection, id: &str) -> Result<bool, String> {
 
 // ── Transactions ──────────────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub fn insert_transaction(
     conn: &Connection,
     holding_id: &str,
