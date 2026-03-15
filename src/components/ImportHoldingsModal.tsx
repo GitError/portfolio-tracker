@@ -34,12 +34,12 @@ function assetTypeBadge(type: string) {
 
 function downloadTemplate() {
   const template = [
-    'symbol,name,type,account,quantity,cost_basis,currency',
-    'AAPL,Apple Inc.,stock,tfsa,50,142.50,USD',
-    'BMO:CA,Bank of Montreal,stock,rrsp,100,80.00,CAD',
-    'VOO,Vanguard S&P 500 ETF,etf,rrsp,20,380.00,USD',
-    'BTC-USD,Bitcoin,crypto,taxable,0.5,45000.00,USD',
-    ',US Dollar Cash,cash,taxable,5000,1.00,USD',
+    'symbol,name,type,account,quantity,cost_basis,currency,exchange',
+    'AAPL,Apple Inc.,stock,tfsa,50,142.50,USD,NASDAQ',
+    'BMO:CA,Bank of Montreal,stock,rrsp,100,80.00,CAD,TSX',
+    'VOO,Vanguard S&P 500 ETF,etf,rrsp,20,380.00,USD,NYSE',
+    'BTC-USD,Bitcoin,crypto,taxable,0.5,45000.00,USD,CCC',
+    ',US Dollar Cash,cash,taxable,5000,1.00,USD,',
   ].join('\n');
 
   const blob = new Blob([template], { type: 'text/csv;charset=utf-8' });

@@ -9,6 +9,7 @@ export interface HoldingInput {
   quantity: number;
   costBasis: number;
   currency: string;
+  exchange: string;
   targetWeight: number;
 }
 
@@ -21,6 +22,7 @@ export interface Holding {
   quantity: number;
   costBasis: number; // per unit, in original currency
   currency: string; // ISO currency code
+  exchange: string; // exchange code, e.g. "NYSE", "TSX"
   targetWeight: number; // desired % of total portfolio value
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601

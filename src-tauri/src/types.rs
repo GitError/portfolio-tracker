@@ -80,6 +80,7 @@ pub struct Holding {
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
+    pub exchange: String,
     pub target_weight: f64,
     pub created_at: String,
     pub updated_at: String,
@@ -95,6 +96,7 @@ pub struct HoldingInput {
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
+    pub exchange: String,
     pub target_weight: f64,
 }
 
@@ -128,6 +130,7 @@ pub struct HoldingWithPrice {
     pub quantity: f64,
     pub cost_basis: f64,
     pub currency: String,
+    pub exchange: String,
     pub target_weight: f64,
     pub created_at: String,
     pub updated_at: String,
