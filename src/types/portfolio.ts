@@ -65,6 +65,11 @@ export interface PriceData {
   updatedAt: string;
 }
 
+export interface PriceFetchFailure {
+  symbol: string;
+  error: string;
+}
+
 export interface RefreshResult {
   prices: PriceData[];
   /** Symbols for which the price fetch failed. Empty when all succeeded. */

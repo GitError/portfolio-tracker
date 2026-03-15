@@ -25,6 +25,12 @@ export function formatNumber(n: number | null | undefined, decimals = 2): string
   }).format(n);
 }
 
+export function isPriceStale(updatedAt: string, thresholdHours = 2): boolean {
+  const updated = new Date(updatedAt).getTime();
+  const now = Date.now();
+  return (now - updated) / (1000 * 60 * 60) > thresholdHours;
+}
+
 export function formatCompact(n: number | null | undefined): string {
   if (n == null || !isFinite(n)) return '—';
   const abs = Math.abs(n);

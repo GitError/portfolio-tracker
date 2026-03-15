@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw, ChevronDown } from 'lucide-react';
+import { RefreshCw, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { formatCurrency, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -12,6 +12,7 @@ interface TopBarProps {
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
+  priceFailures?: string[];
 }
 
 const ROUTE_TITLES: Record<string, string> = {
@@ -133,99 +134,149 @@ export function TopBar({
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
+  priceFailures = [],
 }: TopBarProps) {
   const { pathname } = useLocation();
   const title = ROUTE_TITLES[pathname] ?? 'Portfolio Tracker';
   const updatedLabel = useRelativeTime(portfolio?.lastUpdated ?? null);
   const dailyPnl = portfolio?.dailyPnl ?? 0;
   const dailyPct = portfolio ? (dailyPnl / (portfolio.totalValue - dailyPnl)) * 100 : 0;
+  const hasFailures = priceFailures.length > 0;
 
   return (
-    <div
-      style={{
-        position: 'sticky',
-        top: 0,
-        zIndex: 5,
-        background: 'var(--bg-primary)',
-        borderBottom: '1px solid var(--border-primary)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 24px',
-        height: 56,
-        flexShrink: 0,
-      }}
-    >
-      <h1
+    <>
+      <div
         style={{
-          fontFamily: 'var(--font-sans)',
-          fontWeight: 600,
-          fontSize: 16,
-          color: 'var(--text-primary)',
-          letterSpacing: '-0.01em',
+          position: 'sticky',
+          top: 0,
+          zIndex: 5,
+          background: 'var(--bg-primary)',
+          borderBottom: '1px solid var(--border-primary)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 24px',
+          height: 56,
+          flexShrink: 0,
         }}
       >
-        {title}
-      </h1>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Daily P&L badge */}
-        {portfolio && (
-          <span
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 12,
-              color: pnlColor(dailyPnl),
-              background: 'var(--bg-surface)',
-              border: `1px solid ${pnlColor(dailyPnl)}22`,
-              padding: '3px 8px',
-              borderRadius: '2px',
-            }}
-          >
-            {dailyPnl >= 0 ? '+' : ''}
-            {formatCurrency(dailyPnl, baseCurrency)} ({formatPercent(dailyPct)})
-          </span>
-        )}
-
-        {/* Last updated */}
-        <span
+        <h1
           style={{
-            fontSize: 11,
-            color: 'var(--text-muted)',
-            fontFamily: 'var(--font-mono)',
+            fontFamily: 'var(--font-sans)',
+            fontWeight: 600,
+            fontSize: 16,
+            color: 'var(--text-primary)',
+            letterSpacing: '-0.01em',
           }}
         >
-          {loading ? 'Refreshing...' : `Updated ${updatedLabel}`}
-        </span>
+          {title}
+        </h1>
 
-        {/* Currency picker */}
-        <CurrencyPicker value={baseCurrency} onChange={onBaseCurrencyChange} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* Daily P&L badge */}
+          {portfolio && (
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                color: pnlColor(dailyPnl),
+                background: 'var(--bg-surface)',
+                border: `1px solid ${pnlColor(dailyPnl)}22`,
+                padding: '3px 8px',
+                borderRadius: '2px',
+              }}
+            >
+              {dailyPnl >= 0 ? '+' : ''}
+              {formatCurrency(dailyPnl, baseCurrency)} ({formatPercent(dailyPct)})
+            </span>
+          )}
 
-        {/* Refresh button */}
-        <button
-          onClick={onRefresh}
-          disabled={loading}
+          {/* Last updated */}
+          <span
+            style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            {loading ? 'Refreshing...' : `Updated ${updatedLabel}`}
+          </span>
+
+          {/* Currency picker */}
+          <CurrencyPicker value={baseCurrency} onChange={onBaseCurrencyChange} />
+
+          {/* Refresh button */}
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '5px 12px',
+              background: 'transparent',
+              border: '1px solid var(--border-primary)',
+              color: loading ? 'var(--text-muted)' : 'var(--text-secondary)',
+              borderRadius: '2px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: 12,
+              fontFamily: 'var(--font-sans)',
+            }}
+          >
+            <RefreshCw
+              size={13}
+              style={{ animation: loading ? 'spin 0.7s linear infinite' : 'none' }}
+            />
+            Refresh
+          </button>
+        </div>
+      </div>
+      {hasFailures && (
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
-            padding: '5px 12px',
-            background: 'transparent',
-            border: '1px solid var(--border-primary)',
-            color: loading ? 'var(--text-muted)' : 'var(--text-secondary)',
-            borderRadius: '2px',
-            cursor: loading ? 'not-allowed' : 'pointer',
+            gap: 10,
+            padding: '6px 24px',
+            background: 'rgba(251,191,36,0.08)',
+            borderBottom: '1px solid rgba(251,191,36,0.3)',
+            color: 'var(--color-warning)',
             fontSize: 12,
-            fontFamily: 'var(--font-sans)',
+            fontFamily: 'var(--font-mono)',
           }}
         >
-          <RefreshCw
-            size={13}
-            style={{ animation: loading ? 'spin 0.7s linear infinite' : 'none' }}
-          />
-          Refresh
-        </button>
-      </div>
-    </div>
+          <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+          <span>
+            {priceFailures.length} price{priceFailures.length !== 1 ? 's' : ''} failed to refresh:{' '}
+            {priceFailures.join(', ')}
+          </span>
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            title="Retry refresh"
+            style={{
+              marginLeft: 'auto',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '3px 8px',
+              background: 'transparent',
+              border: '1px solid rgba(251,191,36,0.4)',
+              color: 'var(--color-warning)',
+              borderRadius: '2px',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: 11,
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            <RefreshCw
+              size={11}
+              style={{ animation: loading ? 'spin 0.7s linear infinite' : 'none' }}
+            />
+            Retry
+          </button>
+        </div>
+      )}
+    </>
   );
 }

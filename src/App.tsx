@@ -15,7 +15,7 @@ import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
 
 function AppRoutes() {
-  const { portfolio, loading, error, refreshPrices } = usePortfolio();
+  const { portfolio, loading, error, priceFailures, refreshPrices } = usePortfolio();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
@@ -62,6 +62,7 @@ function AppRoutes() {
               onRefresh={refreshPrices}
               baseCurrency={baseCurrency}
               onBaseCurrencyChange={setBaseCurrency}
+              priceFailures={priceFailures}
             />
           }
         >

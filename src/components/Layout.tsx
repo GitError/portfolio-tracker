@@ -9,6 +9,7 @@ interface LayoutProps {
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
+  priceFailures?: string[];
 }
 
 export function Layout({
@@ -17,6 +18,7 @@ export function Layout({
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
+  priceFailures = [],
 }: LayoutProps) {
   return (
     <div
@@ -35,6 +37,7 @@ export function Layout({
           onRefresh={onRefresh}
           baseCurrency={baseCurrency}
           onBaseCurrencyChange={onBaseCurrencyChange}
+          priceFailures={priceFailures}
         />
         <main
           style={{

@@ -1,13 +1,22 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Upload,
+  Download,
+  Clock,
+} from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
-import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
+import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS } from '../lib/constants';
 import type { AccountType, Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
@@ -730,6 +739,10 @@ export function Holdings() {
                   const isDeleting = deletingId === h.id;
                   const isPending = pendingDelete === h.id;
                   const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
+                  const priceStale =
+                    h.assetType !== 'cash' &&
+                    portfolio?.lastUpdated != null &&
+                    isPriceStale(portfolio.lastUpdated);
                   return (
                     <tr
                       key={h.id}
@@ -839,9 +852,31 @@ export function Holdings() {
                           color: 'var(--text-primary)',
                         }}
                       >
-                        {h.assetType === 'cash'
-                          ? '—'
-                          : `${formatNumber(h.currentPrice, 2)} ${h.currency}`}
+                        {h.assetType === 'cash' ? (
+                          '—'
+                        ) : (
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              justifyContent: 'flex-end',
+                            }}
+                          >
+                            {priceStale && (
+                              <span
+                                title="Price last updated more than 2 hours ago"
+                                style={{ display: 'inline-flex', alignItems: 'center' }}
+                              >
+                                <Clock
+                                  size={11}
+                                  style={{ color: 'var(--color-warning)', flexShrink: 0 }}
+                                />
+                              </span>
+                            )}
+                            {formatNumber(h.currentPrice, 2)} {h.currency}
+                          </span>
+                        )}
                       </td>
                       <td
                         style={{

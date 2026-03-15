@@ -14,6 +14,7 @@ import type {
   ImportResult,
   PortfolioSnapshot,
   PreviewImportResult,
+  RefreshResult,
 } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 
@@ -31,6 +32,7 @@ export interface UsePortfolioReturn {
   holdings: Holding[];
   loading: boolean;
   error: string | null;
+  priceFailures: string[];
   refreshPrices: () => Promise<void>;
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
@@ -100,6 +102,7 @@ function usePortfolioState(): UsePortfolioReturn {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [priceFailures, setPriceFailures] = useState<string[]>([]);
 
   const loadPortfolio = useCallback(async () => {
     setLoading(true);
@@ -133,10 +136,12 @@ function usePortfolioState(): UsePortfolioReturn {
     setError(null);
     try {
       if (isTauri()) {
-        await tauriInvoke('refresh_prices');
+        const result = await tauriInvoke<RefreshResult>('refresh_prices');
+        setPriceFailures(result.failedSymbols ?? []);
         await loadPortfolio();
       } else {
         await new Promise((r) => setTimeout(r, 800));
+        setPriceFailures([]);
         setPortfolio({ ...MOCK_SNAPSHOT, lastUpdated: new Date().toISOString() });
       }
     } catch (e) {
@@ -275,6 +280,7 @@ function usePortfolioState(): UsePortfolioReturn {
     holdings,
     loading,
     error,
+    priceFailures,
     refreshPrices,
     addHolding,
     updateHolding,
