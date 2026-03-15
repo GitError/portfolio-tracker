@@ -17,6 +17,7 @@ type SortKey = keyof Pick<
   | 'name'
   | 'assetType'
   | 'account'
+  | 'exchange'
   | 'quantity'
   | 'costBasis'
   | 'currentPrice'
@@ -87,6 +88,7 @@ export function Holdings() {
       { key: 'name', label: 'Name', align: 'left' },
       { key: 'assetType', label: 'Type', align: 'left' },
       { key: 'account', label: 'Account', align: 'left' },
+      { key: 'exchange', label: 'Exchange', align: 'left' },
       { key: 'quantity', label: 'Qty', align: 'right' },
       { key: 'costBasis', label: 'Cost Basis', align: 'right' },
       { key: 'currentPrice', label: 'Price', align: 'right' },
@@ -720,6 +722,16 @@ export function Holdings() {
                       <td
                         style={{
                           ...TD,
+                          color: h.exchange ? 'var(--text-secondary)' : 'var(--text-muted)',
+                          fontFamily: 'var(--font-mono)',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {h.exchange || '—'}
+                      </td>
+                      <td
+                        style={{
+                          ...TD,
                           textAlign: 'right',
                           fontFamily: 'var(--font-mono)',
                           color: 'var(--text-secondary)',
@@ -925,7 +937,7 @@ export function Holdings() {
                 >
                   <td style={TD} />
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     style={{
                       ...TD,
                       fontFamily: 'var(--font-mono)',
