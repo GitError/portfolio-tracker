@@ -1124,8 +1124,7 @@ pub async fn backup_database(
         }
     }
 
-    std::fs::copy(&source, &dest)
-        .map_err(|e| format!("Failed to copy database: {e}"))?;
+    std::fs::copy(&source, &dest).map_err(|e| format!("Failed to copy database: {e}"))?;
 
     Ok(dest.to_string_lossy().into_owned())
 }
@@ -1146,8 +1145,8 @@ pub async fn restore_database(
     let mut header = [0u8; 16];
     {
         use std::io::Read;
-        let mut f = std::fs::File::open(&src)
-            .map_err(|e| format!("Cannot open backup file: {e}"))?;
+        let mut f =
+            std::fs::File::open(&src).map_err(|e| format!("Cannot open backup file: {e}"))?;
         f.read_exact(&mut header)
             .map_err(|_| "File is too small to be a valid SQLite database".to_string())?;
     }
@@ -1171,7 +1170,10 @@ pub async fn restore_database(
             .map(|n| n > 0)
             .map_err(|e| format!("Could not verify holdings table: {e}"))?;
         if !has_holdings {
-            return Err("Backup file does not appear to be a portfolio database (no holdings table)".to_string());
+            return Err(
+                "Backup file does not appear to be a portfolio database (no holdings table)"
+                    .to_string(),
+            );
         }
     }
 
@@ -1181,8 +1183,7 @@ pub async fn restore_database(
         .map_err(|e| format!("Could not resolve app data dir: {e}"))?
         .join(crate::config::DB_FILE_NAME);
 
-    std::fs::copy(&src, &dest)
-        .map_err(|e| format!("Failed to restore database: {e}"))?;
+    std::fs::copy(&src, &dest).map_err(|e| format!("Failed to restore database: {e}"))?;
 
     Ok("Database restored. Please restart the app to apply changes.".to_string())
 }
