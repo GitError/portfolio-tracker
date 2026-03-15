@@ -55,7 +55,14 @@ pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, Str
     })
 }
 
-pub async fn fetch_all_prices(client: &Client, symbols: Vec<String>) -> Vec<PriceData> {
+/// Result of a bulk price fetch.
+pub struct FetchAllPricesResult {
+    pub prices: Vec<PriceData>,
+    /// Symbols for which the fetch failed (network error, bad HTTP status, parse failure).
+    pub failed: Vec<String>,
+}
+
+pub async fn fetch_all_prices(client: &Client, symbols: Vec<String>) -> FetchAllPricesResult {
     let futures: Vec<_> = symbols
         .iter()
         .map(|symbol| fetch_price(client, symbol))
@@ -63,15 +70,18 @@ pub async fn fetch_all_prices(client: &Client, symbols: Vec<String>) -> Vec<Pric
 
     let results = futures::future::join_all(futures).await;
 
-    results
-        .into_iter()
-        .zip(symbols.iter())
-        .filter_map(|(result, symbol)| match result {
-            Ok(price) => Some(price),
+    let mut prices = Vec::new();
+    let mut failed = Vec::new();
+
+    for (result, symbol) in results.into_iter().zip(symbols.iter()) {
+        match result {
+            Ok(price) => prices.push(price),
             Err(e) => {
                 eprintln!("Failed to fetch price for {}: {}", symbol, e);
-                None
+                failed.push(symbol.clone());
             }
-        })
-        .collect()
+        }
+    }
+
+    FetchAllPricesResult { prices, failed }
 }

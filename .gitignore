@@ -42,3 +42,4 @@ ci-cd/
 # Logs
 *.log
 npm-debug.log*
+.claude/

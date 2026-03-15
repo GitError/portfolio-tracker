@@ -8,13 +8,13 @@ use tauri::State;
 
 use crate::db;
 use crate::fx::{convert_to_base, fetch_all_fx_rates};
-use crate::price::{fetch_all_prices, fetch_price};
+use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
-    ImportResult, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData, StressResult,
-    StressScenario, SymbolResult,
+    ImportResult, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData, RefreshResult,
+    StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -811,7 +811,7 @@ pub async fn preview_import_csv(
 pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
-) -> Result<Vec<PriceData>, String> {
+) -> Result<RefreshResult, String> {
     let base_currency = get_base_currency(&db);
 
     let holdings = {
@@ -836,10 +836,15 @@ pub async fn refresh_prices(
         .into_iter()
         .collect();
 
-    let (prices, fx_rates) = tokio::join!(
+    let (fetch_result, fx_rates) = tokio::join!(
         fetch_all_prices(&client.0, symbols),
         fetch_all_fx_rates(&client.0, currencies, &base_currency)
     );
+
+    let FetchAllPricesResult {
+        prices,
+        failed: failed_symbols,
+    } = fetch_result;
 
     // Persist to cache
     {
@@ -852,7 +857,10 @@ pub async fn refresh_prices(
         }
     }
 
-    Ok(prices)
+    Ok(RefreshResult {
+        prices,
+        failed_symbols,
+    })
 }
 
 #[tauri::command]
@@ -1049,6 +1057,36 @@ mod tests {
         let error = parse_import_rows(csv).expect_err("missing cost_basis should fail");
 
         assert!(error.contains("Missing required column: cost_basis"));
+    }
+
+    #[test]
+    fn import_weight_sum_over_100_detected() {
+        // Two rows whose target_weight values sum to 110; the command-level guard
+        // rejects this.  Verify parse_import_rows succeeds and the sum exceeds 100.
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   AAPL,Apple Inc.,stock,5,120,USD,60\n\
+                   MSFT,Microsoft,stock,3,200,USD,50\n";
+        let rows = parse_import_rows(csv).expect("rows should parse");
+        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        assert!(
+            total > 100.0,
+            "expected total > 100 to trigger command-level guard, got {}",
+            total
+        );
+    }
+
+    #[test]
+    fn import_weight_sum_at_100_is_valid() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   AAPL,Apple Inc.,stock,5,120,USD,60\n\
+                   MSFT,Microsoft,stock,3,200,USD,40\n";
+        let rows = parse_import_rows(csv).expect("rows should parse");
+        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        assert!(
+            (total - 100.0).abs() < 0.001,
+            "expected total == 100, got {}",
+            total
+        );
     }
 
     #[test]

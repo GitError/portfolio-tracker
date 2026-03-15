@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
@@ -137,6 +137,21 @@ export function Holdings() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+
+  // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
+  useEffect(() => {
+    if (searchParams.get('add') === '1') {
+      setModalOpen(true);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('add');
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
@@ -249,6 +264,16 @@ export function Holdings() {
   }
 
   async function handleDelete(id: string) {
+    // Guard: only delete holdings that are currently visible in the filtered view.
+    // This prevents a race where the search/account filter changes after the user
+    // clicks the trash icon but before they confirm, which would silently delete a
+    // hidden row the user can no longer see.
+    const isVisible = rows.some((h) => h.id === id);
+    if (!isVisible) {
+      setPendingDelete(null);
+      showToast('Holding is no longer visible — clear filters and try again', 'error');
+      return;
+    }
     setDeletingId(id);
     try {
       await deleteHolding(id);
