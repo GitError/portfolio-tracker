@@ -1,11 +1,11 @@
 const INVALID_NUMBER = '—';
 
-function isInvalidNumber(value: number): boolean {
-  return value == null || !isFinite(value) || isNaN(value);
+function isValidNumber(value: number | null | undefined): value is number {
+  return value != null && Number.isFinite(value) && !Number.isNaN(value);
 }
 
-export function formatCurrency(amount: number, currency = 'CAD'): string {
-  if (isInvalidNumber(amount)) return INVALID_NUMBER;
+export function formatCurrency(amount: number | null | undefined, currency = 'CAD'): string {
+  if (!isValidNumber(amount)) return INVALID_NUMBER;
   return (
     new Intl.NumberFormat('en-CA', {
       style: 'decimal',
@@ -17,22 +17,22 @@ export function formatCurrency(amount: number, currency = 'CAD'): string {
   );
 }
 
-export function formatPercent(decimal: number): string {
-  if (isInvalidNumber(decimal)) return INVALID_NUMBER;
+export function formatPercent(decimal: number | null | undefined): string {
+  if (!isValidNumber(decimal)) return INVALID_NUMBER;
   const sign = decimal >= 0 ? '+' : '';
   return `${sign}${decimal.toFixed(2)}%`;
 }
 
-export function formatNumber(n: number, decimals = 2): string {
-  if (isInvalidNumber(n)) return INVALID_NUMBER;
+export function formatNumber(n: number | null | undefined, decimals = 2): string {
+  if (!isValidNumber(n)) return INVALID_NUMBER;
   return new Intl.NumberFormat('en-CA', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(n);
 }
 
-export function formatCompact(n: number): string {
-  if (isInvalidNumber(n)) return INVALID_NUMBER;
+export function formatCompact(n: number | null | undefined): string {
+  if (!isValidNumber(n)) return INVALID_NUMBER;
   const abs = Math.abs(n);
   const sign = n < 0 ? '-' : '';
   if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;

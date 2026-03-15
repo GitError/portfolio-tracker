@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -18,6 +19,7 @@ import {
   createPresetScenarios,
   fxShockKey,
   ASSET_TYPE_CONFIG,
+  ACCOUNT_OPTIONS,
 } from '../lib/constants';
 import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -25,7 +27,13 @@ import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { StressTestInfo } from './StressTestInfo';
 import { config } from '../lib/config';
-import type { PortfolioSnapshot, StressScenario, StressScenarioInfo } from '../types/portfolio';
+import type {
+  AccountType,
+  AssetType,
+  PortfolioSnapshot,
+  StressScenario,
+  StressScenarioInfo,
+} from '../types/portfolio';
 
 // ─── Shock state keyed as the scenario.shocks keys ───────────────────────────
 type ShockMap = Record<string, number>; // values are decimals e.g. -0.20
@@ -41,6 +49,19 @@ const ZERO_SHOCKS: ShockMap = {
   etf: 0,
   crypto: 0,
 };
+
+const ASSET_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All Assets' },
+  { value: 'stock', label: 'Stocks' },
+  { value: 'etf', label: 'ETFs' },
+  { value: 'crypto', label: 'Crypto' },
+  { value: 'cash', label: 'Cash' },
+];
+
+const ACCOUNT_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: 'all', label: 'All Accounts' },
+  ...ACCOUNT_OPTIONS,
+];
 
 const PANEL: React.CSSProperties = {
   background: 'var(--bg-surface)',
@@ -536,10 +557,51 @@ function ResilienceSummary({ portfolio }: { portfolio: PortfolioSnapshot | null 
   );
 }
 
+// ─── Filter helper ────────────────────────────────────────────────────────────
+function applyHoldingFilters(
+  snapshot: PortfolioSnapshot,
+  accountFilter: 'all' | AccountType,
+  assetFilter: 'all' | AssetType
+): PortfolioSnapshot {
+  if (accountFilter === 'all' && assetFilter === 'all') return snapshot;
+
+  const filteredHoldings = snapshot.holdings.filter((h) => {
+    const accountMatch = accountFilter === 'all' || h.account === accountFilter;
+    const assetMatch = assetFilter === 'all' || h.assetType === assetFilter;
+    return accountMatch && assetMatch;
+  });
+
+  const totalValue = filteredHoldings.reduce((sum, h) => sum + h.marketValueCad, 0);
+  const totalCost = filteredHoldings.reduce((sum, h) => sum + h.costValueCad, 0);
+  const totalGainLoss = totalValue - totalCost;
+  const totalGainLossPercent = totalCost !== 0 ? (totalGainLoss / totalCost) * 100 : 0;
+  const dailyPnl = filteredHoldings.reduce(
+    (sum, h) => sum + h.marketValueCad * (h.dailyChangePercent / 100),
+    0
+  );
+
+  // Re-compute weights relative to the filtered subset
+  const holdingsWithWeight = filteredHoldings.map((h) => ({
+    ...h,
+    weight: totalValue !== 0 ? h.marketValueCad / totalValue : 0,
+  }));
+
+  return {
+    ...snapshot,
+    holdings: holdingsWithWeight,
+    totalValue,
+    totalCost,
+    totalGainLoss,
+    totalGainLossPercent,
+    dailyPnl,
+  };
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 export function StressTest() {
   const { portfolio, holdings } = usePortfolio();
   const { result, loading, runTest } = useStressTest();
+  const [searchParams, setSearchParams] = useSearchParams();
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const presetScenarioInfo = useMemo(() => createPresetScenarioInfo(baseCurrency), [baseCurrency]);
   const presetScenarios = useMemo(() => createPresetScenarios(baseCurrency), [baseCurrency]);
@@ -557,9 +619,51 @@ export function StressTest() {
     [presetName, presetScenarioInfo]
   );
 
-  // Detect which FX sliders are relevant to held currencies
+  // ─── Filter state persisted in URL ─────────────────────────────────────────
+  const accountFilter = (searchParams.get('stressAccount') ?? 'all') as 'all' | AccountType;
+  const assetFilter = (searchParams.get('stressAsset') ?? 'all') as 'all' | AssetType;
+
+  function setAccountFilter(value: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === 'all') {
+          next.delete('stressAccount');
+        } else {
+          next.set('stressAccount', value);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  function setAssetFilter(value: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === 'all') {
+          next.delete('stressAsset');
+        } else {
+          next.set('stressAsset', value);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  // ─── Filtered portfolio snapshot ───────────────────────────────────────────
+  const filteredPortfolio = useMemo(
+    () => (portfolio ? applyHoldingFilters(portfolio, accountFilter, assetFilter) : null),
+    [portfolio, accountFilter, assetFilter]
+  );
+
+  // Detect which FX sliders are relevant to held currencies (scoped to filtered holdings)
   const activeFxSliders = useMemo(() => {
-    const currencies = new Set((portfolio?.holdings ?? []).map((h) => h.currency.toUpperCase()));
+    const currencies = new Set(
+      (filteredPortfolio?.holdings ?? []).map((h) => h.currency.toUpperCase())
+    );
     return [...currencies]
       .filter((currency) => currency.toUpperCase() !== baseCurrency.toUpperCase())
       .sort()
@@ -567,7 +671,7 @@ export function StressTest() {
         key: fxShockKey(currency, baseCurrency),
         label: `${currency}/${baseCurrency}`,
       }));
-  }, [portfolio, baseCurrency]);
+  }, [filteredPortfolio, baseCurrency]);
 
   useEffect(() => {
     if (presetName === 'Custom') return;
@@ -576,7 +680,7 @@ export function StressTest() {
     setShocks({ ...ZERO_SHOCKS, ...preset.shocks });
   }, [presetName, presetScenarios]);
 
-  // Run stress test whenever shocks change (debounced 150ms)
+  // Run stress test whenever shocks or filtered portfolio change (debounced 150ms)
   const scheduleRun = useCallback(
     (nextShocks: ShockMap) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -585,17 +689,17 @@ export function StressTest() {
           name: presetName,
           shocks: Object.fromEntries(Object.entries(nextShocks).filter(([, v]) => v !== 0)),
         };
-        runTest(scenario, portfolio);
+        runTest(scenario, filteredPortfolio);
       }, config.stressTestDebounceMs);
     },
-    [portfolio, presetName, runTest]
+    [filteredPortfolio, presetName, runTest]
   );
 
-  // Initial run on mount / portfolio load
+  // Initial run on mount / portfolio load / filter change
   useEffect(() => {
-    if (portfolio) scheduleRun(shocks);
+    if (filteredPortfolio) scheduleRun(shocks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [portfolio]);
+  }, [filteredPortfolio]);
 
   function handlePresetChange(name: string) {
     setPresetName(name);
@@ -622,31 +726,79 @@ export function StressTest() {
     ? [...result.holdingBreakdown].sort((a, b) => a.impact - b.impact).filter((h) => h.impact !== 0)
     : [];
 
+  const isFiltered = accountFilter !== 'all' || assetFilter !== 'all';
+
   return (
     <div>
-      {/* Compare toggle */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button
-          onClick={() => setShowComparison((v) => !v)}
+      {/* Filter bar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <span
           style={{
-            padding: '5px 14px',
-            background: showComparison ? 'var(--color-accent)' : 'transparent',
-            border: '1px solid var(--border-primary)',
-            color: showComparison ? '#fff' : 'var(--text-secondary)',
-            borderRadius: '2px',
+            fontSize: 10,
+            color: 'var(--text-muted)',
             fontFamily: 'var(--font-mono)',
-            fontSize: 11,
             textTransform: 'uppercase',
-            letterSpacing: '0.06em',
-            cursor: 'pointer',
+            letterSpacing: '0.08em',
+            marginRight: 4,
           }}
         >
-          Compare Scenarios
-        </button>
+          Filter
+        </span>
+        <div style={{ width: 160 }}>
+          <Select
+            value={accountFilter}
+            onChange={setAccountFilter}
+            options={ACCOUNT_FILTER_OPTIONS}
+          />
+        </div>
+        <div style={{ width: 160 }}>
+          <Select value={assetFilter} onChange={setAssetFilter} options={ASSET_FILTER_OPTIONS} />
+        </div>
+        {isFiltered && (
+          <span
+            style={{
+              fontSize: 10,
+              color: 'var(--color-accent)',
+              fontFamily: 'var(--font-mono)',
+              letterSpacing: '0.06em',
+            }}
+          >
+            {filteredPortfolio?.holdings.length ?? 0} holding
+            {(filteredPortfolio?.holdings.length ?? 0) !== 1 ? 's' : ''} selected
+          </span>
+        )}
+        {/* Compare toggle aligned to right */}
+        <div style={{ marginLeft: 'auto' }}>
+          <button
+            onClick={() => setShowComparison((v) => !v)}
+            style={{
+              padding: '5px 14px',
+              background: showComparison ? 'var(--color-accent)' : 'transparent',
+              border: '1px solid var(--border-primary)',
+              color: showComparison ? '#fff' : 'var(--text-secondary)',
+              borderRadius: '2px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              cursor: 'pointer',
+            }}
+          >
+            Compare Scenarios
+          </button>
+        </div>
       </div>
 
-      {showComparison && portfolio && (
-        <ScenarioComparison portfolio={portfolio} scenarios={presetScenarioInfo} />
+      {showComparison && filteredPortfolio && (
+        <ScenarioComparison portfolio={filteredPortfolio} scenarios={presetScenarioInfo} />
       )}
 
       {/* Main two-column layout */}
@@ -1045,7 +1197,7 @@ export function StressTest() {
                   {[...result.holdingBreakdown]
                     .sort((a, b) => a.impact - b.impact)
                     .map((h, i) => {
-                      const holding = portfolio?.holdings.find((p) => p.id === h.holdingId);
+                      const holding = filteredPortfolio?.holdings.find((p) => p.id === h.holdingId);
                       const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
                       return (
                         <tr key={h.holdingId} style={{ background: bg }}>
@@ -1130,7 +1282,7 @@ export function StressTest() {
         </div>
       </div>
 
-      <ResilienceSummary portfolio={portfolio} />
+      <ResilienceSummary portfolio={filteredPortfolio} />
       <StressTestInfo
         isOpen={infoOpen}
         scenario={activePresetInfo}

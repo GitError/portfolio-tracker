@@ -141,7 +141,7 @@ export const ACCOUNT_OPTIONS: { value: AccountType; label: string }[] = [
   { value: 'cash', label: 'Cash' },
 ];
 
-export const SUPPORTED_CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'CHF', 'JPY'] as const;
+export const SUPPORTED_CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'AUD'] as const;
 
 export const CHART_RANGES = [
   { label: '1W', value: '1W' },
