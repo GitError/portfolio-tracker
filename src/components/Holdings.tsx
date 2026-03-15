@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
+import { AddTransactionModal } from './AddTransactionModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
@@ -153,6 +154,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [txModalHolding, setTxModalHolding] = useState<Holding | undefined>(undefined);
 
   // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
   useEffect(() => {
@@ -1019,6 +1021,21 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         ) : (
                           <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
                             <button
+                              onClick={() => setTxModalHolding(h)}
+                              title="Log transaction"
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                cursor: 'pointer',
+                                padding: 3,
+                                display: 'flex',
+                                alignItems: 'center',
+                              }}
+                            >
+                              <Plus size={13} />
+                            </button>
+                            <button
                               onClick={() => {
                                 setEditing(h);
                                 setModalOpen(true);
@@ -1189,6 +1206,14 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
         onImport={handleImport}
         onPreview={previewImportCsv}
       />
+      {txModalHolding && (
+        <AddTransactionModal
+          holding={txModalHolding}
+          isOpen={txModalHolding !== undefined}
+          onClose={() => setTxModalHolding(undefined)}
+          onSaved={() => setTxModalHolding(undefined)}
+        />
+      )}
     </div>
   );
 }

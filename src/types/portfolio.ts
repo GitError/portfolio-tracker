@@ -179,6 +179,27 @@ export interface RebalanceSuggestion {
   currentPriceCad: number;
 }
 
+export interface Transaction {
+  id: number;
+  holdingId: string;
+  transactionType: 'buy' | 'sell' | 'deposit' | 'withdrawal';
+  quantity: number;
+  price: number;
+  currency: string;
+  fee: number;
+  transactedAt: string;
+}
+
+export interface CreateTransactionRequest {
+  holdingId: string;
+  transactionType: 'buy' | 'sell' | 'deposit' | 'withdrawal';
+  quantity: number;
+  price: number;
+  currency: string;
+  fee: number;
+  transactedAt: string;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
@@ -192,3 +213,6 @@ export interface RebalanceSuggestion {
 // invoke('search_symbols', { query }) → SymbolResult[]
 // invoke('get_symbol_price', { symbol }) → PriceData
 // invoke('get_rebalance_suggestions', { driftThreshold }) → RebalanceSuggestion[]
+// invoke('add_transaction', { tx }) → Transaction
+// invoke('get_transactions', { holdingId? }) → Transaction[]
+// invoke('delete_transaction', { id }) → boolean
