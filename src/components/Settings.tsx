@@ -1,3 +1,6 @@
+import { useState, useRef } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { Download, Upload } from 'lucide-react';
 import { useConfig } from '../hooks/useConfig';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
@@ -105,6 +108,340 @@ function SectionHeader({ title }: { title: string }) {
       }}
     >
       {title}
+    </div>
+  );
+}
+
+type BackupStatus =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'success'; path: string }
+  | { kind: 'error'; message: string };
+
+type RestoreStatus =
+  | { kind: 'idle' }
+  | { kind: 'confirm'; filePath: string }
+  | { kind: 'loading' }
+  | { kind: 'success'; message: string }
+  | { kind: 'error'; message: string };
+
+function buildBackupFilename(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `portfolio-backup-${yyyy}-${mm}-${dd}.db`;
+}
+
+function ActionButton({
+  onClick,
+  disabled,
+  icon,
+  label,
+  variant,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  icon: React.ReactNode;
+  label: string;
+  variant: 'primary' | 'warning';
+}) {
+  const bgColor = variant === 'primary' ? 'var(--color-accent)' : 'transparent';
+  const borderColor = variant === 'primary' ? 'var(--color-accent)' : 'var(--color-warning)';
+  const textColor = variant === 'primary' ? '#fff' : 'var(--color-warning)';
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        padding: '7px 14px',
+        fontSize: 12,
+        fontWeight: 500,
+        fontFamily: 'var(--font-sans)',
+        background: disabled ? 'var(--bg-surface-alt)' : bgColor,
+        border: `1px solid ${disabled ? 'var(--border-primary)' : borderColor}`,
+        color: disabled ? 'var(--text-muted)' : textColor,
+        borderRadius: 2,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'opacity 150ms',
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function DataManagementSection() {
+  const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: 'idle' });
+  const [restoreStatus, setRestoreStatus] = useState<RestoreStatus>({ kind: 'idle' });
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBackup = async () => {
+    setBackupStatus({ kind: 'loading' });
+    const filename = buildBackupFilename();
+    try {
+      // The dialog plugin is not available in this build. We pass a bare
+      // filename; the backend resolves it to the user's Desktop so it is
+      // easy to find.
+      const destPath = filename;
+      const savedPath = await invoke<string>('backup_database', {
+        destinationPath: destPath,
+      });
+      setBackupStatus({ kind: 'success', path: savedPath });
+    } catch (err) {
+      setBackupStatus({ kind: 'error', message: String(err) });
+    }
+  };
+
+  const handleRestoreFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset so the same file can be re-selected after cancelling.
+    e.target.value = '';
+    // In Tauri v2, the File object from a file input includes a non-standard
+    // `path` property with the real filesystem path.
+    const filePath = (file as File & { path?: string }).path ?? file.name;
+    setRestoreStatus({ kind: 'confirm', filePath });
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (restoreStatus.kind !== 'confirm') return;
+    const { filePath } = restoreStatus;
+    setRestoreStatus({ kind: 'loading' });
+    try {
+      const message = await invoke<string>('restore_database', { sourcePath: filePath });
+      setRestoreStatus({ kind: 'success', message });
+    } catch (err) {
+      setRestoreStatus({ kind: 'error', message: String(err) });
+    }
+  };
+
+  const handleRestoreCancel = () => {
+    setRestoreStatus({ kind: 'idle' });
+  };
+
+  const isBackupLoading = backupStatus.kind === 'loading';
+  const isRestoreLoading = restoreStatus.kind === 'loading';
+
+  return (
+    <div
+      style={{
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--border-primary)',
+        borderRadius: 2,
+        padding: '0 16px',
+      }}
+    >
+      {/* Backup row */}
+      <div
+        style={{
+          padding: '16px 0',
+          borderBottom: '1px solid var(--border-subtle)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 24,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+              Backup Database
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+              Save a complete copy of your portfolio database to a file.
+            </div>
+            {backupStatus.kind === 'success' && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-gain)',
+                  marginTop: 6,
+                  fontFamily: 'var(--font-mono)',
+                  wordBreak: 'break-all',
+                }}
+              >
+                Saved: {backupStatus.path}
+              </div>
+            )}
+            {backupStatus.kind === 'error' && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-loss)',
+                  marginTop: 6,
+                }}
+              >
+                {backupStatus.message}
+              </div>
+            )}
+          </div>
+          <div style={{ flexShrink: 0, paddingTop: 2 }}>
+            <ActionButton
+              onClick={handleBackup}
+              disabled={isBackupLoading}
+              icon={<Download size={13} />}
+              label={isBackupLoading ? 'Saving…' : 'Backup Database'}
+              variant="primary"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Restore row */}
+      <div style={{ padding: '16px 0' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 24,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+              Restore from Backup
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+              Replace all current data with a previously saved backup file.
+            </div>
+
+            {/* Persistent warning */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginTop: 8,
+                padding: '7px 10px',
+                background: 'rgba(251,191,36,0.07)',
+                border: '1px solid rgba(251,191,36,0.25)',
+                borderRadius: 2,
+                fontSize: 12,
+                color: 'var(--color-warning)',
+              }}
+            >
+              This will replace all current data. The app will need to restart after restoring.
+            </div>
+
+            {/* Inline confirmation */}
+            {restoreStatus.kind === 'confirm' && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: '12px 14px',
+                  background: 'rgba(255,71,87,0.07)',
+                  border: '1px solid rgba(255,71,87,0.3)',
+                  borderRadius: 2,
+                }}
+              >
+                <div style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 4 }}>
+                  Restore from:
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--text-secondary)',
+                    marginBottom: 10,
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {restoreStatus.filePath}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--color-loss)', marginBottom: 12 }}>
+                  Are you sure? This cannot be undone.
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={handleRestoreConfirm}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      fontFamily: 'var(--font-sans)',
+                      background: 'var(--color-loss)',
+                      border: '1px solid var(--color-loss)',
+                      color: '#fff',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Confirm Restore
+                  </button>
+                  <button
+                    onClick={handleRestoreCancel}
+                    style={{
+                      padding: '6px 14px',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      fontFamily: 'var(--font-sans)',
+                      background: 'transparent',
+                      border: '1px solid var(--border-primary)',
+                      color: 'var(--text-secondary)',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {restoreStatus.kind === 'success' && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-gain)',
+                  marginTop: 8,
+                }}
+              >
+                {restoreStatus.message}
+              </div>
+            )}
+
+            {restoreStatus.kind === 'error' && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-loss)',
+                  marginTop: 8,
+                }}
+              >
+                {restoreStatus.message}
+              </div>
+            )}
+          </div>
+
+          <div style={{ flexShrink: 0, paddingTop: 2 }}>
+            {/* Hidden native file picker */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".db"
+              style={{ display: 'none' }}
+              onChange={handleRestoreFileSelected}
+            />
+            <ActionButton
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isRestoreLoading || restoreStatus.kind === 'confirm'}
+              icon={<Upload size={13} />}
+              label={isRestoreLoading ? 'Restoring…' : 'Choose Backup File'}
+              variant="warning"
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -237,6 +574,10 @@ export function Settings() {
           </div>
         ))}
       </div>
+
+      {/* Data Management */}
+      <SectionHeader title="Data Management" />
+      <DataManagementSection />
 
       {/* About */}
       <SectionHeader title="About" />
