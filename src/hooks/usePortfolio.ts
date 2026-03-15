@@ -69,7 +69,7 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       quantity: Number(cells[columnIndex('quantity')]),
       costBasis: Number(cells[columnIndex('cost_basis')]),
       currency,
-      targetWeight: 0,
+      targetWeight: Number(cells[columnIndex('target_weight')]) || 0,
     };
   });
 }
@@ -209,6 +209,7 @@ function usePortfolioState(): UsePortfolioReturn {
         exchange: '',
         quantity: input.quantity,
         costBasis: input.costBasis,
+        targetWeight: input.targetWeight,
         status: 'ready',
       })),
       readyCount: imported.length,
@@ -222,7 +223,7 @@ function usePortfolioState(): UsePortfolioReturn {
     }
 
     const rows = [
-      ['symbol', 'name', 'type', 'account', 'quantity', 'cost_basis', 'currency'],
+      ['symbol', 'name', 'type', 'account', 'quantity', 'cost_basis', 'currency', 'target_weight'],
       ...holdings.map((holding) => [
         holding.symbol,
         holding.name,
@@ -231,6 +232,7 @@ function usePortfolioState(): UsePortfolioReturn {
         String(holding.quantity),
         String(holding.costBasis),
         holding.currency,
+        String(holding.targetWeight),
       ]),
     ];
     return rows.map((row) => row.join(',')).join('\n');
