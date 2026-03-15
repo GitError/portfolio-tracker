@@ -1,4 +1,4 @@
-import type { AccountType, StressScenario } from '../types/portfolio';
+import type { AccountType, StressScenario, StressScenarioInfo } from '../types/portfolio';
 
 export interface PresetScenarioConfig extends StressScenario {
   description: string;
@@ -8,7 +8,7 @@ export function fxShockKey(currency: string, baseCurrency: string): string {
   return `fx_${currency.toLowerCase()}_${baseCurrency.toLowerCase()}`;
 }
 
-export function createPresetScenarios(baseCurrency: string): PresetScenarioConfig[] {
+export function createPresetScenarioInfo(baseCurrency: string): StressScenarioInfo[] {
   const addFxShock = (shocks: Record<string, number>, currency: string, value: number) => {
     if (currency.toUpperCase() !== baseCurrency.toUpperCase()) {
       shocks[fxShockKey(currency, baseCurrency)] = value;
@@ -47,63 +47,84 @@ export function createPresetScenarios(baseCurrency: string): PresetScenarioConfi
     {
       name: 'Mild Correction',
       shocks: { stock: -0.05, etf: -0.05, crypto: -0.1 },
-      description: 'Normal market pullback; risk assets slip 5–10% on profit-taking',
+      description:
+        'Models a routine pullback where equities fall modestly and crypto drops harder because of higher volatility.',
+      historicalParallel: 'Q4 2018, Sep 2020',
     },
     {
       name: 'Bear Market',
       shocks: bearMarket,
-      description: 'Broad equity sell-off with crypto collapse; classic risk-off environment',
+      description:
+        'Models a prolonged risk-off drawdown with large equity losses and a flight toward safety assets.',
+      historicalParallel: '2008 GFC, 2022 rate hiking cycle',
     },
     {
       name: 'Crypto Winter',
       shocks: { crypto: -0.5 },
-      description: 'Crypto-specific collapse of 50%; equities and FX largely unaffected',
+      description:
+        'Models a crypto-specific collapse where digital assets reprice sharply while traditional assets stay relatively stable.',
+      historicalParallel: '2018 crypto winter, May 2022 Terra/Luna collapse',
     },
     {
       name: 'Base Currency Drop',
       shocks: baseCurrencyDrop,
-      description:
-        'Domestic currency weakens sharply; foreign-denominated assets gain in local terms',
+      description: `Models a sharp drop in ${baseCurrency} versus major currencies, increasing the local value of foreign holdings.`,
+      historicalParallel: '2015 oil shock and CAD weakness',
     },
     {
       name: 'Stagflation',
       shocks: stagflation,
       description:
-        'High inflation + slowing growth; equities re-rate lower, USD firms on carry demand',
+        'Models inflation staying high while growth weakens, pulling down risk assets while the local currency also softens.',
+      historicalParallel: '1970s stagflation, partial parallel in 2022',
     },
     {
       name: 'AI Correction',
       shocks: aiCorrection,
       description:
-        'Reversal of AI-driven valuations; growth and tech names hit hardest while USD softens',
+        'Models a reversal in crowded AI and growth trades, with tech-heavy risk assets falling faster than the broader market.',
+      historicalParallel: '2024 AI momentum unwind analogue',
     },
     {
       name: '2022 Tech Drawdown',
       shocks: techDrawdown,
-      description: 'Rate shock rout — tech −40%, crypto −60%, USD strengthens on Fed hawkishness',
+      description:
+        'Models a rate-shock-led technology selloff with deep crypto losses and a stronger USD.',
+      historicalParallel: '2022 Nasdaq drawdown',
     },
     {
       name: 'Mild Recession',
       shocks: { stock: -0.12, etf: -0.1, crypto: -0.2 },
-      description: 'Growth softens, earnings contract 10–15%; central banks slow to cut rates',
+      description:
+        'Models a moderate earnings recession where risk assets fall, but not to full bear-market extremes.',
+      historicalParallel: '2001 shallow recession, 1990 soft landing miss',
     },
     {
       name: 'Inflation Shock',
       shocks: inflationShock,
-      description: 'Sticky inflation forces rate hikes; equities re-rate lower, USD firms on carry',
+      description:
+        'Models sticky inflation forcing higher rates, weighing on equities while the USD strengthens.',
+      historicalParallel: '2022 inflation repricing',
     },
     {
       name: 'CAD Weakness',
       shocks: cadWeakness,
       description:
-        'Oil price slump + BoC dovishness weakens CAD; foreign holdings gain in CAD terms',
+        'Models a Canada-specific currency selloff that boosts the local-currency value of foreign assets.',
+      historicalParallel: '2015-2016 CAD weakness',
     },
     {
       name: 'Commodity Rally',
       shocks: commodityRally,
-      description: 'Supply shock lifts energy/materials; CAD firms as petrocurrency',
+      description:
+        'Models a commodity-led upswing that helps resource-heavy equities while a stronger CAD offsets some foreign gains.',
+      historicalParallel: '2021 energy and materials rally',
     },
   ];
+}
+
+export function createPresetScenarios(baseCurrency: string): StressScenario[] {
+  return createPresetScenarioInfo(baseCurrency).map(({ name, shocks }) => ({ name, shocks }));
 }
 
 export const ASSET_TYPE_CONFIG = {

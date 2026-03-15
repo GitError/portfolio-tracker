@@ -1,21 +1,91 @@
-#!/bin/sh
-# pre-push: run full test suite before push
-
+#!/bin/zsh
 set -e
 
-echo "🧪 Running full test suite before push..."
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+CARGO="${HOME}/.cargo/bin/cargo"
+echo "🚀 Pre-push verification for branch: $BRANCH"
+
+# ── Stage 1: Lint + format (< 10s) ───────────────────────────────────────────
+echo ""
+echo "Stage 1: Lint + format..."
+npm run lint --silent
+npm run format:check --silent
+if [ -x "$CARGO" ]; then
+  cd src-tauri && "$CARGO" fmt --check 2>/dev/null && cd ..
+fi
+echo "  ✓ Lint + format passed"
+
+# ── Stage 2: Build verification (< 2 min) ────────────────────────────────────
+echo ""
+echo "Stage 2: Build verification..."
+
+echo "  → Frontend build (tsc + vite)..."
+npm run build --silent
+
+echo "  → Backend build (cargo)..."
+if [ -x "$CARGO" ]; then
+  cd src-tauri && "$CARGO" build --quiet 2>/dev/null && cd ..
+else
+  echo "  (cargo not found, skipping backend build)"
+fi
+echo "  ✓ Builds passed"
+
+# ── Stage 3: Tests (< 1 min) ─────────────────────────────────────────────────
+echo ""
+echo "Stage 3: Tests..."
 
 echo "  → Frontend tests..."
-npm test
+npm run test --silent
 
-echo "  → Rust tests..."
-CARGO="${HOME}/.cargo/bin/cargo"
+echo "  → Backend tests..."
 if [ -x "$CARGO" ]; then
-  cd src-tauri
-  "$CARGO" test
-  cd ..
+  cd src-tauri && "$CARGO" test --quiet 2>/dev/null && cd ..
 else
-  echo "  (cargo not found, skipping Rust tests)"
+  echo "  (cargo not found, skipping backend tests)"
+fi
+echo "  ✓ Tests passed"
+
+# ── Stage 4: Clippy (< 30s) ──────────────────────────────────────────────────
+echo ""
+echo "Stage 4: Clippy..."
+if [ -x "$CARGO" ]; then
+  cd src-tauri && "$CARGO" clippy --quiet -- -D warnings 2>/dev/null && cd ..
+  echo "  ✓ Clippy passed"
+else
+  echo "  (cargo not found, skipping clippy)"
 fi
 
-echo "✅ All tests passed. Proceeding with push."
+# ── Stage 5: Claude review (only on main/dev) ────────────────────────────────
+if [[ "$BRANCH" == "main" || "$BRANCH" == "dev" ]]; then
+  DIFF=$(git log --oneline --no-merges origin/$BRANCH..HEAD 2>/dev/null)
+  if [ -n "$DIFF" ]; then
+    echo ""
+    echo "🔍 Stage 5: Claude Code review..."
+    claude -p "You are reviewing code about to be pushed to the '$BRANCH' branch of a Tauri v2 portfolio tracker (Rust + React/TypeScript).
+
+Review the following changes for:
+1. Bugs or logic errors
+2. Type alignment issues between Rust (serde camelCase) and TypeScript interfaces
+3. Security issues (SQL injection, hardcoded secrets, unvalidated input)
+4. Missing error handling
+5. Style consistency with the dark terminal/Bloomberg design system
+
+Only flag real issues. Be concise. If everything looks good, say so.
+
+Changes being pushed:
+$(git diff origin/$BRANCH..HEAD)
+
+Files changed:
+$(git diff --name-only origin/$BRANCH..HEAD)"
+
+    echo ""
+    read "REPLY?Claude review complete. Continue pushing? [y/N] "
+    if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+      echo "Push aborted."
+      exit 1
+    fi
+  fi
+fi
+
+echo ""
+echo "✅ All pre-push checks passed!"

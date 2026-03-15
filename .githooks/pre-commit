@@ -1,27 +1,24 @@
-#!/bin/sh
-# pre-commit: run lint + typecheck + format check on staged TS/TSX files
-
+#!/bin/zsh
 set -e
 
 echo "🔍 Running pre-commit checks..."
 
 # Frontend checks
 echo "  → ESLint..."
-npm run lint
+npm run lint || { echo "❌ ESLint failed"; exit 1; }
 
 echo "  → TypeScript..."
-npm run typecheck
+npm run typecheck || { echo "❌ TypeScript check failed"; exit 1; }
 
 echo "  → Prettier..."
-npm run format:check
+npm run format:check || { echo "❌ Prettier check failed — run 'npm run format' to fix"; exit 1; }
 
-# Rust format check (if src-tauri changes are staged)
+# Rust format check (only if src-tauri files are staged)
 if git diff --cached --name-only | grep -q '^src-tauri/'; then
   echo "  → cargo fmt..."
   CARGO="${HOME}/.cargo/bin/cargo"
   if [ -x "$CARGO" ]; then
-    cd src-tauri
-    "$CARGO" fmt --check
+    cd src-tauri && "$CARGO" fmt --check || { echo "❌ cargo fmt check failed — run 'cargo fmt' in src-tauri/ to fix"; exit 1; }
     cd ..
   else
     echo "  (cargo not found, skipping Rust fmt check)"

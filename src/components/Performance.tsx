@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   AreaChart,
   Area,
@@ -11,15 +11,19 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { ALL_PERF_DATA, calcStats, filterByRange } from '../lib/perfMockData';
+import { useSearchParams } from 'react-router-dom';
+import { ALL_PERF_DATA, BENCHMARK_SERIES, calcStats, filterByRange } from '../lib/perfMockData';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
-import { ACCOUNT_OPTIONS } from '../lib/constants';
+import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG } from '../lib/constants';
 import { Select } from './ui/Select';
-import type { AccountType, PortfolioSnapshot } from '../types/portfolio';
+import { EmptyState } from './ui/EmptyState';
+import type { AccountType, AssetType, PortfolioSnapshot } from '../types/portfolio';
 
 type Range = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 const RANGES: Range[] = ['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
+type AssetFilter = 'all' | AssetType;
+type BenchmarkId = 'none' | 'sp500' | 'nasdaq100' | 'tsx' | 'bitcoin';
 
 const PANEL: React.CSSProperties = {
   background: 'var(--bg-surface)',
@@ -85,38 +89,138 @@ function CustomTooltip({
 }
 
 export function Performance({ portfolio }: PerformanceProps) {
-  const [range, setRange] = useState<Range>('1Y');
-  const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const range = (searchParams.get('range') as Range) || '1Y';
+  const accountFilter = (searchParams.get('account') as 'all' | AccountType) || 'all';
+  const assetFilter = (searchParams.get('asset') as AssetFilter) || 'all';
+  const benchmarkId = (searchParams.get('benchmark') as BenchmarkId) || 'none';
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
 
-  const accountShare = useMemo(() => {
-    if (!portfolio || portfolio.totalValue === 0 || accountFilter === 'all') return 1;
-    const accountValue = portfolio.holdings
-      .filter((holding) => holding.account === accountFilter)
-      .reduce((sum, holding) => sum + holding.marketValueCad, 0);
-    return accountValue / portfolio.totalValue;
-  }, [portfolio, accountFilter]);
+  function updateParam(key: string, value: string) {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === 'all' || value === 'none' || (key === 'range' && value === '1Y')) {
+      next.delete(key);
+    } else {
+      next.set(key, value);
+    }
+    setSearchParams(next, { replace: true });
+  }
+
+  const filteredHoldings = useMemo(() => {
+    if (!portfolio) return [];
+    return portfolio.holdings.filter((holding) => {
+      if (accountFilter !== 'all' && holding.account !== accountFilter) return false;
+      if (assetFilter !== 'all' && holding.assetType !== assetFilter) return false;
+      return true;
+    });
+  }, [portfolio, accountFilter, assetFilter]);
+
+  const filteredValue = useMemo(
+    () => filteredHoldings.reduce((sum, holding) => sum + holding.marketValueCad, 0),
+    [filteredHoldings]
+  );
+
+  const filteredShare = useMemo(() => {
+    if (!portfolio || portfolio.totalValue === 0) return 0;
+    return filteredValue / portfolio.totalValue;
+  }, [portfolio, filteredValue]);
 
   const scaledData = useMemo(
     () =>
       ALL_PERF_DATA.map((point) => ({
         ...point,
-        value: Math.round(point.value * accountShare * 100) / 100,
+        value: Math.round(point.value * filteredShare * 100) / 100,
       })),
-    [accountShare]
+    [filteredShare]
   );
 
   const data = useMemo(() => filterByRange(scaledData, range), [scaledData, range]);
   const stats = useMemo(() => calcStats(data), [data]);
+  const benchmark = useMemo(
+    () => BENCHMARK_SERIES.find((series) => series.id === benchmarkId) ?? null,
+    [benchmarkId]
+  );
+  const benchmarkData = useMemo(() => {
+    if (!benchmark || data.length === 0) return [];
+    const raw = filterByRange(benchmark.points, range);
+    if (raw.length === 0) return [];
+    const first = raw[0].value || 1;
+    const base = data[0]?.value ?? 0;
+    return raw.map((point) => ({
+      ...point,
+      value: Math.round((point.value / first) * base * 100) / 100,
+    }));
+  }, [benchmark, data, range]);
+  const benchmarkStats = useMemo(() => calcStats(benchmarkData), [benchmarkData]);
+  const relativeReturn = useMemo(() => {
+    if (!stats || !benchmarkStats) return null;
+    return stats.totalReturnPct - benchmarkStats.totalReturnPct;
+  }, [stats, benchmarkStats]);
+
+  const mergedData = useMemo(() => {
+    const benchmarkByDate = new Map(benchmarkData.map((point) => [point.date, point.value]));
+    return data.map((point) => ({
+      ...point,
+      benchmarkValue: benchmarkByDate.get(point.date) ?? null,
+    }));
+  }, [data, benchmarkData]);
 
   // Thin out data for 1Y/ALL to avoid too many ticks
   const chartData = useMemo(() => {
-    if (data.length <= 120) return data;
-    const step = Math.ceil(data.length / 120);
-    return data.filter((_, i) => i % step === 0 || i === data.length - 1);
-  }, [data]);
+    if (mergedData.length <= 120) return mergedData;
+    const step = Math.ceil(mergedData.length / 120);
+    return mergedData.filter((_, i) => i % step === 0 || i === mergedData.length - 1);
+  }, [mergedData]);
 
   const xTickCount = range === '1D' || range === '1W' ? undefined : 6;
+  const assetOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Assets' },
+      { value: 'stock', label: ASSET_TYPE_CONFIG.stock.label },
+      { value: 'etf', label: ASSET_TYPE_CONFIG.etf.label },
+      { value: 'cash', label: ASSET_TYPE_CONFIG.cash.label },
+      { value: 'crypto', label: ASSET_TYPE_CONFIG.crypto.label },
+    ],
+    []
+  );
+  const benchmarkOptions = useMemo(
+    () => [
+      { value: 'none', label: 'No Benchmark' },
+      ...BENCHMARK_SERIES.map((series) => ({ value: series.id, label: series.label })),
+    ],
+    []
+  );
+
+  if (!portfolio) {
+    return <EmptyState message="No portfolio data available" />;
+  }
+
+  if (filteredHoldings.length === 0) {
+    return (
+      <div style={{ ...PANEL }}>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 180 }}>
+            <Select
+              value={accountFilter}
+              onChange={(value) => updateParam('account', value)}
+              options={[
+                { value: 'all', label: 'All Accounts' },
+                ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+              ]}
+            />
+          </div>
+          <div style={{ width: 160 }}>
+            <Select
+              value={assetFilter}
+              onChange={(value) => updateParam('asset', value)}
+              options={assetOptions}
+            />
+          </div>
+        </div>
+        <EmptyState message="No holdings match the selected account and asset filters" />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -133,21 +237,40 @@ export function Performance({ portfolio }: PerformanceProps) {
         <div
           style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 20 }}
         >
-          <div style={{ width: 180 }}>
-            <Select
-              value={accountFilter}
-              onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
-              options={[
-                { value: 'all', label: 'All Accounts' },
-                ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
-              ]}
-            />
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div style={{ width: 180 }}>
+              <Select
+                value={accountFilter}
+                onChange={(value) => updateParam('account', value)}
+                options={[
+                  { value: 'all', label: 'All Accounts' },
+                  ...ACCOUNT_OPTIONS.map((option) => ({
+                    value: option.value,
+                    label: option.label,
+                  })),
+                ]}
+              />
+            </div>
+            <div style={{ width: 160 }}>
+              <Select
+                value={assetFilter}
+                onChange={(value) => updateParam('asset', value)}
+                options={assetOptions}
+              />
+            </div>
+            <div style={{ width: 180 }}>
+              <Select
+                value={benchmarkId}
+                onChange={(value) => updateParam('benchmark', value)}
+                options={benchmarkOptions}
+              />
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 1 }}>
             {RANGES.map((r) => (
               <button
                 key={r}
-                onClick={() => setRange(r)}
+                onClick={() => updateParam('range', r)}
                 style={{
                   padding: '4px 12px',
                   fontFamily: 'var(--font-mono)',
@@ -211,6 +334,17 @@ export function Performance({ portfolio }: PerformanceProps) {
                 strokeWidth: 2,
               }}
             />
+            {benchmark && benchmarkData.length > 0 && (
+              <Area
+                type="monotone"
+                dataKey="benchmarkValue"
+                stroke="var(--color-warning)"
+                strokeWidth={2}
+                fillOpacity={0}
+                dot={false}
+                isAnimationActive={false}
+              />
+            )}
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -312,8 +446,8 @@ export function Performance({ portfolio }: PerformanceProps) {
             },
             {
               label: 'Positions',
-              value: String(data.length) + ' days',
-              sub: `${accountFilter === 'all' ? 'all accounts' : accountFilter.toUpperCase()} · ${range}`,
+              value: `${filteredHoldings.length} holdings`,
+              sub: `${accountFilter === 'all' ? 'all accounts' : accountFilter.toUpperCase()} · ${assetFilter === 'all' ? 'all assets' : assetFilter.toUpperCase()}`,
               color: 'var(--text-secondary)',
             },
             {
@@ -321,6 +455,25 @@ export function Performance({ portfolio }: PerformanceProps) {
               value: formatCurrency(data[data.length - 1]?.value ?? 0, baseCurrency),
               sub: `as of last data point · ${baseCurrency}`,
               color: 'var(--text-primary)',
+            },
+            {
+              label: 'Benchmark',
+              value: benchmark?.label ?? 'None',
+              sub:
+                relativeReturn === null
+                  ? 'overlay disabled'
+                  : `${relativeReturn >= 0 ? '+' : ''}${relativeReturn.toFixed(2)}% vs benchmark`,
+              color: relativeReturn === null ? 'var(--text-secondary)' : pnlColor(relativeReturn),
+            },
+            {
+              label: 'Benchmark Return',
+              value:
+                benchmarkStats && benchmark ? formatPercent(benchmarkStats.totalReturnPct) : '—',
+              sub: benchmark ? `${benchmark.label} · ${range}` : 'select a benchmark',
+              color:
+                benchmarkStats && benchmark
+                  ? pnlColor(benchmarkStats.totalReturnPct)
+                  : 'var(--text-secondary)',
             },
           ].map((s, i) => (
             <div
