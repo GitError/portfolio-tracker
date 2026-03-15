@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::types::{
     AccountType, AlertDirection, AssetType, FxRate, Holding, HoldingInput, PerformancePoint,
-    PriceAlert, PriceAlertInput, PriceData, SymbolResult,
+    PriceAlert, PriceAlertInput, PriceData, SymbolResult, Transaction,
 };
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -92,6 +92,18 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             triggered   INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS transactions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            holding_id    TEXT    NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+            type          TEXT    NOT NULL CHECK(type IN ('buy','sell','deposit','withdrawal')),
+            quantity      REAL    NOT NULL,
+            price         REAL    NOT NULL,
+            currency      TEXT    NOT NULL,
+            fee           REAL    NOT NULL DEFAULT 0.0,
+            transacted_at TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_transactions_holding_id ON transactions(holding_id);
         ",
     )
     .map_err(|e| e.to_string())?;
@@ -711,6 +723,96 @@ pub fn reset_alert(conn: &Connection, id: &str) -> Result<bool, String> {
     Ok(n > 0)
 }
 
+// ── Transactions ──────────────────────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+pub fn insert_transaction(
+    conn: &Connection,
+    holding_id: &str,
+    tx_type: &str,
+    quantity: f64,
+    price: f64,
+    currency: &str,
+    fee: f64,
+    transacted_at: &str,
+) -> Result<i64, rusqlite::Error> {
+    conn.execute(
+        "INSERT INTO transactions (holding_id, type, quantity, price, currency, fee, transacted_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            holding_id,
+            tx_type,
+            quantity,
+            price,
+            currency,
+            fee,
+            transacted_at
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn get_transactions_for_holding(
+    conn: &Connection,
+    holding_id: &str,
+) -> Result<Vec<Transaction>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, holding_id, type, quantity, price, currency, fee, transacted_at
+         FROM transactions
+         WHERE holding_id = ?1
+         ORDER BY transacted_at DESC",
+    )?;
+
+    let txs = stmt
+        .query_map(params![holding_id], |row| {
+            Ok(Transaction {
+                id: row.get(0)?,
+                holding_id: row.get(1)?,
+                transaction_type: row.get(2)?,
+                quantity: row.get(3)?,
+                price: row.get(4)?,
+                currency: row.get(5)?,
+                fee: row.get(6)?,
+                transacted_at: row.get(7)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(txs)
+}
+
+pub fn get_all_transactions(conn: &Connection) -> Result<Vec<Transaction>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT id, holding_id, type, quantity, price, currency, fee, transacted_at
+         FROM transactions
+         ORDER BY transacted_at DESC",
+    )?;
+
+    let txs = stmt
+        .query_map([], |row| {
+            Ok(Transaction {
+                id: row.get(0)?,
+                holding_id: row.get(1)?,
+                transaction_type: row.get(2)?,
+                quantity: row.get(3)?,
+                price: row.get(4)?,
+                currency: row.get(5)?,
+                fee: row.get(6)?,
+                transacted_at: row.get(7)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(txs)
+}
+
+pub fn delete_transaction(conn: &Connection, id: i64) -> Result<(), rusqlite::Error> {
+    conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
     let mut stmt = conn
@@ -1038,5 +1140,149 @@ mod tests {
         set_config(&conn, "greeting", "").expect("set empty");
         let val = get_config(&conn, "greeting").expect("get config");
         assert_eq!(val, Some(String::new()));
+    }
+
+    // ── Transaction tests ────────────────────────────────────────────────────
+
+    #[test]
+    fn insert_and_get_transactions_for_holding() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("AAPL")).expect("insert holding");
+
+        let id = insert_transaction(
+            &conn,
+            &holding.id,
+            "buy",
+            10.0,
+            150.0,
+            "USD",
+            1.99,
+            "2024-01-10T10:00:00Z",
+        )
+        .expect("insert tx");
+        assert!(id > 0);
+
+        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        assert_eq!(txs.len(), 1);
+        assert_eq!(txs[0].transaction_type, "buy");
+        assert!((txs[0].quantity - 10.0).abs() < 0.001);
+        assert!((txs[0].price - 150.0).abs() < 0.001);
+        assert_eq!(txs[0].currency, "USD");
+        assert!((txs[0].fee - 1.99).abs() < 0.001);
+    }
+
+    #[test]
+    fn get_transactions_ordered_by_transacted_at_desc() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("MSFT")).expect("insert holding");
+
+        insert_transaction(
+            &conn,
+            &holding.id,
+            "buy",
+            5.0,
+            100.0,
+            "USD",
+            0.0,
+            "2024-01-01T09:00:00Z",
+        )
+        .expect("insert tx1");
+        insert_transaction(
+            &conn,
+            &holding.id,
+            "sell",
+            2.0,
+            120.0,
+            "USD",
+            0.0,
+            "2024-03-01T09:00:00Z",
+        )
+        .expect("insert tx2");
+
+        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        assert_eq!(txs.len(), 2);
+        // Most recent first
+        assert_eq!(txs[0].transaction_type, "sell");
+        assert_eq!(txs[1].transaction_type, "buy");
+    }
+
+    #[test]
+    fn get_all_transactions_returns_all() {
+        let conn = open_test_db();
+        let h1 = insert_holding(&conn, make_input("AAPL")).expect("insert h1");
+        let h2 = insert_holding(&conn, make_input("GOOG")).expect("insert h2");
+
+        insert_transaction(
+            &conn,
+            &h1.id,
+            "buy",
+            10.0,
+            100.0,
+            "USD",
+            0.0,
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("tx1");
+        insert_transaction(
+            &conn,
+            &h2.id,
+            "deposit",
+            500.0,
+            1.0,
+            "CAD",
+            0.0,
+            "2024-02-01T00:00:00Z",
+        )
+        .expect("tx2");
+
+        let all = get_all_transactions(&conn).expect("get all txs");
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn delete_transaction_removes_row() {
+        let conn = open_test_db();
+        let holding = insert_holding(&conn, make_input("TSLA")).expect("insert");
+
+        let tx_id = insert_transaction(
+            &conn,
+            &holding.id,
+            "buy",
+            1.0,
+            200.0,
+            "USD",
+            0.0,
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("insert tx");
+
+        delete_transaction(&conn, tx_id).expect("delete tx");
+        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        assert_eq!(txs.len(), 0);
+    }
+
+    #[test]
+    fn transactions_cascade_on_holding_delete() {
+        let conn = open_test_db();
+        // Enable cascading FK constraints (required in SQLite)
+        conn.execute_batch("PRAGMA foreign_keys = ON")
+            .expect("pragma");
+        let holding = insert_holding(&conn, make_input("NVDA")).expect("insert");
+
+        insert_transaction(
+            &conn,
+            &holding.id,
+            "buy",
+            5.0,
+            300.0,
+            "USD",
+            0.0,
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("insert tx");
+
+        delete_holding(&conn, &holding.id).expect("delete holding");
+        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        assert_eq!(txs.len(), 0);
     }
 }

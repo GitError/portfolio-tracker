@@ -21,6 +21,7 @@ pub const SUPPORTED_CURRENCIES: &[&str] = &["CAD", "USD", "EUR", "GBP", "JPY", "
 pub const YAHOO_CHART_URL: &str =
     "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=1d";
 
+#[expect(dead_code, reason = "Reserved for future direct search API usage")]
 pub const YAHOO_SEARCH_URL: &str =
     "https://query1.finance.yahoo.com/v1/finance/search?q={}&quotesCount=8&newsCount=0&enableFuzzyQuery=false";
 

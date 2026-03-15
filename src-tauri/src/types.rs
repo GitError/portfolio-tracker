@@ -321,10 +321,35 @@ pub struct RebalanceSuggestion {
     pub name: String,
     pub current_value_cad: f64,
     pub target_value_cad: f64,
-    pub current_weight: f64,   // actual % of portfolio
-    pub target_weight: f64,    // user-set target %
-    pub drift: f64,            // current_weight - target_weight (percentage points)
-    pub suggested_trade_cad: f64,  // positive = sell, negative = buy
-    pub suggested_units: f64,      // positive = sell, negative = buy
+    pub current_weight: f64,      // actual % of portfolio
+    pub target_weight: f64,       // user-set target %
+    pub drift: f64,               // current_weight - target_weight (percentage points)
+    pub suggested_trade_cad: f64, // positive = sell, negative = buy
+    pub suggested_units: f64,     // positive = sell, negative = buy
     pub current_price_cad: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Transaction {
+    pub id: i64,
+    pub holding_id: String,
+    pub transaction_type: String, // "buy"|"sell"|"deposit"|"withdrawal"
+    pub quantity: f64,
+    pub price: f64,
+    pub currency: String,
+    pub fee: f64,
+    pub transacted_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTransactionRequest {
+    pub holding_id: String,
+    pub transaction_type: String,
+    pub quantity: f64,
+    pub price: f64,
+    pub currency: String,
+    pub fee: f64,
+    pub transacted_at: String,
 }

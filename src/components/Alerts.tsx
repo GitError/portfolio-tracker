@@ -279,7 +279,13 @@ export function Alerts() {
       >
         <div>
           <h1
-            style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', margin: 0, marginBottom: 4 }}
+            style={{
+              fontSize: 18,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              margin: 0,
+              marginBottom: 4,
+            }}
           >
             Price Alerts
           </h1>
@@ -308,9 +314,7 @@ export function Alerts() {
         </button>
       </div>
 
-      {showForm && (
-        <AddAlertForm onAdd={handleAdd} onCancel={() => setShowForm(false)} />
-      )}
+      {showForm && <AddAlertForm onAdd={handleAdd} onCancel={() => setShowForm(false)} />}
 
       {/* Triggered alerts */}
       {triggered.length > 0 && (
@@ -410,7 +414,12 @@ function AlertRow({
       }}
     >
       {/* Icon */}
-      <div style={{ color: alert.triggered ? 'var(--color-warning)' : 'var(--text-secondary)', flexShrink: 0 }}>
+      <div
+        style={{
+          color: alert.triggered ? 'var(--color-warning)' : 'var(--text-secondary)',
+          flexShrink: 0,
+        }}
+      >
         {alert.triggered ? <Bell size={16} /> : <BellOff size={16} />}
       </div>
 
@@ -436,11 +445,8 @@ function AlertRow({
               padding: '1px 6px',
               borderRadius: 2,
               background:
-                alert.direction === 'above'
-                  ? 'rgba(0, 212, 170, 0.15)'
-                  : 'rgba(255, 71, 87, 0.15)',
-              color:
-                alert.direction === 'above' ? 'var(--color-gain)' : 'var(--color-loss)',
+                alert.direction === 'above' ? 'rgba(0, 212, 170, 0.15)' : 'rgba(255, 71, 87, 0.15)',
+              color: alert.direction === 'above' ? 'var(--color-gain)' : 'var(--color-loss)',
             }}
           >
             {alert.direction} {formatCurrency(alert.threshold, 'USD')}

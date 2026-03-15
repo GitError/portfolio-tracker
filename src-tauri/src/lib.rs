@@ -61,6 +61,9 @@ pub fn run() {
             commands::delete_alert,
             commands::reset_alert,
             commands::get_rebalance_suggestions,
+            commands::add_transaction,
+            commands::get_transactions,
+            commands::delete_transaction,
         ])
         .run(tauri::generate_context!());
 

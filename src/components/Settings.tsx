@@ -180,11 +180,7 @@ export function Settings() {
           label="Auto-Refresh Interval"
           description="Automatically refresh prices in the background at this interval."
         >
-          <Select
-            value={autoRefreshStr}
-            onChange={setAutoRefresh}
-            options={REFRESH_OPTIONS}
-          />
+          <Select value={autoRefreshStr} onChange={setAutoRefresh} options={REFRESH_OPTIONS} />
         </SettingRow>
       </div>
 
@@ -227,9 +223,7 @@ export function Settings() {
               }}
             >
               {costBasisMethod === opt.value && (
-                <div
-                  style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }}
-                />
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />
               )}
             </div>
             <div>
