@@ -14,6 +14,7 @@ import type {
   ImportResult,
   PortfolioSnapshot,
   PreviewImportResult,
+  RefreshResult,
 } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 
@@ -31,6 +32,7 @@ export interface UsePortfolioReturn {
   holdings: Holding[];
   loading: boolean;
   error: string | null;
+  failedSymbols: string[];
   refreshPrices: () => Promise<void>;
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
@@ -42,6 +44,24 @@ export interface UsePortfolioReturn {
 
 const PortfolioContext = createContext<UsePortfolioReturn | null>(null);
 
+function parseCSVLine(line: string, delimiter: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (const char of line) {
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function parseMockCsv(csvContent: string): HoldingInput[] {
   const lines = csvContent
     .trim()
@@ -51,11 +71,13 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
 
   if (lines.length < 2) return [];
 
-  const header = lines[0].split(/[;,]/).map((field) => field.trim().toLowerCase());
+  const rawHeader = lines[0];
+  const delimiter = rawHeader.includes(';') && !rawHeader.includes(',') ? ';' : ',';
+  const header = parseCSVLine(rawHeader, delimiter).map((field) => field.toLowerCase());
   const columnIndex = (field: string) => header.indexOf(field);
 
   return lines.slice(1).map((line) => {
-    const cells = line.split(/[;,]/).map((cell) => cell.trim());
+    const cells = parseCSVLine(line, delimiter);
     const assetType = cells[columnIndex('type')] as HoldingInput['assetType'];
     const currency = cells[columnIndex('currency')].toUpperCase();
     const rawSymbol = cells[columnIndex('symbol')];
@@ -75,11 +97,39 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
   });
 }
 
+function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
+  const totalValue = holdingsList.length * 1000;
+  return {
+    ...MOCK_SNAPSHOT,
+    holdings: holdingsList.map((h) => ({
+      ...h,
+      currentPrice: h.costBasis,
+      currentPriceCad: h.costBasis,
+      marketValueCad: h.quantity * h.costBasis,
+      costValueCad: h.quantity * h.costBasis,
+      gainLoss: 0,
+      gainLossPercent: 0,
+      weight: totalValue > 0 ? (h.quantity * h.costBasis) / totalValue : 0,
+      targetValue: 0,
+      targetDeltaValue: 0,
+      targetDeltaPercent: 0,
+      dailyChangePercent: 0,
+    })),
+    totalValue,
+    totalCost: totalValue,
+    totalGainLoss: 0,
+    totalGainLossPercent: 0,
+    dailyPnl: 0,
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 function usePortfolioState(): UsePortfolioReturn {
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
 
   const loadPortfolio = useCallback(async () => {
     setLoading(true);
@@ -111,9 +161,11 @@ function usePortfolioState(): UsePortfolioReturn {
   const refreshPrices = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFailedSymbols([]);
     try {
       if (isTauri()) {
-        await tauriInvoke('refresh_prices');
+        const result = await tauriInvoke<RefreshResult>('refresh_prices');
+        setFailedSymbols(result.failedSymbols);
         await loadPortfolio();
       } else {
         await new Promise((r) => setTimeout(r, 800));
@@ -140,7 +192,11 @@ function usePortfolioState(): UsePortfolioReturn {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setHoldings((prev) => [...prev, mock]);
+      setHoldings((prev) => {
+        const updated = [...prev, mock];
+        setPortfolio(buildMockSnapshot(updated));
+        return updated;
+      });
       return mock;
     },
     [loadPortfolio]
@@ -154,7 +210,11 @@ function usePortfolioState(): UsePortfolioReturn {
         return updated;
       }
       const updated = { ...holding, updatedAt: new Date().toISOString() };
-      setHoldings((prev) => prev.map((h) => (h.id === holding.id ? updated : h)));
+      setHoldings((prev) => {
+        const updatedList = prev.map((h) => (h.id === holding.id ? updated : h));
+        setPortfolio(buildMockSnapshot(updatedList));
+        return updatedList;
+      });
       return updated;
     },
     [loadPortfolio]
@@ -167,7 +227,11 @@ function usePortfolioState(): UsePortfolioReturn {
         await loadPortfolio();
         return;
       }
-      setHoldings((prev) => prev.filter((h) => h.id !== id));
+      setHoldings((prev) => {
+        const updated = prev.filter((h) => h.id !== id);
+        setPortfolio(buildMockSnapshot(updated));
+        return updated;
+      });
     },
     [loadPortfolio]
   );
@@ -187,7 +251,11 @@ function usePortfolioState(): UsePortfolioReturn {
         createdAt: now,
         updatedAt: now,
       }));
-      setHoldings((prev) => [...prev, ...imported]);
+      setHoldings((prev) => {
+        const updated = [...prev, ...imported];
+        setPortfolio(buildMockSnapshot(updated));
+        return updated;
+      });
       return { imported, skipped: [], totalRows: imported.length };
     },
     [loadPortfolio]
@@ -255,6 +323,7 @@ function usePortfolioState(): UsePortfolioReturn {
     holdings,
     loading,
     error,
+    failedSymbols,
     refreshPrices,
     addHolding,
     updateHolding,

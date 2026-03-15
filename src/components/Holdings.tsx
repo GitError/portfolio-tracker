@@ -1,13 +1,22 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  Upload,
+  Download,
+  Clock,
+} from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { useToast } from './ui/Toast';
-import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
+import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS } from '../lib/constants';
 import type { AccountType, Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
@@ -59,7 +68,14 @@ const TD: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-export function Holdings() {
+interface HoldingsProps {
+  /** Called by parent (e.g. via keyboard shortcut) to open the Add Holding modal */
+  onOpenAddModal?: (handler: () => void) => void;
+  /** Called by parent (e.g. via keyboard shortcut) to trigger CSV export */
+  onExportRef?: (handler: () => void) => void;
+}
+
+export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const {
     portfolio,
     holdings,
@@ -137,6 +153,21 @@ export function Holdings() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+
+  // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
+  useEffect(() => {
+    if (searchParams.get('add') === '1') {
+      setModalOpen(true);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('add');
+          return next;
+        },
+        { replace: true }
+      );
+    }
+  }, [searchParams, setSearchParams]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
@@ -249,6 +280,16 @@ export function Holdings() {
   }
 
   async function handleDelete(id: string) {
+    // Guard: only delete holdings that are currently visible in the filtered view.
+    // This prevents a race where the search/account filter changes after the user
+    // clicks the trash icon but before they confirm, which would silently delete a
+    // hidden row the user can no longer see.
+    const isVisible = rows.some((h) => h.id === id);
+    if (!isVisible) {
+      setPendingDelete(null);
+      showToast('Holding is no longer visible — clear filters and try again', 'error');
+      return;
+    }
     setDeletingId(id);
     try {
       await deleteHolding(id);
@@ -329,6 +370,24 @@ export function Holdings() {
   }, [portfolio, rows]);
 
   const isEmpty = holdings.length === 0;
+
+  // Register imperative handles so parent can trigger open/export via keyboard shortcuts
+  useEffect(() => {
+    if (onOpenAddModal) {
+      onOpenAddModal(() => {
+        setEditing(undefined);
+        setModalOpen(true);
+      });
+    }
+  }, [onOpenAddModal]);
+
+  useEffect(() => {
+    if (onExportRef) {
+      onExportRef(() => {
+        void handleExport();
+      });
+    }
+  }, [onExportRef]);
 
   return (
     <div>
@@ -814,9 +873,21 @@ export function Holdings() {
                           color: 'var(--text-primary)',
                         }}
                       >
-                        {h.assetType === 'cash'
-                          ? '—'
-                          : `${formatNumber(h.currentPrice, 2)} ${h.currency}`}
+                        {h.assetType === 'cash' ? (
+                          '—'
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {formatNumber(h.currentPrice, 2)} {h.currency}
+                            {isPriceStale(portfolio?.lastUpdated) && (
+                              <span title="Price may be stale (last refreshed over 2h ago)">
+                                <Clock
+                                  size={10}
+                                  style={{ color: 'var(--color-warning)', flexShrink: 0 }}
+                                />
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </td>
                       <td
                         style={{

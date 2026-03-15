@@ -8,13 +8,13 @@ use tauri::State;
 
 use crate::db;
 use crate::fx::{convert_to_base, fetch_all_fx_rates};
-use crate::price::{fetch_all_prices, fetch_price};
+use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     AccountType, AssetType, FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError,
     ImportResult, PerformancePoint, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceData,
-    StressResult, StressScenario, SymbolResult,
+    RefreshResult, StressResult, StressScenario, SymbolResult,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -795,7 +795,7 @@ pub async fn preview_import_csv(
 pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
-) -> Result<Vec<PriceData>, String> {
+) -> Result<RefreshResult, String> {
     let base_currency = get_base_currency(&db);
 
     let holdings = {
@@ -820,10 +820,15 @@ pub async fn refresh_prices(
         .into_iter()
         .collect();
 
-    let (prices, fx_rates) = tokio::join!(
+    let (fetch_result, fx_rates) = tokio::join!(
         fetch_all_prices(&client.0, symbols),
         fetch_all_fx_rates(&client.0, currencies, &base_currency)
     );
+
+    let FetchAllPricesResult {
+        prices,
+        failed: failed_symbols,
+    } = fetch_result;
 
     // Persist prices and FX rates to cache
     {
@@ -859,9 +864,12 @@ pub async fn refresh_prices(
     // Record the snapshot and prune old data; log errors but don't fail the command
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        if let Err(e) =
-            db::insert_snapshot(&conn, snapshot_totals.0, snapshot_totals.1, snapshot_totals.2)
-        {
+        if let Err(e) = db::insert_snapshot(
+            &conn,
+            snapshot_totals.0,
+            snapshot_totals.1,
+            snapshot_totals.2,
+        ) {
             eprintln!("Failed to insert portfolio snapshot: {}", e);
         }
         if let Err(e) = db::prune_snapshots(&conn) {
@@ -869,7 +877,10 @@ pub async fn refresh_prices(
         }
     }
 
-    Ok(prices)
+    Ok(RefreshResult {
+        prices,
+        failed_symbols,
+    })
 }
 
 #[tauri::command]
@@ -1055,6 +1066,36 @@ mod tests {
     }
 
     #[test]
+    fn import_weight_sum_over_100_detected() {
+        // Two rows whose target_weight values sum to 110; the command-level guard
+        // rejects this.  Verify parse_import_rows succeeds and the sum exceeds 100.
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   AAPL,Apple Inc.,stock,5,120,USD,60\n\
+                   MSFT,Microsoft,stock,3,200,USD,50\n";
+        let rows = parse_import_rows(csv).expect("rows should parse");
+        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        assert!(
+            total > 100.0,
+            "expected total > 100 to trigger command-level guard, got {}",
+            total
+        );
+    }
+
+    #[test]
+    fn import_weight_sum_at_100_is_valid() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
+                   AAPL,Apple Inc.,stock,5,120,USD,60\n\
+                   MSFT,Microsoft,stock,3,200,USD,40\n";
+        let rows = parse_import_rows(csv).expect("rows should parse");
+        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        assert!(
+            (total - 100.0).abs() < 0.001,
+            "expected total == 100, got {}",
+            total
+        );
+    }
+
+    #[test]
     fn build_holdings_csv_includes_target_weight_column() {
         let mut holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
         holding.target_weight = 22.5;
@@ -1065,6 +1106,103 @@ mod tests {
             "symbol,name,type,account,quantity,cost_basis,currency,exchange,target_weight"
         ));
         assert!(csv.contains(",22.5"));
+    }
+
+    // ── CSV round-trip tests ──────────────────────────────────────────────────
+
+    /// Export a set of holdings to CSV, re-parse it with `parse_import_rows`,
+    /// and verify that every key field is preserved exactly.
+    #[test]
+    fn csv_round_trip_preserves_key_fields() {
+        let mut h1 = make_holding("AAPL", AssetType::Stock, 10.0, 155.25, "USD");
+        h1.name = "Apple Inc.".to_string();
+        h1.exchange = "NMS".to_string();
+        h1.target_weight = 25.0;
+
+        let mut h2 = make_holding("XIU.TO", AssetType::Etf, 50.0, 34.5, "CAD");
+        h2.name = "iShares S&P/TSX 60 Index ETF".to_string();
+        h2.exchange = "TRT".to_string();
+        h2.target_weight = 15.0;
+
+        let mut h3 = make_holding("BTC-USD", AssetType::Crypto, 0.5, 40000.0, "USD");
+        h3.name = "Bitcoin USD".to_string();
+        h3.target_weight = 10.0;
+
+        let holdings = vec![h1, h2, h3];
+        let csv = build_holdings_csv(&holdings).expect("build csv");
+
+        let rows = parse_import_rows(&csv).expect("parse csv");
+
+        assert_eq!(rows.len(), 3, "row count should be preserved");
+
+        // Row 0 — AAPL (stock)
+        assert_eq!(rows[0].symbol, "AAPL");
+        assert!(matches!(rows[0].asset_type, AssetType::Stock));
+        assert!((rows[0].quantity - 10.0).abs() < 0.001);
+        assert!((rows[0].cost_basis - 155.25).abs() < 0.001);
+        assert_eq!(rows[0].currency, "USD");
+        assert_eq!(rows[0].exchange, "NMS");
+        assert!((rows[0].target_weight - 25.0).abs() < 0.001);
+
+        // Row 1 — XIU.TO (etf)
+        assert_eq!(rows[1].symbol, "XIU.TO");
+        assert!(matches!(rows[1].asset_type, AssetType::Etf));
+        assert!((rows[1].quantity - 50.0).abs() < 0.001);
+        assert!((rows[1].cost_basis - 34.5).abs() < 0.001);
+        assert_eq!(rows[1].currency, "CAD");
+        assert_eq!(rows[1].exchange, "TRT");
+        assert!((rows[1].target_weight - 15.0).abs() < 0.001);
+
+        // Row 2 — BTC-USD (crypto)
+        assert_eq!(rows[2].symbol, "BTC-USD");
+        assert!(matches!(rows[2].asset_type, AssetType::Crypto));
+        assert!((rows[2].quantity - 0.5).abs() < 0.001);
+        assert!((rows[2].cost_basis - 40000.0).abs() < 0.001);
+        assert_eq!(rows[2].currency, "USD");
+        assert!((rows[2].target_weight - 10.0).abs() < 0.001);
+    }
+
+    /// Exporting a single cash holding round-trips correctly.
+    #[test]
+    fn csv_round_trip_cash_holding() {
+        let mut cash = make_holding("CAD-CASH", AssetType::Cash, 5000.0, 1.0, "CAD");
+        cash.name = "CAD Cash".to_string();
+        cash.target_weight = 5.0;
+
+        let csv = build_holdings_csv(&[cash]).expect("build csv");
+        let rows = parse_import_rows(&csv).expect("parse csv");
+
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].symbol, "CAD-CASH");
+        assert!(matches!(rows[0].asset_type, AssetType::Cash));
+        assert!((rows[0].quantity - 5000.0).abs() < 0.001);
+        assert!((rows[0].cost_basis - 1.0).abs() < 0.001);
+        assert_eq!(rows[0].currency, "CAD");
+        assert!((rows[0].target_weight - 5.0).abs() < 0.001);
+    }
+
+    /// An empty holdings slice produces a CSV that fails parsing (no data rows).
+    #[test]
+    fn build_holdings_csv_empty_slice_roundtrip_fails_gracefully() {
+        let csv = build_holdings_csv(&[]).expect("build csv for empty slice");
+        // build_holdings_csv writes a header-only CSV; parse_import_rows should
+        // return an error because there are no data rows.
+        let result = parse_import_rows(&csv);
+        assert!(result.is_err(), "empty csv should error on import");
+        assert!(result.unwrap_err().contains("empty"));
+    }
+
+    /// Round-trip with target_weight = 0 (the default) is preserved as 0.
+    #[test]
+    fn csv_round_trip_zero_target_weight() {
+        let holding = make_holding("MSFT", AssetType::Stock, 3.0, 200.0, "USD");
+        // target_weight is already 0.0 from make_holding
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+        let rows = parse_import_rows(&csv).expect("parse csv");
+
+        assert_eq!(rows.len(), 1);
+        assert!((rows[0].target_weight - 0.0).abs() < 0.001);
     }
 
     #[test]

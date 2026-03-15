@@ -9,6 +9,8 @@ interface LayoutProps {
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
+  failedSymbols?: string[];
+  countdown?: number | null;
 }
 
 export function Layout({
@@ -17,6 +19,8 @@ export function Layout({
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
+  failedSymbols,
+  countdown,
 }: LayoutProps) {
   return (
     <div
@@ -35,6 +39,8 @@ export function Layout({
           onRefresh={onRefresh}
           baseCurrency={baseCurrency}
           onBaseCurrencyChange={onBaseCurrencyChange}
+          failedSymbols={failedSymbols}
+          countdown={countdown}
         />
         <main
           style={{

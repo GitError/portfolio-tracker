@@ -252,3 +252,13 @@ pub struct PerformancePoint {
     pub date: String,
     pub value: f64,
 }
+
+/// Returned by the `refresh_prices` command.
+/// Separates successfully refreshed prices from symbols that failed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefreshResult {
+    pub prices: Vec<PriceData>,
+    /// Symbols for which the price fetch failed (network error, HTTP error, parse failure).
+    pub failed_symbols: Vec<String>,
+}

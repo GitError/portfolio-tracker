@@ -7,6 +7,8 @@ import type {
   SymbolResult,
 } from '../types/portfolio';
 import { ACCOUNT_OPTIONS, SUPPORTED_CURRENCIES } from '../lib/constants';
+import { usePortfolio } from '../hooks/usePortfolio';
+import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
 import { SymbolSearch } from './ui/SymbolSearch';
 
@@ -124,12 +126,43 @@ function Field({
 }
 
 export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Props) {
+  const { holdings } = usePortfolio();
+  const { showToast } = useToast();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
   const [priceFetching, setPriceFetching] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const selectedSymbolRef = useRef<string>('');
+  const firstFocusRef = useRef<HTMLInputElement | null>(null);
+  const previousFocusRef = useRef<Element | null>(null);
+
+  // Escape key handler
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+
+  // Save/restore focus
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement;
+    } else if (previousFocusRef.current instanceof HTMLElement) {
+      previousFocusRef.current.focus();
+    }
+  }, [isOpen]);
+
+  // Initial focus on first interactive element when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const id = setTimeout(() => firstFocusRef.current?.focus(), 50);
+      return () => clearTimeout(id);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -167,8 +200,8 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       symbol: result.symbol,
       name: result.name,
       assetType: result.assetType,
-      currency: result.currency,
       exchange: result.exchange,
+      currency: result.currency,
     }));
     setErrors((prev) => ({ ...prev, symbol: undefined }));
 
@@ -223,6 +256,18 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
 
   async function handleSave() {
     if (!validate()) return;
+
+    const thisWeight = parseFloat(form.targetWeight) || 0;
+    const otherWeightsSum = holdings
+      .filter((h) => h.id !== editingHolding?.id)
+      .reduce((sum, h) => sum + (h.targetWeight ?? 0), 0);
+    if (otherWeightsSum + thisWeight > 100) {
+      showToast(
+        `Warning: total target weight will be ${(otherWeightsSum + thisWeight).toFixed(1)}% (exceeds 100%)`,
+        'info'
+      );
+    }
+
     setSaving(true);
     try {
       const input: HoldingInput = {
@@ -234,7 +279,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
         exchange: form.exchange.toUpperCase(),
-        targetWeight: parseFloat(form.targetWeight),
+        targetWeight: thisWeight,
       };
       await onSave(input);
       onClose();
@@ -258,6 +303,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           return {
             ...prev,
             assetType,
+            exchange: assetType === 'cash' ? '' : prev.exchange,
             account:
               assetType === 'cash' ? 'cash' : prev.account === 'cash' ? 'taxable' : prev.account,
           };
@@ -346,7 +392,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               <Select
                 value={form.currency}
                 onChange={setSelect('currency')}
-                options={[...SUPPORTED_CURRENCIES, 'AUD'].map((c) => ({ value: c, label: c }))}
+                options={[...SUPPORTED_CURRENCIES].map((c) => ({ value: c, label: c }))}
               />
             </Field>
           </div>
@@ -369,6 +415,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           {/* Name */}
           <Field label={isCash ? 'Description' : 'Name'} error={errors.name}>
             <input
+              ref={isCash ? firstFocusRef : undefined}
               type="text"
               value={form.name}
               onChange={set('name')}

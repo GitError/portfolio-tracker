@@ -755,4 +755,53 @@ mod tests {
         assert_eq!(holdings.len(), 1);
         assert_eq!(holdings[0].exchange, "NYSE");
     }
+
+    // ── Config persistence ────────────────────────────────────────────────────
+
+    #[test]
+    fn set_and_get_config_round_trips_value() {
+        let conn = open_test_db();
+        set_config(&conn, "base_currency", "USD").expect("set config");
+        let val = get_config(&conn, "base_currency").expect("get config");
+        assert_eq!(val, Some("USD".to_string()));
+    }
+
+    #[test]
+    fn get_config_returns_none_for_missing_key() {
+        let conn = open_test_db();
+        let val = get_config(&conn, "nonexistent_key").expect("get config");
+        assert_eq!(val, None);
+    }
+
+    #[test]
+    fn set_config_upserts_existing_key() {
+        let conn = open_test_db();
+        set_config(&conn, "theme", "dark").expect("initial set");
+        set_config(&conn, "theme", "light").expect("update set");
+        let val = get_config(&conn, "theme").expect("get config");
+        assert_eq!(val, Some("light".to_string()));
+    }
+
+    #[test]
+    fn set_config_stores_multiple_independent_keys() {
+        let conn = open_test_db();
+        set_config(&conn, "base_currency", "CAD").expect("set base_currency");
+        set_config(&conn, "theme", "dark").expect("set theme");
+        assert_eq!(
+            get_config(&conn, "base_currency").expect("get"),
+            Some("CAD".to_string())
+        );
+        assert_eq!(
+            get_config(&conn, "theme").expect("get"),
+            Some("dark".to_string())
+        );
+    }
+
+    #[test]
+    fn set_config_persists_empty_string_value() {
+        let conn = open_test_db();
+        set_config(&conn, "greeting", "").expect("set empty");
+        let val = get_config(&conn, "greeting").expect("get config");
+        assert_eq!(val, Some(String::new()));
+    }
 }
