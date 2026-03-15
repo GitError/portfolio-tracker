@@ -846,7 +846,7 @@ pub async fn run_stress_test_cmd(
     scenario: StressScenario,
 ) -> Result<StressResult, String> {
     let snapshot = get_portfolio(db, client).await?;
-    Ok(run_stress_test(&snapshot, &scenario))
+    run_stress_test(&snapshot, &scenario)
 }
 
 #[tauri::command]

@@ -11,7 +11,20 @@ fn fx_shock_key(currency: &str, base_currency: &str) -> String {
     )
 }
 
-pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) -> StressResult {
+pub fn run_stress_test(
+    snapshot: &PortfolioSnapshot,
+    scenario: &StressScenario,
+) -> Result<StressResult, String> {
+    // Validate all shock values are in range -1.0..=10.0
+    for (key, &shock) in &scenario.shocks {
+        if shock < -1.0 || shock > 10.0 {
+            return Err(format!(
+                "Shock value {:.4} for '{}' is out of valid range (-1.0 to 10.0)",
+                shock, key
+            ));
+        }
+    }
+
     let mut holding_results: Vec<StressHoldingResult> = Vec::new();
     let mut total_stressed = 0.0;
 
@@ -37,7 +50,7 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         };
 
         let current_value = holding.market_value_cad;
-        let stressed_value = current_value * (1.0 + asset_shock) * (1.0 + fx_shock);
+        let stressed_value = (current_value * (1.0 + asset_shock) * (1.0 + fx_shock)).max(0.0);
         let impact = stressed_value - current_value;
 
         // Combined shock for display
@@ -64,14 +77,14 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         0.0
     };
 
-    StressResult {
+    Ok(StressResult {
         scenario: scenario.name.clone(),
         current_value,
         stressed_value: total_stressed,
         total_impact,
         total_impact_percent,
         holding_breakdown: holding_results,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -143,7 +156,7 @@ mod tests {
             shocks: HashMap::new(),
         };
 
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
 
         assert!(
             (result.total_impact).abs() < 0.001,
@@ -166,7 +179,7 @@ mod tests {
             shocks,
         };
 
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
 
         let expected_stressed = value * 0.80;
         assert!((result.stressed_value - expected_stressed).abs() < 0.001);
@@ -185,7 +198,7 @@ mod tests {
             shocks,
         };
 
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
 
         // stressed = 10000 * 0.90 * 1.05 = 9450
         let expected = value * 0.90 * 1.05;
@@ -203,7 +216,7 @@ mod tests {
             shocks,
         };
 
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
 
         assert!((result.total_impact).abs() < 0.001);
     }
@@ -224,7 +237,7 @@ mod tests {
             shocks,
         };
 
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
 
         assert!((result.holding_breakdown[0].stressed_value - 7_200.0).abs() < 0.001);
         assert!((result.holding_breakdown[1].stressed_value - 8_000.0).abs() < 0.001);
@@ -245,7 +258,7 @@ mod tests {
             shocks,
         };
 
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
 
         let usd = result
             .holding_breakdown
@@ -269,8 +282,89 @@ mod tests {
             name: "Empty".to_string(),
             shocks: HashMap::new(),
         };
-        let result = run_stress_test(&snapshot, &scenario);
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
         assert_eq!(result.total_impact, 0.0);
         assert_eq!(result.total_impact_percent, 0.0);
+    }
+
+    #[test]
+    fn shock_below_minus_one_returns_err() {
+        let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "CAD", 10_000.0)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -1.001);
+        let scenario = StressScenario {
+            name: "Invalid".to_string(),
+            shocks,
+        };
+
+        let err = run_stress_test(&snapshot, &scenario).expect_err("should fail for shock < -1.0");
+        assert!(err.contains("out of valid range"), "error message: {}", err);
+    }
+
+    #[test]
+    fn shock_above_ten_returns_err() {
+        let snapshot = make_snapshot(vec![make_holding("BTC", AssetType::Crypto, "CAD", 5_000.0)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), 10.001);
+        let scenario = StressScenario {
+            name: "Invalid".to_string(),
+            shocks,
+        };
+
+        let err = run_stress_test(&snapshot, &scenario).expect_err("should fail for shock > 10.0");
+        assert!(err.contains("out of valid range"), "error message: {}", err);
+    }
+
+    #[test]
+    fn shock_at_minus_one_boundary_is_valid() {
+        let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "CAD", 10_000.0)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -1.0);
+        let scenario = StressScenario {
+            name: "Boundary".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario).expect("boundary -1.0 should be valid");
+        // -100% shock → stressed value clamped to 0.0
+        assert!((result.stressed_value - 0.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn shock_at_ten_boundary_is_valid() {
+        let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "CAD", 1_000.0)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), 10.0);
+        let scenario = StressScenario {
+            name: "Boundary".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario).expect("boundary 10.0 should be valid");
+        // +1000% shock → stressed value = 1000 * 11.0 = 11_000
+        assert!((result.stressed_value - 11_000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn stressed_price_clamps_to_zero_minimum() {
+        // A holding with market_value_cad = 5_000 and a -100% shock should produce 0, not negative
+        let snapshot =
+            make_snapshot(vec![make_holding("BTC", AssetType::Crypto, "CAD", 5_000.0)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), -1.0);
+        let scenario = StressScenario {
+            name: "Wipeout".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario).expect("valid scenario");
+        let btc = &result.holding_breakdown[0];
+
+        assert!(
+            btc.stressed_value >= 0.0,
+            "stressed_value must never be negative, got {}",
+            btc.stressed_value
+        );
+        assert!((btc.stressed_value - 0.0).abs() < 0.001);
     }
 }
