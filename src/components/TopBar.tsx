@@ -21,6 +21,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/holdings': 'Holdings',
   '/performance': 'Performance',
   '/stress': 'Stress Test',
+  '/settings': 'Settings',
 };
 
 function useRelativeTime(isoDate: string | null): string {
@@ -150,6 +151,9 @@ export function TopBar({
   const dailyPnl = portfolio?.dailyPnl ?? 0;
   const dailyPct = portfolio ? (dailyPnl / (portfolio.totalValue - dailyPnl)) * 100 : 0;
 
+  // Flash the countdown label in the last 10 seconds before refresh
+  const isUrgent = !loading && countdown !== null && countdown < 10;
+
   return (
     <div style={{ position: 'sticky', top: 0, zIndex: 5 }}>
       <div
@@ -201,12 +205,13 @@ export function TopBar({
               fontSize: 11,
               color: 'var(--text-muted)',
               fontFamily: 'var(--font-mono)',
+              animation: isUrgent ? 'pulse 1s ease-in-out infinite' : 'none',
             }}
           >
             {loading
               ? 'Refreshing...'
               : countdown !== null
-                ? `Refresh in ${formatCountdown(countdown)}`
+                ? `Auto-refreshing in ${formatCountdown(countdown)}`
                 : `Updated ${updatedLabel}`}
           </span>
 

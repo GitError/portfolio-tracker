@@ -21,28 +21,14 @@ import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
 
-// Auto-refresh interval options in milliseconds (0 = disabled)
-const AUTO_REFRESH_INTERVALS: Record<string, number> = {
-  '0': 0,
-  '60000': 60_000,
-  '300000': 300_000,
-  '900000': 900_000,
-  '1800000': 1_800_000,
-  '3600000': 3_600_000,
-};
-
 function AppRoutes() {
   const { portfolio, loading, error, failedSymbols, refreshPrices } = usePortfolio();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
-  const { value: autoRefreshStr } = useConfig('auto_refresh_interval_ms', '0');
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
 
-  const autoRefreshMs = AUTO_REFRESH_INTERVALS[autoRefreshStr] ?? 0;
-
   const { countdown } = useAutoRefresh({
-    intervalMs: autoRefreshMs,
     onRefresh: refreshPrices,
   });
 
