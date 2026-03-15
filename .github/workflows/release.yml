@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  release:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - name: macOS (Intel)
+            platform: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - name: Windows
+            platform: windows-latest
+            target: ''
+            args: ''
+          - name: Linux
+            platform: ubuntu-22.04
+            target: ''
+            args: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Verify version files match tag
+        shell: bash
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TAURI_VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          CARGO_VERSION="$(grep '^version = ' src-tauri/Cargo.toml | head -n1 | sed 's/version = \"\(.*\)\"/\1/')"
+
+          test "$TAG_VERSION" = "$PACKAGE_VERSION"
+          test "$TAG_VERSION" = "$TAURI_VERSION"
+          test "$TAG_VERSION" = "$CARGO_VERSION"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target
+        if: matrix.target != ''
+        run: rustup target add ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev
+
+      - name: Build and publish draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional macOS signing and notarization secrets:
+          # APPLE_CERTIFICATE
+          # APPLE_CERTIFICATE_PASSWORD
+          # APPLE_SIGNING_IDENTITY
+          # APPLE_ID
+          # APPLE_PASSWORD
+          # APPLE_TEAM_ID
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Portfolio Tracker ${{ github.ref_name }}
+          releaseBody: |
+            See the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release details.
+
+            ## Downloads
+            | Platform | Installer |
+            | --- | --- |
+            | macOS (Apple Silicon) | `.dmg` |
+            | macOS (Intel) | `.dmg` |
+            | Windows | `.exe` / `.msi` |
+            | Linux | `.AppImage` / `.deb` |
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
