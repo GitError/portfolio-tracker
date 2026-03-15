@@ -26,6 +26,7 @@ import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { StressTestInfo } from './StressTestInfo';
+import { config } from '../lib/config';
 import type {
   AccountType,
   AssetType,
@@ -689,7 +690,7 @@ export function StressTest() {
           shocks: Object.fromEntries(Object.entries(nextShocks).filter(([, v]) => v !== 0)),
         };
         runTest(scenario, filteredPortfolio);
-      }, 150);
+      }, config.stressTestDebounceMs);
     },
     [filteredPortfolio, presetName, runTest]
   );

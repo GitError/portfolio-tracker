@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { config } from '../../lib/config';
 import type { SymbolResult } from '../../types/portfolio';
 
 const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -122,7 +123,7 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
 
   const search = useCallback(async (q: string) => {
     const trimmed = q.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < config.symbolSearchMinChars) {
       setResults([]);
       setOpen(false);
       return;
@@ -150,12 +151,12 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
   }, []);
 
   function handleInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const q = e.target.value;
+    const q = e.target.value.toUpperCase();
     setQuery(q);
     onChange(q);
     setActiveIndex(-1);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => search(q), 300);
+    debounceRef.current = setTimeout(() => search(q), config.symbolSearchDebounceMs);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
