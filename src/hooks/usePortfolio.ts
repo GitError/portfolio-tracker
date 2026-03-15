@@ -14,6 +14,7 @@ import type {
   ImportResult,
   PortfolioSnapshot,
   PreviewImportResult,
+  RefreshResult,
 } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 
@@ -31,6 +32,7 @@ export interface UsePortfolioReturn {
   holdings: Holding[];
   loading: boolean;
   error: string | null;
+  failedSymbols: string[];
   refreshPrices: () => Promise<void>;
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
@@ -95,11 +97,39 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
   });
 }
 
+function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
+  const totalValue = holdingsList.length * 1000;
+  return {
+    ...MOCK_SNAPSHOT,
+    holdings: holdingsList.map((h) => ({
+      ...h,
+      currentPrice: h.costBasis,
+      currentPriceCad: h.costBasis,
+      marketValueCad: h.quantity * h.costBasis,
+      costValueCad: h.quantity * h.costBasis,
+      gainLoss: 0,
+      gainLossPercent: 0,
+      weight: totalValue > 0 ? (h.quantity * h.costBasis) / totalValue : 0,
+      targetValue: 0,
+      targetDeltaValue: 0,
+      targetDeltaPercent: 0,
+      dailyChangePercent: 0,
+    })),
+    totalValue,
+    totalCost: totalValue,
+    totalGainLoss: 0,
+    totalGainLossPercent: 0,
+    dailyPnl: 0,
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 function usePortfolioState(): UsePortfolioReturn {
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
 
   const loadPortfolio = useCallback(async () => {
     setLoading(true);
@@ -131,9 +161,11 @@ function usePortfolioState(): UsePortfolioReturn {
   const refreshPrices = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setFailedSymbols([]);
     try {
       if (isTauri()) {
-        await tauriInvoke('refresh_prices');
+        const result = await tauriInvoke<RefreshResult>('refresh_prices');
+        setFailedSymbols(result.failedSymbols);
         await loadPortfolio();
       } else {
         await new Promise((r) => setTimeout(r, 800));
@@ -160,7 +192,11 @@ function usePortfolioState(): UsePortfolioReturn {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      setHoldings((prev) => [...prev, mock]);
+      setHoldings((prev) => {
+        const updated = [...prev, mock];
+        setPortfolio(buildMockSnapshot(updated));
+        return updated;
+      });
       return mock;
     },
     [loadPortfolio]
@@ -174,7 +210,11 @@ function usePortfolioState(): UsePortfolioReturn {
         return updated;
       }
       const updated = { ...holding, updatedAt: new Date().toISOString() };
-      setHoldings((prev) => prev.map((h) => (h.id === holding.id ? updated : h)));
+      setHoldings((prev) => {
+        const updatedList = prev.map((h) => (h.id === holding.id ? updated : h));
+        setPortfolio(buildMockSnapshot(updatedList));
+        return updatedList;
+      });
       return updated;
     },
     [loadPortfolio]
@@ -187,7 +227,11 @@ function usePortfolioState(): UsePortfolioReturn {
         await loadPortfolio();
         return;
       }
-      setHoldings((prev) => prev.filter((h) => h.id !== id));
+      setHoldings((prev) => {
+        const updated = prev.filter((h) => h.id !== id);
+        setPortfolio(buildMockSnapshot(updated));
+        return updated;
+      });
     },
     [loadPortfolio]
   );
@@ -207,7 +251,11 @@ function usePortfolioState(): UsePortfolioReturn {
         createdAt: now,
         updatedAt: now,
       }));
-      setHoldings((prev) => [...prev, ...imported]);
+      setHoldings((prev) => {
+        const updated = [...prev, ...imported];
+        setPortfolio(buildMockSnapshot(updated));
+        return updated;
+      });
       return { imported, skipped: [], totalRows: imported.length };
     },
     [loadPortfolio]
@@ -275,6 +323,7 @@ function usePortfolioState(): UsePortfolioReturn {
     holdings,
     loading,
     error,
+    failedSymbols,
     refreshPrices,
     addHolding,
     updateHolding,
