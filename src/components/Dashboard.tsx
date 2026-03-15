@@ -158,20 +158,21 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     return { best, worst, cashTotal };
   }, [filteredHoldings, portfolio]);
 
-  // #49 — Account allocation data
+  // #49 — Account allocation data (always uses full portfolio, not filtered — #137)
   const accountData = useMemo(() => {
-    if (!portfolio || totals.totalValue === 0) return [];
+    if (!portfolio || portfolio.totalValue === 0) return [];
     const byAccount: Record<string, number> = {};
-    for (const h of filteredHoldings) {
+    for (const h of portfolio.holdings) {
       byAccount[h.account] = (byAccount[h.account] ?? 0) + h.marketValueCad;
     }
     return ACCOUNT_OPTIONS.filter((opt) => byAccount[opt.value] !== undefined).map((opt) => ({
       value: opt.value,
       label: opt.label,
       amount: byAccount[opt.value] ?? 0,
-      pct: ((byAccount[opt.value] ?? 0) / totals.totalValue) * 100,
+      pct: ((byAccount[opt.value] ?? 0) / portfolio.totalValue) * 100,
+      isSelected: accountFilter !== 'all' && opt.value === accountFilter,
     }));
-  }, [filteredHoldings, portfolio, totals]);
+  }, [portfolio, accountFilter]);
 
   // #50 — Concentration risk data (non-cash only)
   const concentrationData = useMemo(() => {
@@ -213,17 +214,38 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     return <EmptyState message="Add your first holding to get started." />;
   }
 
+  if (portfolio && accountFilter !== 'all' && filteredHoldings.length === 0 && !loading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          gap: 16,
+        }}
+      >
+        <div style={{ width: 180 }}>
+          <Select
+            value={accountFilter}
+            onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
+            options={[
+              { value: 'all', label: 'All Accounts' },
+              ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+            ]}
+          />
+        </div>
+        <EmptyState message="No holdings in this account." />
+      </div>
+    );
+  }
+
   return (
     <div
+      className="dashboard-grid"
       style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr',
         gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto',
-        gap: '1px',
-        background: 'var(--border-primary)',
-        border: '1px solid var(--border-primary)',
-        height: '100%',
-        minHeight: 0,
       }}
     >
       {/* Panel 1 — Portfolio Value (spans 2 cols) */}
@@ -622,9 +644,10 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                     style={{
                       fontFamily: 'var(--font-mono)',
                       fontSize: 11,
-                      color: 'var(--text-secondary)',
+                      color: acct.isSelected ? 'var(--color-accent)' : 'var(--text-secondary)',
                       textTransform: 'uppercase',
                       letterSpacing: '0.06em',
+                      fontWeight: acct.isSelected ? 600 : 400,
                     }}
                   >
                     {acct.label}
@@ -633,7 +656,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                     style={{
                       fontFamily: 'var(--font-mono)',
                       fontSize: 11,
-                      color: 'var(--text-primary)',
+                      color: acct.isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
                     }}
                   >
                     {formatCurrency(acct.amount, baseCurrency)}{' '}
@@ -651,7 +674,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                     style={{
                       height: '100%',
                       width: `${acct.pct}%`,
-                      background: 'var(--color-accent)',
+                      background: acct.isSelected ? 'var(--color-accent)' : 'var(--border-primary)',
                     }}
                   />
                 </div>

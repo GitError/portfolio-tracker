@@ -41,17 +41,40 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: number)
         border: '1px solid var(--border-primary)',
         borderLeft: `3px solid ${BORDER_COLORS[toast.type]}`,
         padding: '10px 14px',
-        marginTop: '8px',
+        marginBottom: '8px',
         minWidth: '260px',
-        maxWidth: '360px',
+        maxWidth: '380px',
         fontSize: '13px',
         color: 'var(--text-primary)',
         fontFamily: 'var(--font-sans)',
-        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '10px',
       }}
-      onClick={() => onDismiss(toast.id)}
     >
-      {toast.message}
+      <span style={{ flex: 1, lineHeight: 1.4 }}>{toast.message}</span>
+      <button
+        onClick={() => onDismiss(toast.id)}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--text-muted)',
+          cursor: 'pointer',
+          fontSize: '15px',
+          lineHeight: 1,
+          padding: '0 2px',
+          flexShrink: 0,
+        }}
+        aria-label="Dismiss notification"
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
+        }}
+      >
+        &times;
+      </button>
     </div>
   );
 }
@@ -74,7 +97,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div
         style={{
           position: 'fixed',
-          bottom: '24px',
+          top: '24px',
           right: '24px',
           zIndex: 9999,
           display: 'flex',
