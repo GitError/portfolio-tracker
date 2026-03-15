@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   AreaChart,
   Area,
@@ -13,12 +13,65 @@ import {
 } from 'recharts';
 import { useSearchParams } from 'react-router-dom';
 import { ALL_PERF_DATA, BENCHMARK_SERIES, calcStats, filterByRange } from '../lib/perfMockData';
+import type { PerfDataPoint } from '../lib/perfMockData';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG } from '../lib/constants';
 import { Select } from './ui/Select';
 import { EmptyState } from './ui/EmptyState';
 import type { AccountType, AssetType, PortfolioSnapshot } from '../types/portfolio';
+
+const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<T>(cmd, args);
+}
+
+interface PerformancePoint {
+  date: string;
+  value: number;
+}
+
+function backendPointsToPerfData(points: PerformancePoint[]): PerfDataPoint[] {
+  return points.map((point, index) => {
+    const prev = index > 0 ? points[index - 1].value : point.value;
+    const dailyReturn = prev !== 0 ? ((point.value - prev) / prev) * 100 : 0;
+    return { date: point.date, value: point.value, dailyReturn };
+  });
+}
+
+function useRealPerformance(range: string): {
+  data: PerfDataPoint[];
+  loading: boolean;
+  isEmpty: boolean;
+} {
+  const [rawPoints, setRawPoints] = useState<PerformancePoint[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    setLoading(true);
+    tauriInvoke<PerformancePoint[]>('get_performance', { range })
+      .then((points) => setRawPoints(points))
+      .catch((err) => {
+        console.error('get_performance failed:', err);
+        setRawPoints([]);
+      })
+      .finally(() => setLoading(false));
+  }, [range]);
+
+  const data = useMemo(
+    () => (rawPoints !== null ? backendPointsToPerfData(rawPoints) : []),
+    [rawPoints]
+  );
+
+  return {
+    data,
+    loading,
+    isEmpty: isTauri() && rawPoints !== null && rawPoints.length === 0,
+  };
+}
 
 type Range = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 const RANGES: Range[] = ['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
@@ -125,7 +178,10 @@ export function Performance({ portfolio }: PerformanceProps) {
     return filteredValue / portfolio.totalValue;
   }, [portfolio, filteredValue]);
 
-  const scaledData = useMemo(
+  // Real performance data (Tauri) or scaled mock data (browser)
+  const { data: realData, loading: perfLoading, isEmpty: perfIsEmpty } = useRealPerformance(range);
+
+  const scaledMockData = useMemo(
     () =>
       ALL_PERF_DATA.map((point) => ({
         ...point,
@@ -134,7 +190,13 @@ export function Performance({ portfolio }: PerformanceProps) {
     [filteredShare]
   );
 
-  const data = useMemo(() => filterByRange(scaledData, range), [scaledData, range]);
+  const data = useMemo(() => {
+    if (isTauri()) {
+      return realData;
+    }
+    return filterByRange(scaledMockData, range);
+  }, [realData, scaledMockData, range]);
+
   const stats = useMemo(() => calcStats(data), [data]);
   const benchmark = useMemo(
     () => BENCHMARK_SERIES.find((series) => series.id === benchmarkId) ?? null,
@@ -193,6 +255,18 @@ export function Performance({ portfolio }: PerformanceProps) {
 
   if (!portfolio) {
     return <EmptyState message="No portfolio data available" />;
+  }
+
+  if (perfLoading) {
+    return <EmptyState message="Loading performance history..." />;
+  }
+
+  if (perfIsEmpty) {
+    return (
+      <div style={{ ...PANEL }}>
+        <EmptyState message="Performance history will appear here after your first price refresh." />
+      </div>
+    );
   }
 
   if (filteredHoldings.length === 0) {

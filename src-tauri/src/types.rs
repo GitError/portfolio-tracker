@@ -245,3 +245,10 @@ pub struct PreviewImportResult {
     pub ready_count: usize,
     pub skip_count: usize,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformancePoint {
+    pub date: String,
+    pub value: f64,
+}

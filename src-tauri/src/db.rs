@@ -4,7 +4,8 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingInput, PriceData, SymbolResult,
+    AccountType, AssetType, FxRate, Holding, HoldingInput, PerformancePoint, PriceData,
+    SymbolResult,
 };
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -70,6 +71,17 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             key     TEXT PRIMARY KEY,
             value   TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            total_value REAL    NOT NULL,
+            total_cost  REAL    NOT NULL,
+            gain_loss   REAL    NOT NULL,
+            recorded_at TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_snapshots_recorded_at
+            ON portfolio_snapshots(recorded_at);
         ",
     )
     .map_err(|e| e.to_string())?;
@@ -443,6 +455,69 @@ pub fn get_symbol_cache_exact(
     }))
 }
 
+pub fn insert_snapshot(
+    conn: &Connection,
+    total_value: f64,
+    total_cost: f64,
+    gain_loss: f64,
+) -> Result<(), rusqlite::Error> {
+    let recorded_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![total_value, total_cost, gain_loss, recorded_at],
+    )?;
+    Ok(())
+}
+
+pub fn get_snapshots_in_range(
+    conn: &Connection,
+    start: &str,
+    end: &str,
+) -> Result<Vec<PerformancePoint>, rusqlite::Error> {
+    let mut stmt = conn.prepare(
+        "SELECT recorded_at, total_value
+         FROM portfolio_snapshots
+         WHERE recorded_at >= ?1 AND recorded_at <= ?2
+         ORDER BY recorded_at ASC",
+    )?;
+
+    let points = stmt
+        .query_map(params![start, end], |row| {
+            let recorded_at: String = row.get(0)?;
+            let total_value: f64 = row.get(1)?;
+            // Truncate ISO timestamp to date portion for the chart
+            let date = recorded_at.get(..10).unwrap_or(&recorded_at).to_string();
+            Ok(PerformancePoint { date, value: total_value })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(points)
+}
+
+pub fn prune_snapshots(conn: &Connection) -> Result<(), rusqlite::Error> {
+    // Keep all snapshots from the last 30 days; beyond that, keep only the latest per day.
+    let cutoff = (Utc::now() - chrono::Duration::days(30))
+        .format("%Y-%m-%dT%H:%M:%S")
+        .to_string();
+
+    // Delete older rows that are not the latest snapshot for their day.
+    conn.execute(
+        "DELETE FROM portfolio_snapshots
+         WHERE recorded_at < ?1
+           AND id NOT IN (
+               SELECT MAX(id)
+               FROM portfolio_snapshots
+               WHERE recorded_at < ?1
+               GROUP BY DATE(recorded_at)
+           )",
+        params![cutoff],
+    )?;
+
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
     let mut stmt = conn
@@ -578,6 +653,94 @@ mod tests {
 
         assert!(holding_exists(&conn, "msft").expect("holding exists"));
         assert!(!holding_exists(&conn, "nvda").expect("holding exists"));
+    }
+
+    #[test]
+    fn insert_snapshot_and_retrieve_in_range() {
+        let conn = open_test_db();
+
+        // Insert two snapshots
+        insert_snapshot(&conn, 100_000.0, 90_000.0, 10_000.0).expect("insert snapshot 1");
+        insert_snapshot(&conn, 110_000.0, 90_000.0, 20_000.0).expect("insert snapshot 2");
+
+        let start = "1970-01-01T00:00:00+00:00";
+        let end = "2099-12-31T23:59:59+00:00";
+        let points = get_snapshots_in_range(&conn, start, end).expect("get snapshots");
+
+        assert_eq!(points.len(), 2);
+        assert!((points[0].value - 100_000.0).abs() < 0.001);
+        assert!((points[1].value - 110_000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn get_snapshots_in_range_respects_date_bounds() {
+        let conn = open_test_db();
+
+        // Insert a snapshot with a known timestamp in the past
+        conn.execute(
+            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
+             VALUES (50000.0, 45000.0, 5000.0, '2020-01-15T12:00:00+00:00')",
+            [],
+        )
+        .expect("manual insert");
+
+        // Query a range that excludes that date
+        let points =
+            get_snapshots_in_range(&conn, "2021-01-01T00:00:00+00:00", "2099-12-31T23:59:59+00:00")
+                .expect("get snapshots");
+
+        assert_eq!(points.len(), 0);
+
+        // Query a range that includes it
+        let points =
+            get_snapshots_in_range(&conn, "2020-01-01T00:00:00+00:00", "2020-12-31T23:59:59+00:00")
+                .expect("get snapshots");
+
+        assert_eq!(points.len(), 1);
+        assert!((points[0].value - 50_000.0).abs() < 0.001);
+        assert_eq!(points[0].date, "2020-01-15");
+    }
+
+    #[test]
+    fn prune_snapshots_keeps_recent_and_daily_max_for_old() {
+        let conn = open_test_db();
+
+        // Insert 3 snapshots on the same old date (> 30 days ago) — only the highest id should survive
+        conn.execute(
+            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
+             VALUES (1000.0, 900.0, 100.0, '2020-06-01T08:00:00+00:00')",
+            [],
+        )
+        .expect("insert old 1");
+        conn.execute(
+            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
+             VALUES (1050.0, 900.0, 150.0, '2020-06-01T12:00:00+00:00')",
+            [],
+        )
+        .expect("insert old 2");
+        conn.execute(
+            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
+             VALUES (1100.0, 900.0, 200.0, '2020-06-01T18:00:00+00:00')",
+            [],
+        )
+        .expect("insert old 3");
+
+        // Insert a recent snapshot (today) — must NOT be pruned
+        insert_snapshot(&conn, 200_000.0, 180_000.0, 20_000.0).expect("insert recent");
+
+        prune_snapshots(&conn).expect("prune");
+
+        let all =
+            get_snapshots_in_range(&conn, "1970-01-01T00:00:00+00:00", "2099-12-31T23:59:59+00:00")
+                .expect("get all");
+
+        // 1 old (latest of that day) + 1 recent = 2
+        assert_eq!(all.len(), 2);
+
+        // The surviving old snapshot should be the last inserted (1100.0)
+        let old_point = all.iter().find(|p| p.date == "2020-06-01");
+        assert!(old_point.is_some());
+        assert!((old_point.unwrap().value - 1100.0).abs() < 0.001);
     }
 
     #[test]
