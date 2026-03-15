@@ -140,7 +140,7 @@ export function Sidebar({ portfolio }: SidebarProps) {
             fontFamily: 'var(--font-mono)',
             fontSize: 13,
             fontWeight: 600,
-            color: pnlColor(totalValue),
+            color: 'var(--text-primary)',
             whiteSpace: 'nowrap',
           }}
         >
