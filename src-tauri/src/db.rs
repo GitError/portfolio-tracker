@@ -4,8 +4,8 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    AccountType, AlertDirection, AssetType, FxRate, Holding, HoldingInput, PerformancePoint,
-    PriceAlert, PriceAlertInput, PriceData, SymbolResult, Transaction,
+    AccountType, AlertDirection, AssetType, Dividend, DividendInput, FxRate, Holding, HoldingInput,
+    PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolResult, Transaction,
 };
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -104,6 +104,19 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             transacted_at TEXT    NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_transactions_holding_id ON transactions(holding_id);
+
+        CREATE TABLE IF NOT EXISTS dividends (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            holding_id      TEXT    NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
+            amount_per_unit REAL    NOT NULL,
+            currency        TEXT    NOT NULL,
+            ex_date         TEXT    NOT NULL,
+            pay_date        TEXT    NOT NULL,
+            created_at      TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_dividends_holding_id
+            ON dividends(holding_id);
         ",
     )
     .map_err(|e| e.to_string())?;
@@ -811,6 +824,79 @@ pub fn get_all_transactions(conn: &Connection) -> Result<Vec<Transaction>, rusql
 pub fn delete_transaction(conn: &Connection, id: i64) -> Result<(), rusqlite::Error> {
     conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
     Ok(())
+}
+
+// ── Dividends ─────────────────────────────────────────────────────────────────
+
+pub fn insert_dividend(
+    conn: &Connection,
+    input: DividendInput,
+    symbol: &str,
+) -> Result<Dividend, String> {
+    let created_at = Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO dividends (holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            input.holding_id,
+            input.amount_per_unit,
+            input.currency,
+            input.ex_date,
+            input.pay_date,
+            created_at
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+    Ok(Dividend {
+        id,
+        holding_id: input.holding_id,
+        symbol: symbol.to_string(),
+        amount_per_unit: input.amount_per_unit,
+        currency: input.currency,
+        ex_date: input.ex_date,
+        pay_date: input.pay_date,
+        created_at,
+    })
+}
+
+pub fn get_dividends(conn: &Connection) -> Result<Vec<Dividend>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT d.id, d.holding_id, h.symbol, d.amount_per_unit, d.currency,
+                    d.ex_date, d.pay_date, d.created_at
+             FROM dividends d
+             JOIN holdings h ON h.id = d.holding_id
+             ORDER BY d.ex_date DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let dividends = stmt
+        .query_map([], |row| {
+            Ok(Dividend {
+                id: row.get(0)?,
+                holding_id: row.get(1)?,
+                symbol: row.get(2)?,
+                amount_per_unit: row.get(3)?,
+                currency: row.get(4)?,
+                ex_date: row.get(5)?,
+                pay_date: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(dividends)
+}
+
+pub fn delete_dividend(conn: &Connection, id: i64) -> Result<bool, String> {
+    let n = conn
+        .execute("DELETE FROM dividends WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(n > 0)
 }
 
 #[allow(dead_code)]

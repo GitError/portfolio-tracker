@@ -7,6 +7,7 @@ import { Performance } from './components/Performance';
 import { StressTest } from './components/StressTest';
 import { Rebalance } from './components/Rebalance';
 import { Alerts } from './components/Alerts';
+import { Dividends } from './components/Dividends';
 import { Settings } from './components/Settings';
 import { TransactionHistory } from './components/TransactionHistory';
 import { Analytics } from './components/Analytics';
@@ -135,6 +136,7 @@ function AppRoutes() {
           <Route path="/alerts" element={<Alerts />} />
           <Route path="/transactions" element={<TransactionHistory />} />
           <Route path="/analytics" element={<Analytics />} />
+          <Route path="/dividends" element={<Dividends />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>

@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri-24C8D8?style=flat-square&logo=tauri)](https://tauri.app)
 
-A macOS desktop portfolio tracker built with Tauri v2. Tracks stocks, ETFs, crypto, and multi-currency cash positions with live pricing from Yahoo Finance and real-time stress-test simulations. All values are displayed in CAD.
+A macOS desktop portfolio tracker built with Tauri v2. Tracks stocks, ETFs, crypto, and multi-currency cash positions with live pricing from Yahoo Finance, real-time stress-test simulations, price alerts, and dividend tracking. All values are displayed in your chosen base currency (default: CAD).
 
-The app runs as a native macOS window with a Bloomberg-inspired dark terminal UI. Holdings are stored locally in SQLite — no cloud account required.
+The app runs as a native macOS window with a Bloomberg-inspired dark terminal UI. Holdings and all data are stored locally in SQLite — no cloud account required.
 
 **Docs:** [Feature Guide](docs/features.md) · [Roadmap](docs/roadmap.md) · [Release Guide](docs/releases.md)
 
@@ -34,10 +34,17 @@ Release builds are published from tags matching `v*.*.*` and first appear as dra
 ## Features
 
 - **Dashboard** — Real-time portfolio value and daily P&L, asset allocation donut by type and currency, top movers sorted by daily change
-- **Holdings** — Add, edit, and delete positions across stocks, ETFs, crypto, and multi-currency cash; sortable table with live price and gain/loss columns
-- **Performance** — Historical portfolio value area chart with configurable time ranges (1D–ALL), daily returns bar chart, drawdown and volatility stats
-- **Stress Testing** — Apply preset or custom shock scenarios (Bear Market, Crypto Winter, CAD Crash, Stagflation) to see projected impact with per-holding waterfall breakdown
-- **Multi-currency** — USD, EUR, GBP, CHF, JPY, and more; all positions converted to CAD at live FX rates fetched on demand
+- **Holdings** — Add, edit, and delete positions across stocks, ETFs, crypto, and multi-currency cash; account tagging (TFSA, RRSP, Taxable); sortable table with live price and gain/loss columns
+- **CSV Import / Export** — Bulk-import holdings from a CSV file with symbol validation and import preview; export your full portfolio back to CSV at any time
+- **Performance** — Historical portfolio value area chart with configurable time ranges (1W–ALL), daily returns bar chart, drawdown and volatility stats; data recorded on every price refresh
+- **Stress Testing** — Apply 11 preset or fully custom shock scenarios (Bear Market, Crypto Winter, CAD Crash, Stagflation, and more) to see projected impact with per-holding waterfall breakdown
+- **Rebalancing** — Set target allocation weights per holding; see drift from target, required trades, and deployable cash guidance
+- **Price Alerts** — Set above/below price threshold alerts per symbol; triggered alerts are flagged in the UI
+- **Dividend Tracking** — Record dividend payments per unit with ex-date and pay-date; view payout history and totals by symbol
+- **Settings** — Configure base currency (CAD, USD, EUR, GBP, AUD, CHF, JPY), auto-refresh interval (1m–1hr), and cost basis method (AVCO / FIFO)
+- **Multi-currency** — USD, EUR, GBP, CHF, JPY, and more; all positions converted to base currency at live FX rates fetched on demand
+- **Keyboard shortcuts** — Full keyboard navigation; press `?` to see all shortcuts
+- **Backup / Restore** — Export and import all holdings as JSON for portable backups
 
 ---
 
@@ -46,7 +53,7 @@ Release builds are published from tags matching `v*.*.*` and first appear as dra
 | Layer     | Technology                                        |
 |-----------|---------------------------------------------------|
 | Shell     | [Tauri v2](https://tauri.app)                     |
-| Backend   | Rust — tokio, reqwest, rusqlite                   |
+| Backend   | Rust — tokio, reqwest, rusqlite, chrono, uuid     |
 | Frontend  | React 18 + TypeScript + Vite                      |
 | Styling   | Tailwind CSS v4                                   |
 | Charts    | [Recharts](https://recharts.org)                  |
@@ -62,20 +69,49 @@ Release builds are published from tags matching `v*.*.*` and first appear as dra
 portfolio-tracker/
 ├── src-tauri/          # Rust backend
 │   └── src/
-│       ├── main.rs     # Tauri bootstrap + state
-│       ├── commands.rs # Tauri command handlers
-│       ├── db.rs       # SQLite schema + CRUD
+│       ├── main.rs     # Tauri entry point
+│       ├── lib.rs      # App bootstrap, state init, command registration
+│       ├── config.rs   # App-level constants (DB name, user-agent, etc.)
+│       ├── types.rs    # All shared Rust types (serde camelCase)
+│       ├── commands.rs # Tauri command handlers (thin wrappers over domain logic)
+│       ├── db.rs       # SQLite schema, migrations, CRUD
 │       ├── price.rs    # Yahoo Finance price fetching
-│       ├── fx.rs       # FX rate fetching + conversion
+│       ├── fx.rs       # FX rate fetching + conversion helpers
+│       ├── search.rs   # Symbol search via Yahoo Finance
 │       └── stress.rs   # Stress test engine
 └── src/                # React frontend
-    ├── components/     # Views: Dashboard, Holdings, Performance, StressTest
-    ├── hooks/          # usePortfolio, useStressTest
-    ├── lib/            # Formatters, colours, constants
-    └── types/          # TypeScript types (mirrors Rust structs)
+    ├── App.tsx         # Router, providers, keyboard shortcut wiring
+    ├── components/
+    │   ├── Dashboard.tsx           # Route /
+    │   ├── Holdings.tsx            # Route /holdings
+    │   ├── Performance.tsx         # Route /performance
+    │   ├── StressTest.tsx          # Route /stress
+    │   ├── Rebalance.tsx           # Route /rebalance
+    │   ├── Alerts.tsx              # Route /alerts
+    │   ├── Dividends.tsx           # Route /dividends
+    │   ├── Settings.tsx            # Route /settings
+    │   ├── AddHoldingModal.tsx     # Add / edit holding dialog
+    │   ├── ImportHoldingsModal.tsx # CSV import dialog
+    │   ├── Layout.tsx              # App shell: sidebar + topbar + content
+    │   ├── Sidebar.tsx             # Icon nav, mini portfolio value
+    │   ├── TopBar.tsx              # Refresh, base currency picker, daily P&L
+    │   └── ui/                     # Shared UI primitives (Toast, Badge, Select, …)
+    ├── hooks/
+    │   ├── usePortfolio.ts         # Tauri invoke wrapper + portfolio state
+    │   ├── useConfig.ts            # Persistent key/value config (SQLite via Tauri)
+    │   ├── useAutoRefresh.ts       # Interval-based auto price refresh
+    │   ├── useStressTest.ts        # Stress test invocation + state
+    │   └── useKeyboardShortcuts.ts # Global keyboard shortcut handler
+    ├── lib/
+    │   ├── format.ts               # Currency / number / percent formatters
+    │   ├── colors.ts               # PnL color helpers
+    │   ├── constants.ts            # Preset scenarios, asset/account configs
+    │   └── currencyContext.tsx     # Base currency React context
+    └── types/
+        └── portfolio.ts            # TypeScript types (mirrors Rust structs exactly)
 ```
 
-The Rust backend exposes Tauri commands that the React frontend calls via `invoke()`. The SQLite database lives in the macOS app data directory. Price data is fetched from Yahoo Finance on demand and cached locally.
+The Rust backend exposes Tauri commands that the React frontend calls via `invoke()`. The SQLite database lives in the macOS app data directory (`~/Library/Application Support/portfolio-tracker/portfolio.db`). Price data is fetched from Yahoo Finance on demand and cached locally between refreshes.
 
 ---
 
@@ -110,9 +146,10 @@ npm run dev         # Frontend only in browser (mock data, no Rust required)
 ### First-time setup
 
 1. Launch with `cargo tauri dev`
-2. Navigate to **Holdings** (sidebar or press `2`)
-3. Click **Add Holding** and enter your first position
-4. Return to the **Dashboard** to see live values
+2. Navigate to **Holdings** (`2` or `⌘2`)
+3. Click **Add Holding** (`⌘N`) and enter your first position
+4. Click **Refresh** (`⌘R`) to fetch live prices
+5. Return to the **Dashboard** (`1`) to see live values
 
 ---
 
@@ -139,7 +176,7 @@ npm run test:coverage     # Coverage report (v8)
 
 # Rust
 cd src-tauri
-cargo test                # Unit tests (db, stress engine, fx)
+cargo test                # Unit tests (db, stress engine, fx, commands)
 cargo clippy              # Linter
 cargo fmt                 # Formatter
 ```
@@ -147,9 +184,9 @@ cargo fmt                 # Formatter
 ### Releases
 
 ```bash
-./scripts/bump-version.sh 0.1.1
-git commit -am "chore: bump version to 0.1.1"
-git tag v0.1.1
+./scripts/bump-version.sh 0.2.0
+git commit -am "chore: bump version to 0.2.0"
+git tag v0.2.0
 git push && git push --tags
 ```
 
