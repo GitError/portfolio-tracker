@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, ChevronUp, ChevronDown, Upload, Download } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
@@ -69,9 +70,65 @@ export function Holdings() {
     exportHoldingsCsv,
   } = usePortfolio();
   const { showToast } = useToast();
-  const [sort, setSort] = useState<SortState>({ key: 'weight', dir: 'desc' });
-  const [search, setSearch] = useState('');
-  const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const search = searchParams.get('search') ?? '';
+  const accountFilter = (searchParams.get('account') ?? 'all') as 'all' | AccountType;
+  const sortKey = (searchParams.get('sort') ?? 'weight') as SortKey;
+  const sortDir = (searchParams.get('dir') ?? 'desc') as 'asc' | 'desc';
+  const sort: SortState = useMemo(() => ({ key: sortKey, dir: sortDir }), [sortKey, sortDir]);
+
+  function setSearch(value: string) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === '') {
+          next.delete('search');
+        } else {
+          next.set('search', value);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  function setAccountFilter(value: 'all' | AccountType) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        if (value === 'all') {
+          next.delete('account');
+        } else {
+          next.set('account', value);
+        }
+        return next;
+      },
+      { replace: true }
+    );
+  }
+
+  function setSort(updater: SortState | ((prev: SortState) => SortState)) {
+    const next = typeof updater === 'function' ? updater(sort) : updater;
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (next.key === 'weight') {
+          params.delete('sort');
+        } else {
+          params.set('sort', next.key);
+        }
+        if (next.dir === 'desc') {
+          params.delete('dir');
+        } else {
+          params.set('dir', next.dir);
+        }
+        return params;
+      },
+      { replace: true }
+    );
+  }
+
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Holding | undefined>(undefined);
