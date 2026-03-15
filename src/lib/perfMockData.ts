@@ -4,6 +4,12 @@ export interface PerfDataPoint {
   dailyReturn: number; // % change vs previous day
 }
 
+export interface BenchmarkSeries {
+  id: string;
+  label: string;
+  points: PerfDataPoint[];
+}
+
 function seededRng(seed: number) {
   let s = seed;
   return () => {
@@ -56,6 +62,51 @@ export function generatePerfData(): PerfDataPoint[] {
 }
 
 export const ALL_PERF_DATA: PerfDataPoint[] = generatePerfData();
+
+function generateBenchmarkData(
+  seed: number,
+  startValue: number,
+  profile: 'broad' | 'growth' | 'canada' | 'crypto'
+): PerfDataPoint[] {
+  const rng = seededRng(seed);
+  const points: PerfDataPoint[] = [];
+  let value = startValue;
+
+  const now = new Date();
+  const totalDays = 730;
+  const start = new Date(now);
+  start.setDate(start.getDate() - totalDays);
+
+  for (let i = 0; i <= totalDays; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const dow = d.getDay();
+    if (dow === 0 || dow === 6) continue;
+
+    let dailyPct = 0;
+    if (profile === 'broad') dailyPct = 0.025 + (rng() - 0.48) * 0.9;
+    if (profile === 'growth') dailyPct = 0.04 + (rng() - 0.47) * 1.2;
+    if (profile === 'canada') dailyPct = 0.02 + (rng() - 0.5) * 0.8;
+    if (profile === 'crypto') dailyPct = 0.08 + (rng() - 0.45) * 3.2;
+
+    if (rng() < (profile === 'crypto' ? 0.08 : 0.03)) {
+      dailyPct += (rng() - 0.5) * (profile === 'crypto' ? 10 : 3);
+    }
+
+    value = value * (1 + dailyPct / 100);
+    const dateStr = d.toISOString().split('T')[0];
+    points.push({ date: dateStr, value: Math.round(value * 100) / 100, dailyReturn: dailyPct });
+  }
+
+  return points;
+}
+
+export const BENCHMARK_SERIES: BenchmarkSeries[] = [
+  { id: 'sp500', label: 'S&P 500', points: generateBenchmarkData(7, 100_000, 'broad') },
+  { id: 'nasdaq100', label: 'NASDAQ 100', points: generateBenchmarkData(17, 100_000, 'growth') },
+  { id: 'tsx', label: 'TSX Composite', points: generateBenchmarkData(29, 100_000, 'canada') },
+  { id: 'bitcoin', label: 'Bitcoin', points: generateBenchmarkData(43, 100_000, 'crypto') },
+];
 
 export function filterByRange(data: PerfDataPoint[], range: string): PerfDataPoint[] {
   const now = new Date();
