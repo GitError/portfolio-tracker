@@ -45,6 +45,17 @@ function CenterLabel({ text }: { text: string }) {
   );
 }
 
+function topMoversTitle(lastUpdated: string | undefined): string {
+  if (!lastUpdated) return 'Top Movers';
+  const updated = new Date(lastUpdated);
+  const now = new Date();
+  const isToday =
+    updated.getFullYear() === now.getFullYear() &&
+    updated.getMonth() === now.getMonth() &&
+    updated.getDate() === now.getDate();
+  return isToday ? 'Top Movers \u2014 Today' : 'Top Movers \u2014 Last Close';
+}
+
 export function Dashboard({ portfolio, loading }: DashboardProps) {
   const [accountFilter, setAccountFilter] = useState<'all' | AccountType>('all');
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
@@ -128,6 +139,57 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     return { best, worst, cashTotal };
   }, [filteredHoldings, portfolio]);
 
+  // #49 — Account allocation data
+  const accountData = useMemo(() => {
+    if (!portfolio || totals.totalValue === 0) return [];
+    const byAccount: Record<string, number> = {};
+    for (const h of filteredHoldings) {
+      byAccount[h.account] = (byAccount[h.account] ?? 0) + h.marketValueCad;
+    }
+    return ACCOUNT_OPTIONS.filter((opt) => byAccount[opt.value] !== undefined).map((opt) => ({
+      value: opt.value,
+      label: opt.label,
+      amount: byAccount[opt.value] ?? 0,
+      pct: ((byAccount[opt.value] ?? 0) / totals.totalValue) * 100,
+    }));
+  }, [filteredHoldings, portfolio, totals]);
+
+  // #50 — Concentration risk data (non-cash only)
+  const concentrationData = useMemo(() => {
+    if (!portfolio || totals.totalValue === 0) return [];
+    const nonCash = filteredHoldings.filter((h) => h.assetType !== 'cash');
+    return [...nonCash]
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 5)
+      .map((h) => ({
+        id: h.id,
+        symbol: h.symbol,
+        assetType: h.assetType,
+        weightPct: h.weight * 100,
+      }));
+  }, [filteredHoldings, portfolio, totals]);
+
+  const concentrationStats = useMemo(() => {
+    if (concentrationData.length === 0) return null;
+    const largest = concentrationData[0].weightPct;
+    const top3 = concentrationData.slice(0, 3).reduce((sum, d) => sum + d.weightPct, 0);
+    return { largest, top3, hasRisk: largest > 20 };
+  }, [concentrationData]);
+
+  // #51 — Cash panel data
+  const cashData = useMemo(() => {
+    if (!portfolio) return { positions: [], totalCash: 0, cashPct: 0 };
+    const cashHoldings = filteredHoldings.filter((h) => h.assetType === 'cash');
+    const totalCash = cashHoldings.reduce((sum, h) => sum + h.marketValueCad, 0);
+    const byCurrency: Record<string, number> = {};
+    for (const h of cashHoldings) {
+      byCurrency[h.currency] = (byCurrency[h.currency] ?? 0) + h.marketValueCad;
+    }
+    const positions = Object.entries(byCurrency).map(([ccy, amount]) => ({ ccy, amount }));
+    const cashPct = totals.totalValue > 0 ? (totalCash / totals.totalValue) * 100 : 0;
+    return { positions, totalCash, cashPct };
+  }, [filteredHoldings, portfolio, totals]);
+
   if (!portfolio && !loading) {
     return <EmptyState message="No portfolio data available" />;
   }
@@ -137,7 +199,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
       style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1fr 1fr',
-        gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+        gridTemplateRows: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto',
         gap: '1px',
         background: 'var(--border-primary)',
         border: '1px solid var(--border-primary)',
@@ -324,7 +386,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         </div>
       </div>
 
-      {/* Panel 3 — Top Movers (spans 2 cols) */}
+      {/* Panel 3 — Top Movers (spans 2 cols) — #45 */}
       <div
         style={{
           ...PANEL,
@@ -336,7 +398,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           overflow: 'hidden',
         }}
       >
-        <div style={{ ...LABEL, flexShrink: 0 }}>Top Movers</div>
+        <div style={{ ...LABEL, flexShrink: 0 }}>{topMoversTitle(portfolio?.lastUpdated)}</div>
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
@@ -345,7 +407,8 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   <th
                     key={col}
                     style={{
-                      textAlign: col === 'Change %' || col === 'Change $' ? 'right' : 'left',
+                      textAlign:
+                        col === 'Change %' || col === `Change (${baseCurrency})` ? 'right' : 'left',
                       padding: '4px 0',
                       color: 'var(--text-muted)',
                       fontWeight: 400,
@@ -364,6 +427,8 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             <tbody>
               {topMovers.map((h) => {
                 const dailyChange = h.marketValueCad * (h.dailyChangePercent / 100);
+                const arrow =
+                  h.dailyChangePercent > 0 ? '\u25b2' : h.dailyChangePercent < 0 ? '\u25bc' : '';
                 return (
                   <tr key={h.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td
@@ -388,6 +453,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                         color: pnlColor(h.dailyChangePercent),
                       }}
                     >
+                      {arrow && (
+                        <span style={{ marginRight: 3, color: pnlColor(h.dailyChangePercent) }}>
+                          {arrow}
+                        </span>
+                      )}
                       {formatPercent(h.dailyChangePercent)}
                     </td>
                     <td
@@ -490,6 +560,296 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Row 3 — By Account (#49), Concentration (#50), Cash (#51) */}
+
+      {/* Panel 6 — By Account (#49) */}
+      <div
+        style={{
+          ...PANEL,
+          background: 'var(--bg-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ ...LABEL, flexShrink: 0 }}>By Account</div>
+        {accountData.length === 0 ? (
+          <div
+            style={{
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              marginTop: 8,
+            }}
+          >
+            No account data
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {accountData.map((acct) => (
+              <div key={acct.value}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'baseline',
+                    marginBottom: 4,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: 'var(--text-secondary)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    {acct.label}
+                  </span>
+                  <span
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    {formatCurrency(acct.amount, baseCurrency)}{' '}
+                    <span style={{ color: 'var(--text-muted)' }}>{acct.pct.toFixed(1)}%</span>
+                  </span>
+                </div>
+                <div
+                  style={{
+                    height: 4,
+                    background: 'var(--bg-surface-alt)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${acct.pct}%`,
+                      background: 'var(--color-accent)',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Panel 7 — Concentration (#50) */}
+      <div
+        style={{
+          ...PANEL,
+          background: 'var(--bg-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ ...LABEL, flexShrink: 0 }}>Concentration</div>
+        {concentrationData.length === 0 ? (
+          <div
+            style={{
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              marginTop: 8,
+            }}
+          >
+            No non-cash holdings
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flex: 1 }}>
+              {concentrationData.map((h) => {
+                const assetColor =
+                  ASSET_TYPE_CONFIG[h.assetType as keyof typeof ASSET_TYPE_CONFIG]?.color ?? '#888';
+                return (
+                  <div
+                    key={h.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: 11,
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-primary)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: assetColor,
+                          display: 'inline-block',
+                          flexShrink: 0,
+                        }}
+                      />
+                      {h.symbol}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)',
+                        fontSize: 11,
+                      }}
+                    >
+                      {h.weightPct.toFixed(1)}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {concentrationStats && (
+              <div
+                style={{
+                  borderTop: '1px solid var(--border-subtle)',
+                  marginTop: 10,
+                  paddingTop: 10,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 3,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  Largest:{' '}
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {concentrationStats.largest.toFixed(1)}%
+                  </span>
+                  {'  '}Top 3:{' '}
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {concentrationStats.top3.toFixed(1)}%
+                  </span>
+                </div>
+                {concentrationStats.hasRisk && (
+                  <div
+                    style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 11,
+                      color: 'var(--color-warning)',
+                    }}
+                  >
+                    &#9888; Concentration risk
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Panel 8 — Cash (#51) */}
+      <div
+        style={{
+          ...PANEL,
+          background: 'var(--bg-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ ...LABEL, flexShrink: 0 }}>Cash</div>
+        {cashData.positions.length === 0 ? (
+          <div
+            style={{
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+              marginTop: 8,
+            }}
+          >
+            No cash positions
+          </div>
+        ) : (
+          <>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 20,
+                fontWeight: 600,
+                color: 'var(--color-cash)',
+                marginBottom: 2,
+              }}
+            >
+              {formatCurrency(cashData.totalCash, baseCurrency)}
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                marginBottom: 12,
+              }}
+            >
+              Investable Cash
+              <span style={{ marginLeft: 6, color: 'var(--text-secondary)' }}>
+                {cashData.cashPct.toFixed(1)}% of portfolio
+              </span>
+            </div>
+            {cashData.positions.length > 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {cashData.positions.map((pos) => (
+                  <div
+                    key={pos.ccy}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      fontSize: 11,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: 'var(--font-mono)',
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: '50%',
+                          background: CURRENCY_COLORS[pos.ccy] ?? '#888',
+                          display: 'inline-block',
+                        }}
+                      />
+                      {pos.ccy} Cash
+                    </span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
+                      {formatCurrency(pos.amount, baseCurrency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Panel 5 — Quick Stats (full width) */}
