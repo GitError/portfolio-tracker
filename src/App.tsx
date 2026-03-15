@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { Holdings } from './components/Holdings';
 import { Performance } from './components/Performance';
 import { StressTest } from './components/StressTest';
+import { Settings } from './components/Settings';
 import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
 import { KeyboardShortcutsOverlay } from './components/ui/KeyboardShortcutsOverlay';
@@ -126,6 +127,7 @@ function AppRoutes() {
           />
           <Route path="/performance" element={<Performance portfolio={portfolio} />} />
           <Route path="/stress" element={<StressTest />} />
+          <Route path="/settings" element={<Settings />} />
         </Route>
       </Routes>
       <KeyboardShortcutsOverlay

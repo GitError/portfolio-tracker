@@ -5,6 +5,7 @@ import {
   Table2,
   TrendingUp,
   AlertTriangle,
+  Settings2,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const NAV_ITEMS = [
   { to: '/holdings', label: 'Holdings', Icon: Table2 },
   { to: '/performance', label: 'Performance', Icon: TrendingUp },
   { to: '/stress', label: 'Stress Test', Icon: AlertTriangle },
+  { to: '/settings', label: 'Settings', Icon: Settings2 },
 ];
 
 export function Sidebar({ portfolio }: SidebarProps) {
@@ -140,7 +142,7 @@ export function Sidebar({ portfolio }: SidebarProps) {
             fontFamily: 'var(--font-mono)',
             fontSize: 13,
             fontWeight: 600,
-            color: pnlColor(totalValue),
+            color: 'var(--text-primary)',
             whiteSpace: 'nowrap',
           }}
         >
