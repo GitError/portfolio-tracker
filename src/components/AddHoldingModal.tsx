@@ -336,7 +336,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               <SymbolSearch
                 value={form.symbol}
                 onChange={(v) => {
-                  setForm((prev) => ({ ...prev, symbol: v }));
+                  setForm((prev) => ({ ...prev, symbol: v.toUpperCase() }));
                   setErrors((prev) => ({ ...prev, symbol: undefined }));
                 }}
                 onSelect={handleSymbolSelect}
