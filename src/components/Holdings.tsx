@@ -328,7 +328,6 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       showToast(String(e), 'error');
     }
   }, [exportHoldingsCsv, showToast]);
-  }
 
   const totals = useMemo(
     () => ({
