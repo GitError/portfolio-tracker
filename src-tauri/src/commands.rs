@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -52,15 +53,17 @@ pub(crate) struct SearchCacheEntry {
     cached_at: Instant,
 }
 
-pub struct SearchCacheState(pub Mutex<HashMap<String, SearchCacheEntry>>);
+pub struct SearchCacheState(pub Mutex<lru::LruCache<String, SearchCacheEntry>>);
 
 impl SearchCacheState {
     pub fn new() -> Self {
-        SearchCacheState(Mutex::new(HashMap::new()))
+        let capacity =
+            NonZeroUsize::new(crate::config::SEARCH_CACHE_MAX_ENTRIES).unwrap_or(NonZeroUsize::new(200).unwrap());
+        SearchCacheState(Mutex::new(lru::LruCache::new(capacity)))
     }
 
     fn get(&self, key: &str) -> Option<Vec<SymbolResult>> {
-        let cache = self.0.lock().ok()?;
+        let mut cache = self.0.lock().ok()?;
         let entry = cache.get(key)?;
         if entry.cached_at.elapsed()
             > Duration::from_secs(crate::config::SEARCH_CACHE_TTL_SECS as u64)
@@ -72,10 +75,7 @@ impl SearchCacheState {
 
     fn set(&self, key: String, results: Vec<SymbolResult>) {
         if let Ok(mut cache) = self.0.lock() {
-            if cache.len() >= crate::config::SEARCH_CACHE_MAX_ENTRIES {
-                cache.clear();
-            }
-            cache.insert(
+            cache.put(
                 key,
                 SearchCacheEntry {
                     results,
@@ -1140,6 +1140,43 @@ mod tests {
         assert!((snapshot.holdings[1].market_value_cad - 220.0).abs() < 0.001);
         assert!((snapshot.total_value - 396.0).abs() < 0.001);
         assert!((snapshot.total_cost - 360.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn search_cache_lru_evicts_oldest_not_all() {
+        // Build a cache with capacity 200 (matches SEARCH_CACHE_MAX_ENTRIES).
+        let capacity = NonZeroUsize::new(200).unwrap();
+        let mut cache: lru::LruCache<String, ()> = lru::LruCache::new(capacity);
+
+        // Fill all 200 slots with keys "key-0" … "key-199".
+        for i in 0..200 {
+            cache.put(format!("key-{}", i), ());
+        }
+        assert_eq!(cache.len(), 200);
+
+        // Insert the 201st entry — LRU should evict "key-0" (least-recently used).
+        cache.put("key-200".to_string(), ());
+
+        // Cache is still 200 entries (not 0).
+        assert_eq!(cache.len(), 200, "cache should hold 200 entries after LRU eviction, not be cleared");
+
+        // The oldest entry ("key-0") was evicted.
+        assert!(
+            cache.peek("key-0").is_none(),
+            "key-0 (oldest) should have been evicted"
+        );
+
+        // The most-recently inserted entry is present.
+        assert!(
+            cache.peek("key-200").is_some(),
+            "key-200 (newest) should still be in cache"
+        );
+
+        // Entry 199 (inserted just before 200) is still present.
+        assert!(
+            cache.peek("key-199").is_some(),
+            "key-199 should still be in cache"
+        );
     }
 
     #[test]
