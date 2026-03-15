@@ -130,6 +130,35 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   const [priceFetching, setPriceFetching] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const selectedSymbolRef = useRef<string>('');
+  const firstFocusRef = useRef<HTMLInputElement | null>(null);
+  const previousFocusRef = useRef<Element | null>(null);
+
+  // Escape key handler
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+
+  // Save/restore focus
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement;
+    } else if (previousFocusRef.current instanceof HTMLElement) {
+      previousFocusRef.current.focus();
+    }
+  }, [isOpen]);
+
+  // Initial focus on first interactive element when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const id = setTimeout(() => firstFocusRef.current?.focus(), 50);
+      return () => clearTimeout(id);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -346,7 +375,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               <Select
                 value={form.currency}
                 onChange={setSelect('currency')}
-                options={[...SUPPORTED_CURRENCIES, 'AUD'].map((c) => ({ value: c, label: c }))}
+                options={[...SUPPORTED_CURRENCIES].map((c) => ({ value: c, label: c }))}
               />
             </Field>
           </div>
@@ -369,6 +398,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           {/* Name */}
           <Field label={isCash ? 'Description' : 'Name'} error={errors.name}>
             <input
+              ref={isCash ? firstFocusRef : undefined}
               type="text"
               value={form.name}
               onChange={set('name')}
