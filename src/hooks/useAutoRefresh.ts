@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 interface UseAutoRefreshOptions {
-  intervalMs: number;      // 0 = disabled
+  intervalMs: number; // 0 = disabled
   onRefresh: () => Promise<void>;
   pauseWhenHidden?: boolean;
 }
@@ -22,6 +22,7 @@ export function useAutoRefresh({
 
   useEffect(() => {
     if (intervalMs <= 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCountdown(null);
       nextRefreshAt.current = null;
       if (timerRef.current) clearInterval(timerRef.current);

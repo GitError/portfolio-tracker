@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -313,7 +313,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     return result;
   }
 
-  async function handleExport() {
+  const handleExport = useCallback(async () => {
     try {
       const csv = await exportHoldingsCsv();
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -327,6 +327,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     } catch (e) {
       showToast(String(e), 'error');
     }
+  }, [exportHoldingsCsv, showToast]);
   }
 
   const totals = useMemo(
@@ -387,7 +388,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
         void handleExport();
       });
     }
-  }, [onExportRef]);
+  }, [onExportRef, handleExport]);
 
   return (
     <div>
