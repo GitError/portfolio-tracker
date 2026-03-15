@@ -150,7 +150,7 @@ export function SymbolSearch({ value, onChange, onSelect, placeholder = 'AAPL', 
   }, []);
 
   function handleInput(e: React.ChangeEvent<HTMLInputElement>) {
-    const q = e.target.value;
+    const q = e.target.value.toUpperCase();
     setQuery(q);
     onChange(q);
     setActiveIndex(-1);
