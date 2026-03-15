@@ -179,6 +179,42 @@ export interface RebalanceSuggestion {
   currentPriceCad: number;
 }
 
+export interface SymbolMetadata {
+  symbol: string;
+  sector?: string;
+  industry?: string;
+  country?: string;
+  marketCap?: number;
+  peRatio?: number;
+  dividendYield?: number;
+  beta?: number;
+}
+
+export interface SectorWeight {
+  sector: string;
+  weightPercent: number;
+}
+
+export interface CountryWeight {
+  country: string;
+  weightPercent: number;
+}
+
+export interface PortfolioRiskMetrics {
+  weightedBeta?: number;
+  portfolioYield: number;
+  largestPositionWeight: number;
+  topSector?: string;
+  concentrationHhi: number;
+}
+
+export interface PortfolioAnalytics {
+  metadata: SymbolMetadata[];
+  riskMetrics: PortfolioRiskMetrics;
+  sectorBreakdown: SectorWeight[];
+  countryBreakdown: CountryWeight[];
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
