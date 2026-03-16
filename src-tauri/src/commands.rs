@@ -21,8 +21,6 @@ use crate::types::{
     Transaction, TransactionInput,
 };
 
-const MAX_IMPORT_ROWS: usize = 500;
-
 pub struct DbState(pub Mutex<rusqlite::Connection>);
 pub struct HttpClient(pub reqwest::Client);
 
@@ -229,8 +227,11 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
     let mut rows = Vec::new();
 
     for (index, record) in reader.records().enumerate() {
-        if rows.len() >= MAX_IMPORT_ROWS {
-            return Err(format!("CSV import is limited to {} rows", MAX_IMPORT_ROWS));
+        if rows.len() >= crate::config::MAX_IMPORT_ROWS {
+            return Err(format!(
+                "CSV import is limited to {} rows",
+                crate::config::MAX_IMPORT_ROWS
+            ));
         }
 
         let row = index + 2;

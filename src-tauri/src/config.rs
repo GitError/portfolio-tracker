@@ -9,21 +9,10 @@
 /// In the future this will become a runtime user setting stored in the DB.
 pub const BASE_CURRENCY: &str = "CAD";
 
-/// All currencies the app can hold positions in / fetch FX rates for.
-#[expect(
-    dead_code,
-    reason = "Centralized for the config refactor; not all call sites use it yet"
-)]
-pub const SUPPORTED_CURRENCIES: &[&str] = &["CAD", "USD", "EUR", "GBP", "JPY", "CHF", "AUD"];
-
 // ── External APIs ─────────────────────────────────────────────────────────────
 
 pub const YAHOO_CHART_URL: &str =
     "https://query1.finance.yahoo.com/v8/finance/chart/{}?interval=1d&range=1d";
-
-#[expect(dead_code, reason = "Reserved for future direct search API usage")]
-pub const YAHOO_SEARCH_URL: &str =
-    "https://query1.finance.yahoo.com/v1/finance/search?q={}&quotesCount=8&newsCount=0&enableFuzzyQuery=false";
 
 pub const YAHOO_QUOTE_URL: &str = "https://query1.finance.yahoo.com/v7/finance/quote?symbols={}";
 
@@ -35,21 +24,12 @@ pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";
 
 pub const DB_FILE_NAME: &str = "portfolio.db";
 
+// ── Import limits ─────────────────────────────────────────────────────────────
+
+/// Maximum number of rows accepted in a single CSV import.
+pub const MAX_IMPORT_ROWS: usize = 500;
+
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
-
-/// How long (seconds) a cached price is considered fresh before re-fetching.
-#[expect(
-    dead_code,
-    reason = "Cache freshness logic is being centralized incrementally"
-)]
-pub const PRICE_CACHE_TTL_SECS: i64 = 300; // 5 minutes
-
-/// How long (seconds) a cached FX rate is considered fresh.
-#[expect(
-    dead_code,
-    reason = "Cache freshness logic is being centralized incrementally"
-)]
-pub const FX_CACHE_TTL_SECS: i64 = 900; // 15 minutes
 
 /// How long (seconds) a symbol search result is cached.
 pub const SEARCH_CACHE_TTL_SECS: i64 = 300; // 5 minutes

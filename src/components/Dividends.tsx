@@ -2,50 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { DollarSign, Plus, Trash2 } from 'lucide-react';
 import type { Dividend, DividendInput, Holding } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
+import { MOCK_DIVIDENDS, MOCK_HOLDINGS } from '../lib/mockData';
 import { EmptyState } from './ui/EmptyState';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { isTauri, tauriInvoke } from '../lib/tauri';
-
-const MOCK_DIVIDENDS: Dividend[] = [
-  {
-    id: 1,
-    holdingId: 'h1',
-    symbol: 'VDY.TO',
-    amountPerUnit: 0.118,
-    currency: 'CAD',
-    exDate: '2026-01-15',
-    payDate: '2026-01-31',
-    createdAt: '2026-01-01T00:00:00Z',
-  },
-  {
-    id: 2,
-    holdingId: 'h2',
-    symbol: 'AAPL',
-    amountPerUnit: 0.25,
-    currency: 'USD',
-    exDate: '2026-02-07',
-    payDate: '2026-02-13',
-    createdAt: '2026-01-20T00:00:00Z',
-  },
-];
-
-const MOCK_HOLDINGS: Holding[] = [
-  {
-    id: 'h1',
-    symbol: 'VDY.TO',
-    name: 'Vanguard FTSE Canadian High Dividend',
-    assetType: 'etf',
-    account: 'tfsa',
-    quantity: 100,
-    costBasis: 42,
-    currency: 'CAD',
-    exchange: 'TSX',
-    targetWeight: 0,
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-01T00:00:00Z',
-  },
-];
 
 interface AddDividendFormProps {
   holdings: Holding[];
