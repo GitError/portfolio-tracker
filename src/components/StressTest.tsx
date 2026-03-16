@@ -25,6 +25,7 @@ import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
+import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import { StressTestInfo } from './StressTestInfo';
 import { config } from '../lib/config';
 import type {
@@ -1160,124 +1161,127 @@ export function StressTest() {
 
           {/* Breakdown table */}
           {result && !allZero && (
-            <div style={{ ...PANEL, overflow: 'auto', maxHeight: 360 }}>
-              <div style={SECTION_TITLE}>Breakdown</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-                <thead style={{ position: 'sticky', top: 0 }}>
-                  <tr>
-                    {[
-                      'Symbol',
-                      'Type',
-                      `Current Value (${baseCurrency})`,
-                      'Shock',
-                      `Stressed Value (${baseCurrency})`,
-                      `Impact (${baseCurrency})`,
-                      'Impact (%)',
-                    ].map((col) => (
-                      <th
-                        key={col}
-                        style={{
-                          ...TD,
-                          background: 'var(--bg-surface-alt)',
-                          color: 'var(--text-secondary)',
-                          fontWeight: 600,
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.06em',
-                          fontSize: 9,
-                          textAlign: col === 'Symbol' || col === 'Type' ? 'left' : 'right',
-                          borderBottom: '1px solid var(--border-primary)',
-                        }}
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...result.holdingBreakdown]
-                    .sort((a, b) => a.impact - b.impact)
-                    .map((h, i) => {
-                      const holding = filteredPortfolio?.holdings.find((p) => p.id === h.holdingId);
-                      const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
-                      return (
-                        <tr key={h.holdingId} style={{ background: bg }}>
-                          <td
-                            style={{
-                              ...TD,
-                              fontFamily: 'var(--font-mono)',
-                              fontWeight: 700,
-                              color: 'var(--text-primary)',
-                            }}
-                          >
-                            {h.symbol}
-                          </td>
-                          <td style={{ ...TD, color: 'var(--text-secondary)' }}>
-                            {holding
-                              ? (ASSET_TYPE_CONFIG[holding.assetType]?.label ?? holding.assetType)
-                              : '—'}
-                          </td>
-                          <td
-                            style={{
-                              ...TD,
-                              textAlign: 'right',
-                              fontFamily: 'var(--font-mono)',
-                              color: 'var(--text-secondary)',
-                            }}
-                          >
-                            {formatCurrency(h.currentValue, baseCurrency)}
-                          </td>
-                          <td
-                            style={{
-                              ...TD,
-                              textAlign: 'right',
-                              fontFamily: 'var(--font-mono)',
-                              color: pnlColor(h.shockApplied),
-                            }}
-                          >
-                            {h.shockApplied !== 0 ? formatPercent(h.shockApplied * 100) : '—'}
-                          </td>
-                          <td
-                            style={{
-                              ...TD,
-                              textAlign: 'right',
-                              fontFamily: 'var(--font-mono)',
-                              color: pnlColor(h.impact),
-                            }}
-                          >
-                            {formatCurrency(h.stressedValue, baseCurrency)}
-                          </td>
-                          <td
-                            style={{
-                              ...TD,
-                              textAlign: 'right',
-                              fontFamily: 'var(--font-mono)',
-                              fontWeight: 600,
-                              color: pnlColor(h.impact),
-                            }}
-                          >
-                            {h.impact !== 0
-                              ? `${h.impact >= 0 ? '+' : ''}${formatCurrency(h.impact, baseCurrency)}`
-                              : '—'}
-                          </td>
-                          <td
-                            style={{
-                              ...TD,
-                              textAlign: 'right',
-                              fontFamily: 'var(--font-mono)',
-                              color: pnlColor(h.impact),
-                              borderRight: 'none',
-                            }}
-                          >
-                            {h.impact !== 0
-                              ? formatPercent((h.impact / h.currentValue) * 100)
-                              : '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
+            <CollapsiblePanel title="Breakdown" defaultExpanded={true}>
+              <div style={{ overflow: 'auto', maxHeight: 360 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                  <thead style={{ position: 'sticky', top: 0 }}>
+                    <tr>
+                      {[
+                        'Symbol',
+                        'Type',
+                        `Current Value (${baseCurrency})`,
+                        'Shock',
+                        `Stressed Value (${baseCurrency})`,
+                        `Impact (${baseCurrency})`,
+                        'Impact (%)',
+                      ].map((col) => (
+                        <th
+                          key={col}
+                          style={{
+                            ...TD,
+                            background: 'var(--bg-surface-alt)',
+                            color: 'var(--text-secondary)',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.06em',
+                            fontSize: 9,
+                            textAlign: col === 'Symbol' || col === 'Type' ? 'left' : 'right',
+                            borderBottom: '1px solid var(--border-primary)',
+                          }}
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...result.holdingBreakdown]
+                      .sort((a, b) => a.impact - b.impact)
+                      .map((h, i) => {
+                        const holding = filteredPortfolio?.holdings.find(
+                          (p) => p.id === h.holdingId
+                        );
+                        const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
+                        return (
+                          <tr key={h.holdingId} style={{ background: bg }}>
+                            <td
+                              style={{
+                                ...TD,
+                                fontFamily: 'var(--font-mono)',
+                                fontWeight: 700,
+                                color: 'var(--text-primary)',
+                              }}
+                            >
+                              {h.symbol}
+                            </td>
+                            <td style={{ ...TD, color: 'var(--text-secondary)' }}>
+                              {holding
+                                ? (ASSET_TYPE_CONFIG[holding.assetType]?.label ?? holding.assetType)
+                                : '—'}
+                            </td>
+                            <td
+                              style={{
+                                ...TD,
+                                textAlign: 'right',
+                                fontFamily: 'var(--font-mono)',
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              {formatCurrency(h.currentValue, baseCurrency)}
+                            </td>
+                            <td
+                              style={{
+                                ...TD,
+                                textAlign: 'right',
+                                fontFamily: 'var(--font-mono)',
+                                color: pnlColor(h.shockApplied),
+                              }}
+                            >
+                              {h.shockApplied !== 0 ? formatPercent(h.shockApplied * 100) : '—'}
+                            </td>
+                            <td
+                              style={{
+                                ...TD,
+                                textAlign: 'right',
+                                fontFamily: 'var(--font-mono)',
+                                color: pnlColor(h.impact),
+                              }}
+                            >
+                              {formatCurrency(h.stressedValue, baseCurrency)}
+                            </td>
+                            <td
+                              style={{
+                                ...TD,
+                                textAlign: 'right',
+                                fontFamily: 'var(--font-mono)',
+                                fontWeight: 600,
+                                color: pnlColor(h.impact),
+                              }}
+                            >
+                              {h.impact !== 0
+                                ? `${h.impact >= 0 ? '+' : ''}${formatCurrency(h.impact, baseCurrency)}`
+                                : '—'}
+                            </td>
+                            <td
+                              style={{
+                                ...TD,
+                                textAlign: 'right',
+                                fontFamily: 'var(--font-mono)',
+                                color: pnlColor(h.impact),
+                                borderRight: 'none',
+                              }}
+                            >
+                              {h.impact !== 0
+                                ? formatPercent((h.impact / h.currentValue) * 100)
+                                : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </CollapsiblePanel>
           )}
         </div>
       </div>

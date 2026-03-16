@@ -11,6 +11,7 @@ import { Dividends } from './components/Dividends';
 import { Settings } from './components/Settings';
 import { TransactionHistory } from './components/TransactionHistory';
 import { Analytics } from './components/Analytics';
+import { Help } from './components/Help';
 import { ToastProvider } from './components/ui/Toast';
 import { useToast } from './components/ui/Toast';
 import { KeyboardShortcutsOverlay } from './components/ui/KeyboardShortcutsOverlay';
@@ -127,6 +128,7 @@ function AppRoutes() {
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/dividends" element={<Dividends />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/help" element={<Help />} />
         </Route>
       </Routes>
       <KeyboardShortcutsOverlay
