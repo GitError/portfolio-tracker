@@ -3,6 +3,7 @@ import { Bell, BellOff, Plus, Trash2, RefreshCw } from 'lucide-react';
 import type { AlertDirection, PriceAlert, PriceAlertInput } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
 import { EmptyState } from './ui/EmptyState';
+import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { isTauri, tauriInvoke } from '../lib/tauri';
@@ -94,14 +95,14 @@ function AddAlertForm({ onAdd, onCancel }: AddAlertFormProps) {
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>DIRECTION</div>
-          <select
-            style={inputStyle}
+          <Select
             value={direction}
-            onChange={(e) => setDirection(e.target.value as AlertDirection)}
-          >
-            <option value="above">Above</option>
-            <option value="below">Below</option>
-          </select>
+            onChange={(value) => setDirection(value as AlertDirection)}
+            options={[
+              { value: 'above', label: 'Above' },
+              { value: 'below', label: 'Below' },
+            ]}
+          />
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PRICE</div>

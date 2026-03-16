@@ -4,6 +4,7 @@ import type { Dividend, DividendInput, Holding } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
 import { MOCK_DIVIDENDS, MOCK_HOLDINGS } from '../lib/mockData';
 import { EmptyState } from './ui/EmptyState';
+import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { isTauri, tauriInvoke } from '../lib/tauri';
@@ -61,18 +62,11 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>HOLDING</div>
-          <select
-            style={inputStyle}
+          <Select
             value={holdingId}
-            onChange={(e) => setHoldingId(e.target.value)}
-            required
-          >
-            {holdings.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.symbol} — {h.name}
-              </option>
-            ))}
-          </select>
+            onChange={setHoldingId}
+            options={holdings.map((h) => ({ value: h.id, label: `${h.symbol} — ${h.name}` }))}
+          />
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
@@ -91,34 +85,38 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CURRENCY</div>
-          <select style={inputStyle} value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {['CAD', 'USD', 'EUR', 'GBP'].map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+          <Select
+            value={currency}
+            onChange={setCurrency}
+            options={['CAD', 'USD', 'EUR', 'GBP'].map((c) => ({ value: c, label: c }))}
+          />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>EX-DATE</div>
           <input
-            style={inputStyle}
+            style={{ ...inputStyle, colorScheme: 'dark' }}
             type="date"
             value={exDate}
             onChange={(e) => setExDate(e.target.value)}
+            placeholder="YYYY-MM-DD"
             required
+            onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-primary)')}
           />
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PAY DATE</div>
           <input
-            style={inputStyle}
+            style={{ ...inputStyle, colorScheme: 'dark' }}
             type="date"
             value={payDate}
             onChange={(e) => setPayDate(e.target.value)}
+            placeholder="YYYY-MM-DD"
             required
+            onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--color-accent)')}
+            onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border-primary)')}
           />
         </div>
       </div>
