@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { Holding, Transaction, CreateTransactionRequest } from '../types/portfolio';
+import type { Holding, Transaction, TransactionInput } from '../types/portfolio';
 
-type TransactionType = 'buy' | 'sell' | 'deposit' | 'withdrawal';
+type TxType = 'buy' | 'sell';
 
 interface Props {
   holding: Holding;
@@ -11,11 +11,9 @@ interface Props {
   onSaved: () => void;
 }
 
-const TX_TYPES: { value: TransactionType; label: string }[] = [
+const TX_TYPES: { value: TxType; label: string }[] = [
   { value: 'buy', label: 'Buy' },
   { value: 'sell', label: 'Sell' },
-  { value: 'deposit', label: 'Deposit' },
-  { value: 'withdrawal', label: 'Withdrawal' },
 ];
 
 function formatLocalDatetime(date: Date): string {
@@ -27,10 +25,9 @@ function formatLocalDatetime(date: Date): string {
 }
 
 export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props) {
-  const [txType, setTxType] = useState<TransactionType>('buy');
+  const [txType, setTxType] = useState<TxType>('buy');
   const [quantity, setQuantity] = useState('');
   const [price, setPrice] = useState('');
-  const [fee, setFee] = useState('0');
   const [transactedAt, setTransactedAt] = useState(() => formatLocalDatetime(new Date()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,10 +37,8 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
   function validate(): string | null {
     const qty = parseFloat(quantity);
     const prc = parseFloat(price);
-    const feeVal = parseFloat(fee);
     if (isNaN(qty) || qty <= 0) return 'Quantity must be greater than 0.';
     if (isNaN(prc) || prc < 0) return 'Price must be 0 or greater.';
-    if (isNaN(feeVal) || feeVal < 0) return 'Fee must be 0 or greater.';
     if (!transactedAt.trim()) return 'Date is required.';
     return null;
   }
@@ -58,16 +53,14 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
     setError(null);
     setSaving(true);
     try {
-      const request: CreateTransactionRequest = {
+      const input: TransactionInput = {
         holdingId: holding.id,
         transactionType: txType,
         quantity: parseFloat(quantity),
         price: parseFloat(price),
-        currency: holding.currency,
-        fee: parseFloat(fee) || 0,
         transactedAt: new Date(transactedAt).toISOString(),
       };
-      await invoke<Transaction>('add_transaction', { tx: request });
+      await invoke<Transaction>('add_transaction', { input });
       onSaved();
       onClose();
     } catch (err) {
@@ -162,10 +155,7 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
             <div style={{ display: 'flex', gap: 6 }}>
               {TX_TYPES.map(({ value, label }) => {
                 const isActive = txType === value;
-                const activeColor =
-                  value === 'buy' || value === 'deposit'
-                    ? 'var(--color-gain)'
-                    : 'var(--color-loss)';
+                const activeColor = value === 'buy' ? 'var(--color-gain)' : 'var(--color-loss)';
                 return (
                   <button
                     key={value}
@@ -194,7 +184,7 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
 
           {/* Quantity + Price row */}
           <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}
+            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}
           >
             <div>
               <label style={labelStyle}>Quantity</label>
@@ -221,38 +211,6 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
                 style={inputStyle}
                 required
               />
-            </div>
-          </div>
-
-          {/* Fee + Currency row */}
-          <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}
-          >
-            <div>
-              <label style={labelStyle}>Fee (optional)</label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                value={fee}
-                onChange={(e) => setFee(e.target.value)}
-                placeholder="0.00"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Currency</label>
-              <div
-                style={{
-                  ...inputStyle,
-                  color: 'var(--text-muted)',
-                  cursor: 'default',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-              >
-                {holding.currency}
-              </div>
             </div>
           </div>
 

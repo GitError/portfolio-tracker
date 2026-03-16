@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::types::{
     AccountType, AlertDirection, AssetType, Dividend, DividendInput, FxRate, Holding, HoldingInput,
     PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolResult, Transaction,
+    TransactionInput, TransactionType,
 };
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -94,16 +95,21 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         );
 
         CREATE TABLE IF NOT EXISTS transactions (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            holding_id    TEXT    NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
-            type          TEXT    NOT NULL CHECK(type IN ('buy','sell','deposit','withdrawal')),
-            quantity      REAL    NOT NULL,
-            price         REAL    NOT NULL,
-            currency      TEXT    NOT NULL,
-            fee           REAL    NOT NULL DEFAULT 0.0,
-            transacted_at TEXT    NOT NULL
+            id               TEXT PRIMARY KEY,
+            holding_id       TEXT NOT NULL,
+            transaction_type TEXT NOT NULL,
+            quantity         REAL NOT NULL,
+            price            REAL NOT NULL,
+            transacted_at    TEXT NOT NULL,
+            created_at       TEXT NOT NULL,
+            FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
         );
-        CREATE INDEX IF NOT EXISTS idx_transactions_holding_id ON transactions(holding_id);
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_holding_id
+            ON transactions(holding_id);
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_transacted_at
+            ON transactions(transacted_at);
 
         CREATE TABLE IF NOT EXISTS dividends (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -738,92 +744,92 @@ pub fn reset_alert(conn: &Connection, id: &str) -> Result<bool, String> {
 
 // ── Transactions ──────────────────────────────────────────────────────────────
 
-#[allow(clippy::too_many_arguments)]
 pub fn insert_transaction(
     conn: &Connection,
-    holding_id: &str,
-    tx_type: &str,
-    quantity: f64,
-    price: f64,
-    currency: &str,
-    fee: f64,
-    transacted_at: &str,
-) -> Result<i64, rusqlite::Error> {
+    input: TransactionInput,
+) -> Result<Transaction, String> {
+    let id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO transactions (holding_id, type, quantity, price, currency, fee, transacted_at)
+        "INSERT INTO transactions (id, holding_id, transaction_type, quantity, price, transacted_at, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
-            holding_id,
-            tx_type,
-            quantity,
-            price,
-            currency,
-            fee,
-            transacted_at
+            id,
+            input.holding_id,
+            input.transaction_type.as_str(),
+            input.quantity,
+            input.price,
+            input.transacted_at,
+            created_at,
         ],
-    )?;
-    Ok(conn.last_insert_rowid())
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(Transaction {
+        id,
+        holding_id: input.holding_id,
+        transaction_type: input.transaction_type,
+        quantity: input.quantity,
+        price: input.price,
+        transacted_at: input.transacted_at,
+        created_at,
+    })
 }
 
 pub fn get_transactions_for_holding(
     conn: &Connection,
     holding_id: &str,
-) -> Result<Vec<Transaction>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT id, holding_id, type, quantity, price, currency, fee, transacted_at
-         FROM transactions
-         WHERE holding_id = ?1
-         ORDER BY transacted_at DESC",
-    )?;
+) -> Result<Vec<Transaction>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
+             FROM transactions WHERE holding_id = ?1 ORDER BY transacted_at ASC",
+        )
+        .map_err(|e| e.to_string())?;
 
-    let txs = stmt
-        .query_map(params![holding_id], |row| {
-            Ok(Transaction {
-                id: row.get(0)?,
-                holding_id: row.get(1)?,
-                transaction_type: row.get(2)?,
-                quantity: row.get(3)?,
-                price: row.get(4)?,
-                currency: row.get(5)?,
-                fee: row.get(6)?,
-                transacted_at: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(txs)
+    let mut rows = stmt.query(params![holding_id]).map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        result.push(row_to_transaction(row)?);
+    }
+    Ok(result)
 }
 
-pub fn get_all_transactions(conn: &Connection) -> Result<Vec<Transaction>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
-        "SELECT id, holding_id, type, quantity, price, currency, fee, transacted_at
-         FROM transactions
-         ORDER BY transacted_at DESC",
-    )?;
+pub fn get_all_transactions(conn: &Connection) -> Result<Vec<Transaction>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
+             FROM transactions ORDER BY transacted_at ASC",
+        )
+        .map_err(|e| e.to_string())?;
 
-    let txs = stmt
-        .query_map([], |row| {
-            Ok(Transaction {
-                id: row.get(0)?,
-                holding_id: row.get(1)?,
-                transaction_type: row.get(2)?,
-                quantity: row.get(3)?,
-                price: row.get(4)?,
-                currency: row.get(5)?,
-                fee: row.get(6)?,
-                transacted_at: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(txs)
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    let mut result = Vec::new();
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        result.push(row_to_transaction(row)?);
+    }
+    Ok(result)
 }
 
-pub fn delete_transaction(conn: &Connection, id: i64) -> Result<(), rusqlite::Error> {
-    conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
-    Ok(())
+fn row_to_transaction(row: &rusqlite::Row<'_>) -> Result<Transaction, String> {
+    let type_str: String = row.get(2).map_err(|e| e.to_string())?;
+    let transaction_type = type_str.parse::<TransactionType>()?;
+    Ok(Transaction {
+        id: row.get(0).map_err(|e| e.to_string())?,
+        holding_id: row.get(1).map_err(|e| e.to_string())?,
+        transaction_type,
+        quantity: row.get(3).map_err(|e| e.to_string())?,
+        price: row.get(4).map_err(|e| e.to_string())?,
+        transacted_at: row.get(5).map_err(|e| e.to_string())?,
+        created_at: row.get(6).map_err(|e| e.to_string())?,
+    })
+}
+
+pub fn delete_transaction(conn: &Connection, id: &str) -> Result<bool, String> {
+    let n = conn
+        .execute("DELETE FROM transactions WHERE id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(n > 0)
 }
 
 // ── Dividends ─────────────────────────────────────────────────────────────────
@@ -1235,26 +1241,24 @@ mod tests {
         let conn = open_test_db();
         let holding = insert_holding(&conn, make_input("AAPL")).expect("insert holding");
 
-        let id = insert_transaction(
+        let tx = insert_transaction(
             &conn,
-            &holding.id,
-            "buy",
-            10.0,
-            150.0,
-            "USD",
-            1.99,
-            "2024-01-10T10:00:00Z",
+            TransactionInput {
+                holding_id: holding.id.clone(),
+                transaction_type: TransactionType::Buy,
+                quantity: 10.0,
+                price: 150.0,
+                transacted_at: "2024-01-10T10:00:00Z".to_string(),
+            },
         )
         .expect("insert tx");
-        assert!(id > 0);
+        assert!(!tx.id.is_empty());
 
         let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
         assert_eq!(txs.len(), 1);
-        assert_eq!(txs[0].transaction_type, "buy");
+        assert_eq!(txs[0].transaction_type, TransactionType::Buy);
         assert!((txs[0].quantity - 10.0).abs() < 0.001);
         assert!((txs[0].price - 150.0).abs() < 0.001);
-        assert_eq!(txs[0].currency, "USD");
-        assert!((txs[0].fee - 1.99).abs() < 0.001);
     }
 
     #[test]
@@ -1264,32 +1268,32 @@ mod tests {
 
         insert_transaction(
             &conn,
-            &holding.id,
-            "buy",
-            5.0,
-            100.0,
-            "USD",
-            0.0,
-            "2024-01-01T09:00:00Z",
+            TransactionInput {
+                holding_id: holding.id.clone(),
+                transaction_type: TransactionType::Buy,
+                quantity: 5.0,
+                price: 100.0,
+                transacted_at: "2024-01-01T09:00:00Z".to_string(),
+            },
         )
         .expect("insert tx1");
         insert_transaction(
             &conn,
-            &holding.id,
-            "sell",
-            2.0,
-            120.0,
-            "USD",
-            0.0,
-            "2024-03-01T09:00:00Z",
+            TransactionInput {
+                holding_id: holding.id.clone(),
+                transaction_type: TransactionType::Sell,
+                quantity: 2.0,
+                price: 120.0,
+                transacted_at: "2024-03-01T09:00:00Z".to_string(),
+            },
         )
         .expect("insert tx2");
 
         let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
         assert_eq!(txs.len(), 2);
-        // Most recent first
-        assert_eq!(txs[0].transaction_type, "sell");
-        assert_eq!(txs[1].transaction_type, "buy");
+        // Oldest first (ASC order, needed for FIFO/AVCO calculations)
+        assert_eq!(txs[0].transaction_type, TransactionType::Buy);
+        assert_eq!(txs[1].transaction_type, TransactionType::Sell);
     }
 
     #[test]
@@ -1300,24 +1304,24 @@ mod tests {
 
         insert_transaction(
             &conn,
-            &h1.id,
-            "buy",
-            10.0,
-            100.0,
-            "USD",
-            0.0,
-            "2024-01-01T00:00:00Z",
+            TransactionInput {
+                holding_id: h1.id.clone(),
+                transaction_type: TransactionType::Buy,
+                quantity: 10.0,
+                price: 100.0,
+                transacted_at: "2024-01-01T00:00:00Z".to_string(),
+            },
         )
         .expect("tx1");
         insert_transaction(
             &conn,
-            &h2.id,
-            "deposit",
-            500.0,
-            1.0,
-            "CAD",
-            0.0,
-            "2024-02-01T00:00:00Z",
+            TransactionInput {
+                holding_id: h2.id.clone(),
+                transaction_type: TransactionType::Buy,
+                quantity: 500.0,
+                price: 1.0,
+                transacted_at: "2024-02-01T00:00:00Z".to_string(),
+            },
         )
         .expect("tx2");
 
@@ -1330,19 +1334,19 @@ mod tests {
         let conn = open_test_db();
         let holding = insert_holding(&conn, make_input("TSLA")).expect("insert");
 
-        let tx_id = insert_transaction(
+        let tx = insert_transaction(
             &conn,
-            &holding.id,
-            "buy",
-            1.0,
-            200.0,
-            "USD",
-            0.0,
-            "2024-01-01T00:00:00Z",
+            TransactionInput {
+                holding_id: holding.id.clone(),
+                transaction_type: TransactionType::Buy,
+                quantity: 1.0,
+                price: 200.0,
+                transacted_at: "2024-01-01T00:00:00Z".to_string(),
+            },
         )
         .expect("insert tx");
 
-        delete_transaction(&conn, tx_id).expect("delete tx");
+        delete_transaction(&conn, &tx.id).expect("delete tx");
         let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
         assert_eq!(txs.len(), 0);
     }
@@ -1357,13 +1361,13 @@ mod tests {
 
         insert_transaction(
             &conn,
-            &holding.id,
-            "buy",
-            5.0,
-            300.0,
-            "USD",
-            0.0,
-            "2024-01-01T00:00:00Z",
+            TransactionInput {
+                holding_id: holding.id.clone(),
+                transaction_type: TransactionType::Buy,
+                quantity: 5.0,
+                price: 300.0,
+                transacted_at: "2024-01-01T00:00:00Z".to_string(),
+            },
         )
         .expect("insert tx");
 

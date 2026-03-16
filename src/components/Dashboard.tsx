@@ -933,9 +933,13 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 : '',
           },
           {
-            label: 'Portfolio Beta',
-            value: '—',
-            sub: 'v2 feature',
+            label: 'Realized Gains',
+            value: portfolio
+              ? `${portfolio.realizedGains >= 0 ? '+' : ''}${formatCurrency(portfolio.realizedGains, baseCurrency)}`
+              : '—',
+            sub: 'All time',
+            subColor: portfolio ? pnlColor(portfolio.realizedGains) : undefined,
+            valueColor: portfolio ? pnlColor(portfolio.realizedGains) : undefined,
           },
         ].map((stat, i, arr) => (
           <div
@@ -952,7 +956,8 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 fontFamily: 'var(--font-mono)',
                 fontSize: 20,
                 fontWeight: 600,
-                color: 'var(--text-primary)',
+                color:
+                  'valueColor' in stat && stat.valueColor ? stat.valueColor : 'var(--text-primary)',
               }}
             >
               {stat.value}

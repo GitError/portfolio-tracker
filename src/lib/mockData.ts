@@ -300,6 +300,7 @@ function buildSnapshot(): PortfolioSnapshot {
     targetCashDelta: holdings
       .filter((holding) => holding.assetType === 'cash')
       .reduce((sum, holding) => sum + (holding.marketValueCad - holding.targetValue), 0),
+    realizedGains: 0,
   };
 }
 

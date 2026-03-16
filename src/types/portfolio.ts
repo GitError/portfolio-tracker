@@ -54,6 +54,47 @@ export interface PortfolioSnapshot {
   baseCurrency: string;
   totalTargetWeight: number;
   targetCashDelta: number;
+  /** Sum of all realized gains across holdings (AVCO by default). */
+  realizedGains: number;
+}
+
+// ── Transaction types ──────────────────────────────────────────────────────────
+
+export type TransactionType = 'buy' | 'sell';
+
+export interface Transaction {
+  id: string;
+  holdingId: string;
+  transactionType: TransactionType;
+  quantity: number;
+  price: number;
+  transactedAt: string; // ISO 8601
+  createdAt: string; // ISO 8601
+}
+
+export interface TransactionInput {
+  holdingId: string;
+  transactionType: TransactionType;
+  quantity: number;
+  price: number;
+  transactedAt: string; // ISO 8601
+}
+
+// ── Realized gains types ──────────────────────────────────────────────────────
+
+export interface RealizedLot {
+  soldAt: string; // YYYY-MM-DD
+  quantity: number;
+  proceeds: number;
+  costBasis: number;
+  gainLoss: number;
+}
+
+export interface RealizedGainsSummary {
+  totalRealizedGain: number;
+  totalProceeds: number;
+  totalCostBasis: number;
+  lots: RealizedLot[];
 }
 
 export interface PriceData {
@@ -198,27 +239,6 @@ export interface RebalanceSuggestion {
   currentPriceCad: number;
 }
 
-export interface Transaction {
-  id: number;
-  holdingId: string;
-  transactionType: 'buy' | 'sell' | 'deposit' | 'withdrawal';
-  quantity: number;
-  price: number;
-  currency: string;
-  fee: number;
-  transactedAt: string;
-}
-
-export interface CreateTransactionRequest {
-  holdingId: string;
-  transactionType: 'buy' | 'sell' | 'deposit' | 'withdrawal';
-  quantity: number;
-  price: number;
-  currency: string;
-  fee: number;
-  transactedAt: string;
-}
-
 export interface SymbolMetadata {
   symbol: string;
   sector?: string;
@@ -271,3 +291,4 @@ export interface PortfolioAnalytics {
 // invoke('add_transaction', { tx }) → Transaction
 // invoke('get_transactions', { holdingId? }) → Transaction[]
 // invoke('delete_transaction', { id }) → boolean
+// invoke('get_realized_gains', { holdingId? }) → RealizedGainsSummary

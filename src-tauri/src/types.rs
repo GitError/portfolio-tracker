@@ -1,6 +1,88 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+// ── Transaction types ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TransactionType {
+    Buy,
+    Sell,
+}
+
+impl TransactionType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TransactionType::Buy => "buy",
+            TransactionType::Sell => "sell",
+        }
+    }
+}
+
+impl std::str::FromStr for TransactionType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "buy" => Ok(TransactionType::Buy),
+            "sell" => Ok(TransactionType::Sell),
+            other => Err(format!("Unknown transaction type: {}", other)),
+        }
+    }
+}
+
+/// A single buy or sell transaction for a holding.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Transaction {
+    pub id: String,
+    pub holding_id: String,
+    /// "buy" | "sell"
+    pub transaction_type: TransactionType,
+    pub quantity: f64,
+    /// Price per unit in the holding's original currency.
+    pub price: f64,
+    /// ISO 8601 timestamp of when the transaction occurred.
+    pub transacted_at: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransactionInput {
+    pub holding_id: String,
+    pub transaction_type: TransactionType,
+    pub quantity: f64,
+    pub price: f64,
+    pub transacted_at: String,
+}
+
+// ── Realized gains types ──────────────────────────────────────────────────────
+
+/// One matched lot that was sold.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealizedLot {
+    /// ISO date of the sell transaction (YYYY-MM-DD).
+    pub sold_at: String,
+    pub quantity: f64,
+    /// quantity × sell_price
+    pub proceeds: f64,
+    /// quantity × cost_per_unit (method-dependent)
+    pub cost_basis: f64,
+    /// proceeds − cost_basis
+    pub gain_loss: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RealizedGainsSummary {
+    pub total_realized_gain: f64,
+    pub total_proceeds: f64,
+    pub total_cost_basis: f64,
+    pub lots: Vec<RealizedLot>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AssetType {
@@ -161,6 +243,8 @@ pub struct PortfolioSnapshot {
     pub base_currency: String,
     pub total_target_weight: f64,
     pub target_cash_delta: f64,
+    /// Sum of realized gains across all holdings (AVCO method, all-time).
+    pub realized_gains: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -398,19 +482,7 @@ pub struct RebalanceSuggestion {
     pub current_price_cad: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Transaction {
-    pub id: i64,
-    pub holding_id: String,
-    pub transaction_type: String, // "buy"|"sell"|"deposit"|"withdrawal"
-    pub quantity: f64,
-    pub price: f64,
-    pub currency: String,
-    pub fee: f64,
-    pub transacted_at: String,
-}
-
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateTransactionRequest {
