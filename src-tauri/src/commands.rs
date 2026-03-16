@@ -252,10 +252,15 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
                 AccountType::Taxable
             }
         } else {
-            account
-                .to_lowercase()
-                .parse::<AccountType>()
-                .map_err(|_| format!("Row {}: invalid_account", row))?
+            // Unknown/unrecognised account strings default to the appropriate
+            // type rather than crashing the whole import.
+            account.to_lowercase().parse::<AccountType>().unwrap_or({
+                if matches!(asset_type, AssetType::Cash) {
+                    AccountType::Cash
+                } else {
+                    AccountType::Taxable
+                }
+            })
         };
         let currency =
             parse_required_field(&record, currency_index, row, "currency")?.to_uppercase();

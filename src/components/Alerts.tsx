@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, Plus, Trash2, RefreshCw } from 'lucide-react';
-import type { AlertDirection, PriceAlert, PriceAlertInput } from '../types/portfolio';
+import type { AlertDirection, Holding, PriceAlert, PriceAlertInput } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
 import { EmptyState } from './ui/EmptyState';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { isTauri, tauriInvoke } from '../lib/tauri';
+import { usePortfolio } from '../hooks/usePortfolio';
 
 const MOCK_ALERTS: PriceAlert[] = [
   {
@@ -29,12 +30,13 @@ const MOCK_ALERTS: PriceAlert[] = [
 ];
 
 interface AddAlertFormProps {
+  holdings: Holding[];
   onAdd: (input: PriceAlertInput) => void;
   onCancel: () => void;
 }
 
-function AddAlertForm({ onAdd, onCancel }: AddAlertFormProps) {
-  const [symbol, setSymbol] = useState('');
+function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
+  const [symbol, setSymbol] = useState(holdings[0]?.symbol ?? '');
   const [direction, setDirection] = useState<AlertDirection>('above');
   const [threshold, setThreshold] = useState('');
   const [note, setNote] = useState('');
@@ -50,6 +52,13 @@ function AddAlertForm({ onAdd, onCancel }: AddAlertFormProps) {
       note: note.trim(),
     });
   };
+
+  function handleSymbolChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const selected = holdings.find((h) => h.symbol === e.target.value);
+    setSymbol(e.target.value);
+    // Auto-clear threshold when symbol changes so user doesn't carry over stale price
+    if (selected) setThreshold('');
+  }
 
   const inputStyle: React.CSSProperties = {
     background: 'var(--bg-surface-alt)',
@@ -84,13 +93,28 @@ function AddAlertForm({ onAdd, onCancel }: AddAlertFormProps) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>SYMBOL</div>
-          <input
-            style={inputStyle}
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            placeholder="e.g. AAPL"
-            required
-          />
+          {holdings.length > 0 ? (
+            <select
+              style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
+              value={symbol}
+              onChange={handleSymbolChange}
+              required
+            >
+              {holdings.map((h) => (
+                <option key={h.id} value={h.symbol}>
+                  {h.symbol} — {h.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              style={inputStyle}
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder="e.g. AAPL"
+              required
+            />
+          )}
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>DIRECTION</div>
@@ -169,6 +193,7 @@ export function Alerts() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const { showToast } = useToast();
+  const { holdings } = usePortfolio();
 
   const loadAlerts = useCallback(async () => {
     try {
@@ -308,7 +333,9 @@ export function Alerts() {
         </button>
       </div>
 
-      {showForm && <AddAlertForm onAdd={handleAdd} onCancel={() => setShowForm(false)} />}
+      {showForm && (
+        <AddAlertForm holdings={holdings} onAdd={handleAdd} onCancel={() => setShowForm(false)} />
+      )}
 
       {/* Triggered alerts */}
       {triggered.length > 0 && (
