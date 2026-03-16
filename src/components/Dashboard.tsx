@@ -241,25 +241,28 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
 
   if (portfolio && accountFilter !== 'all' && filteredHoldings.length === 0 && !loading) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100%',
-          gap: 16,
-        }}
-      >
-        <div style={{ width: 180 }}>
-          <Select
-            value={accountFilter}
-            onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
-            options={[
-              { value: 'all', label: 'All Accounts' },
-              ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
-            ]}
-          />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <ActionCenter insights={actionInsights} />
+        <div
+          style={{
+            ...PANEL,
+            background: 'var(--bg-surface)',
+            overflow: 'visible',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
+          <div style={LABEL}>Portfolio Value ({baseCurrency})</div>
+          <div style={{ width: 180, marginBottom: 12 }}>
+            <Select
+              value={accountFilter}
+              onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
+              options={[
+                { value: 'all', label: 'All Accounts' },
+                ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+              ]}
+            />
+          </div>
         </div>
         <EmptyState message="No holdings in this account." />
       </div>
@@ -282,7 +285,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             gridColumn: 'span 2',
             background: 'var(--bg-surface)',
             minHeight: 0,
-            overflow: 'hidden',
+            overflow: 'visible',
+            position: 'relative',
+            zIndex: 1,
           }}
         >
           <div style={LABEL}>Portfolio Value ({baseCurrency})</div>
@@ -416,7 +421,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               ))}
             </div>
           </div>
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ height: 200, flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -604,7 +609,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           }}
         >
           <div style={{ ...LABEL, flexShrink: 0 }}>Currency Exposure ({baseCurrency} base)</div>
-          <div style={{ flex: 1, minHeight: 0 }}>
+          <div style={{ height: 200, flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

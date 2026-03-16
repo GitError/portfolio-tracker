@@ -123,7 +123,7 @@ function InsightCard({ insight }: InsightCardProps) {
 // ─── Action Center panel ──────────────────────────────────────────────────
 
 export function ActionCenter({ insights }: ActionCenterProps) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   const criticalCount = insights.filter((i) => i.severity === 'critical').length;
   const warningCount = insights.filter((i) => i.severity === 'warning').length;
