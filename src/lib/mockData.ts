@@ -1,4 +1,4 @@
-import type { Holding, HoldingWithPrice, PortfolioSnapshot } from '../types/portfolio';
+import type { Dividend, Holding, HoldingWithPrice, PortfolioSnapshot } from '../types/portfolio';
 
 const USD_CAD = 1.36;
 const EUR_CAD = 1.47;
@@ -305,6 +305,29 @@ function buildSnapshot(): PortfolioSnapshot {
 }
 
 export const MOCK_SNAPSHOT: PortfolioSnapshot = buildSnapshot();
+
+export const MOCK_DIVIDENDS: Dividend[] = [
+  {
+    id: 1,
+    holdingId: 'h1',
+    symbol: 'VDY.TO',
+    amountPerUnit: 0.118,
+    currency: 'CAD',
+    exDate: '2026-01-15',
+    payDate: '2026-01-31',
+    createdAt: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 2,
+    holdingId: 'h2',
+    symbol: 'AAPL',
+    amountPerUnit: 0.25,
+    currency: 'USD',
+    exDate: '2026-02-07',
+    payDate: '2026-02-13',
+    createdAt: '2026-01-20T00:00:00Z',
+  },
+];
 
 export const MOCK_HOLDINGS: Holding[] = RAW_HOLDINGS.map(
   ({
