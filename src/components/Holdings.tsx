@@ -429,7 +429,6 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
           flexWrap: 'wrap',
           gap: 10,
           marginBottom: 16,
@@ -460,7 +459,15 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             {holdings.length} positions
           </span>
         </div>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            marginLeft: 'auto',
+          }}
+        >
           <input
             type="text"
             value={search}
