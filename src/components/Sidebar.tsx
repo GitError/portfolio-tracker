@@ -11,6 +11,7 @@ import {
   BarChart2,
   DollarSign,
   Settings2,
+  HelpCircle,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
@@ -35,6 +36,7 @@ const NAV_ITEMS = [
   { to: '/analytics', label: 'Analytics', Icon: BarChart2 },
   { to: '/dividends', label: 'Dividends', Icon: DollarSign },
   { to: '/settings', label: 'Settings', Icon: Settings2 },
+  { to: '/help', label: 'Help', Icon: HelpCircle },
 ];
 
 export function Sidebar({ portfolio }: SidebarProps) {
