@@ -1522,7 +1522,10 @@ mod tests {
         insert_holding(&conn, input).expect("insert holding");
         // Attempt deletion should fail
         let result = delete_account(&conn, "acc-1");
-        assert!(result.is_err(), "delete should fail with referenced holdings");
+        assert!(
+            result.is_err(),
+            "delete should fail with referenced holdings"
+        );
     }
 
     #[test]

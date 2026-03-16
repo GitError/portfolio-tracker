@@ -56,18 +56,13 @@ interface UseAutoRefreshReturn {
 }
 
 export function useAutoRefresh({ onRefresh }: UseAutoRefreshOptions): UseAutoRefreshReturn {
-  const { value: intervalMsStr, setValue: persistIntervalMs } = useConfig(
-    CONFIG_KEY_INTERVAL,
-    '0'
-  );
+  const { value: intervalMsStr, setValue: persistIntervalMs } = useConfig(CONFIG_KEY_INTERVAL, '0');
   const { value: marketHoursStr, setValue: persistMarketHours } = useConfig(
     CONFIG_KEY_MARKET_HOURS,
     'false'
   );
 
-  const intervalMs = VALID_INTERVAL_MS.includes(Number(intervalMsStr))
-    ? Number(intervalMsStr)
-    : 0;
+  const intervalMs = VALID_INTERVAL_MS.includes(Number(intervalMsStr)) ? Number(intervalMsStr) : 0;
   const marketHoursOnly = marketHoursStr === 'true';
   const isEnabled = intervalMs > 0;
   const intervalMinutes = isEnabled ? Math.round(intervalMs / 60_000) : 0;
@@ -99,13 +94,11 @@ export function useAutoRefresh({ onRefresh }: UseAutoRefreshOptions): UseAutoRef
     }
 
     if (intervalMs <= 0) {
-      setSecondsUntilRefresh(0);
       nextRefreshAt.current = null;
       return;
     }
 
     nextRefreshAt.current = Date.now() + intervalMs;
-    setSecondsUntilRefresh(Math.ceil(intervalMs / 1000));
 
     timerRef.current = setInterval(() => {
       // Pause when the tab/window is hidden — reset the fire time so we don't

@@ -2190,14 +2190,8 @@ pub async fn add_account(
     let account_type = account.account_type.clone();
 
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::insert_account(
-        &conn,
-        &id,
-        &name,
-        &account_type,
-        institution.as_deref(),
-    )
-    .map_err(|e| e.to_string())?;
+    db::insert_account(&conn, &id, &name, &account_type, institution.as_deref())
+        .map_err(|e| e.to_string())?;
 
     Ok(Account {
         id,
@@ -2247,10 +2241,7 @@ pub async fn update_account(
 }
 
 #[tauri::command]
-pub async fn delete_account(
-    state: tauri::State<'_, DbState>,
-    id: String,
-) -> Result<bool, String> {
+pub async fn delete_account(state: tauri::State<'_, DbState>, id: String) -> Result<bool, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     db::delete_account(&conn, &id).map_err(|e| e.to_string())?;
     Ok(true)
