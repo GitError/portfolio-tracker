@@ -131,6 +131,7 @@ function CurrencyPicker({ value, onChange }: CurrencyPickerProps) {
 }
 
 function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return '';
   if (seconds >= 3600) return `${Math.floor(seconds / 3600)}h`;
   if (seconds >= 60) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
   return `${seconds}s`;
@@ -149,7 +150,9 @@ export function TopBar({
   const title = ROUTE_TITLES[pathname] ?? 'Portfolio Tracker';
   const updatedLabel = useRelativeTime(portfolio?.lastUpdated ?? null);
   const dailyPnl = portfolio?.dailyPnl ?? 0;
-  const dailyPct = portfolio ? (dailyPnl / (portfolio.totalValue - dailyPnl)) * 100 : 0;
+  const prevValue = portfolio ? portfolio.totalValue - dailyPnl : 0;
+  const rawDailyPct = prevValue !== 0 ? (dailyPnl / prevValue) * 100 : 0;
+  const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
 
   // Flash the countdown label in the last 10 seconds before refresh
   const isUrgent = !loading && countdown !== null && countdown < 10;

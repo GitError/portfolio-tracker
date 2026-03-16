@@ -1,13 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { config } from '../../lib/config';
 import type { SymbolResult } from '../../types/portfolio';
-
-const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(cmd, args);
-}
+import { isTauri, tauriInvoke } from '../../lib/tauri';
 
 const MOCK_RESULTS: SymbolResult[] = [
   { symbol: 'AAPL', name: 'Apple Inc.', assetType: 'stock', exchange: 'NMS', currency: 'USD' },

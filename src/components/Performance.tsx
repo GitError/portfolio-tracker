@@ -20,13 +20,7 @@ import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG } from '../lib/constants';
 import { Select } from './ui/Select';
 import { EmptyState } from './ui/EmptyState';
 import type { AccountType, AssetType, PortfolioSnapshot } from '../types/portfolio';
-
-const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(cmd, args);
-}
+import { isTauri, tauriInvoke } from '../lib/tauri';
 
 interface PerformancePoint {
   date: string;

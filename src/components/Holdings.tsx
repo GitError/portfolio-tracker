@@ -756,7 +756,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                     </button>
                     {/* Holdings rows */}
                     {!isCollapsed && (
-                      <div style={{ overflow: 'auto' }}>
+                      <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                           <thead>
                             <tr>
@@ -1302,7 +1302,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             <div
               style={{
                 border: '1px solid var(--border-primary)',
-                overflow: 'auto',
+                overflowX: 'auto',
+                overflowY: 'auto',
                 maxHeight: 'calc(100vh - 260px)',
               }}
             >
