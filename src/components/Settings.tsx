@@ -2,6 +2,8 @@ import { useState, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Download, Upload } from 'lucide-react';
 import { useConfig } from '../hooks/useConfig';
+import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { AccountsModal } from './AccountsModal';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
 
@@ -446,16 +448,28 @@ function DataManagementSection() {
   );
 }
 
+// Noop used as onRefresh in settings — Settings does not trigger live refreshes.
+async function noopRefresh(): Promise<void> {}
+
 export function Settings() {
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
-  const { value: autoRefreshStr, setValue: setAutoRefresh } = useConfig(
-    'auto_refresh_interval_ms',
-    '0'
-  );
   const { value: costBasisMethod, setValue: setCostBasisMethod } = useConfig(
     'cost_basis_method',
     'AVCO'
   );
+  const [accountsOpen, setAccountsOpen] = useState(false);
+
+  // Auto-refresh controls — reads/writes the same config keys as useAutoRefresh
+  // in AppRoutes, so changes take effect immediately app-wide.
+  const {
+    intervalMinutes,
+    marketHoursOnly,
+    setInterval: setAutoRefreshInterval,
+    setMarketHoursOnly,
+  } = useAutoRefresh({ onRefresh: noopRefresh });
+
+  // Derive the ms string for the select control
+  const autoRefreshMsStr = String(intervalMinutes * 60_000);
 
   return (
     <div
@@ -480,6 +494,41 @@ export function Settings() {
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
         Configure display, refresh, and calculation preferences.
       </p>
+
+      {/* General */}
+      <SectionHeader title="General" />
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: 2,
+          padding: '0 16px',
+        }}
+      >
+        <SettingRow
+          label="Accounts"
+          description="Create and manage named accounts (TFSA, RRSP, etc.) to group your holdings."
+        >
+          <button
+            onClick={() => setAccountsOpen(true)}
+            style={{
+              padding: '6px 16px',
+              background: 'var(--color-accent)',
+              border: 'none',
+              color: '#fff',
+              borderRadius: 2,
+              fontFamily: 'var(--font-sans)',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Manage Accounts
+          </button>
+        </SettingRow>
+      </div>
+
+      <AccountsModal isOpen={accountsOpen} onClose={() => setAccountsOpen(false)} />
 
       {/* Display */}
       <SectionHeader title="Display" />
@@ -517,7 +566,35 @@ export function Settings() {
           label="Auto-Refresh Interval"
           description="Automatically refresh prices in the background at this interval."
         >
-          <Select value={autoRefreshStr} onChange={setAutoRefresh} options={REFRESH_OPTIONS} />
+          <Select
+            value={autoRefreshMsStr}
+            onChange={(v) => setAutoRefreshInterval(Math.round(Number(v) / 60_000))}
+            options={REFRESH_OPTIONS}
+          />
+        </SettingRow>
+        <SettingRow
+          label="Market Hours Only"
+          description="Only auto-refresh during NYSE trading hours (Mon–Fri 09:30–16:00 ET)."
+        >
+          <button
+            onClick={() => setMarketHoursOnly(!marketHoursOnly)}
+            aria-pressed={marketHoursOnly}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '5px 16px',
+              background: marketHoursOnly ? 'var(--color-accent)' : 'var(--bg-surface-alt)',
+              border: `1px solid ${marketHoursOnly ? 'var(--color-accent)' : 'var(--border-primary)'}`,
+              color: marketHoursOnly ? '#fff' : 'var(--text-secondary)',
+              borderRadius: 2,
+              cursor: 'pointer',
+              fontSize: 12,
+              fontFamily: 'var(--font-sans)',
+              transition: 'background 150ms, border-color 150ms, color 150ms',
+            }}
+          >
+            {marketHoursOnly ? 'On' : 'Off'}
+          </button>
         </SettingRow>
       </div>
 

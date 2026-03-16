@@ -1,5 +1,19 @@
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash';
-export type AccountType = 'tfsa' | 'rrsp' | 'taxable' | 'cash';
+export type AccountType = 'tfsa' | 'rrsp' | 'fhsa' | 'taxable' | 'crypto' | 'cash' | 'other';
+
+export interface Account {
+  id: string;
+  name: string;
+  accountType: string;
+  institution?: string;
+  createdAt: string;
+}
+
+export interface CreateAccountRequest {
+  name: string;
+  accountType: string;
+  institution?: string;
+}
 
 export interface HoldingInput {
   symbol: string;
@@ -285,6 +299,10 @@ export interface PortfolioAnalytics {
 // invoke('refresh_prices')          → RefreshResult
 // invoke('get_performance', { range }) → { date: string; value: number }[]
 // invoke('run_stress_test_cmd', { scenario }) → StressResult
+// invoke('get_accounts')                       → Account[]
+// invoke('add_account', { account })            → Account
+// invoke('update_account', { id, account })     → Account
+// invoke('delete_account', { id })              → boolean
 // invoke('search_symbols', { query }) → SymbolResult[]
 // invoke('get_symbol_price', { symbol }) → PriceData
 // invoke('get_rebalance_suggestions', { driftThreshold }) → RebalanceSuggestion[]

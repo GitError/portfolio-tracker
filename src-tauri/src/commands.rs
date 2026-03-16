@@ -13,12 +13,12 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    AccountType, AssetType, CountryWeight, Dividend, DividendInput, FxRate, Holding, HoldingInput,
-    HoldingWithPrice, ImportError, ImportResult, PerformancePoint, PortfolioAnalytics,
-    PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
-    PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion, RefreshResult,
-    SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction,
-    TransactionInput,
+    Account, AccountType, AssetType, CountryWeight, CreateAccountRequest, Dividend, DividendInput,
+    FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError, ImportResult, PerformancePoint,
+    PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow,
+    PriceAlert, PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion,
+    RefreshResult, SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult,
+    Transaction, TransactionInput,
 };
 
 const MAX_IMPORT_ROWS: usize = 500;
@@ -2159,4 +2159,90 @@ pub async fn get_transactions(
 pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bool, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     db::delete_transaction(&conn, &id)
+}
+
+// ── Account Commands ──────────────────────────────────────────────────────────
+
+const VALID_ACCOUNT_TYPES: &[&str] = &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "other"];
+
+#[tauri::command]
+pub async fn get_accounts(state: tauri::State<'_, DbState>) -> Result<Vec<Account>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::get_accounts(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn add_account(
+    state: tauri::State<'_, DbState>,
+    account: CreateAccountRequest,
+) -> Result<Account, String> {
+    let name = account.name.trim().to_string();
+    if name.is_empty() {
+        return Err("Account name cannot be empty".to_string());
+    }
+    if !VALID_ACCOUNT_TYPES.contains(&account.account_type.as_str()) {
+        return Err(format!("Invalid account type: {}", account.account_type));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+    let institution = account.institution.clone();
+    let account_type = account.account_type.clone();
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::insert_account(&conn, &id, &name, &account_type, institution.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    Ok(Account {
+        id,
+        name,
+        account_type,
+        institution,
+        created_at,
+    })
+}
+
+#[tauri::command]
+pub async fn update_account(
+    state: tauri::State<'_, DbState>,
+    id: String,
+    account: CreateAccountRequest,
+) -> Result<Account, String> {
+    let name = account.name.trim().to_string();
+    if name.is_empty() {
+        return Err("Account name cannot be empty".to_string());
+    }
+    if !VALID_ACCOUNT_TYPES.contains(&account.account_type.as_str()) {
+        return Err(format!("Invalid account type: {}", account.account_type));
+    }
+
+    let institution = account.institution.clone();
+    let account_type = account.account_type.clone();
+
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    // Fetch created_at for the returned struct
+    let existing: Vec<Account> = db::get_accounts(&conn).map_err(|e| e.to_string())?;
+    let created_at = existing
+        .iter()
+        .find(|a| a.id == id)
+        .map(|a| a.created_at.clone())
+        .ok_or_else(|| format!("Account {} not found", id))?;
+
+    db::update_account(&conn, &id, &name, &account_type, institution.as_deref())
+        .map_err(|e| e.to_string())?;
+
+    Ok(Account {
+        id,
+        name,
+        account_type,
+        institution,
+        created_at,
+    })
+}
+
+#[tauri::command]
+pub async fn delete_account(state: tauri::State<'_, DbState>, id: String) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    db::delete_account(&conn, &id).map_err(|e| e.to_string())?;
+    Ok(true)
 }

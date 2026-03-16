@@ -99,6 +99,17 @@ body::after {
   }
 }
 
+/* Pulse animation — used for countdown flash when < 10s until auto-refresh */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
 /* Utility classes for pnl coloring (used by pnlClass helper) */
 .text-gain {
   color: var(--color-gain) !important;

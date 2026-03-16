@@ -137,9 +137,22 @@ export const ASSET_TYPE_CONFIG = {
 export const ACCOUNT_OPTIONS: { value: AccountType; label: string }[] = [
   { value: 'tfsa', label: 'TFSA' },
   { value: 'rrsp', label: 'RRSP' },
+  { value: 'fhsa', label: 'FHSA' },
   { value: 'taxable', label: 'Taxable' },
+  { value: 'crypto', label: 'Crypto' },
   { value: 'cash', label: 'Cash' },
+  { value: 'other', label: 'Other' },
 ];
+
+export const ACCOUNT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  tfsa: { label: 'TFSA', color: 'var(--color-gain)' },
+  rrsp: { label: 'RRSP', color: '#8b5cf6' },
+  fhsa: { label: 'FHSA', color: '#06b6d4' },
+  taxable: { label: 'Taxable', color: 'var(--color-accent)' },
+  crypto: { label: 'Crypto', color: 'var(--color-crypto)' },
+  cash: { label: 'Cash', color: 'var(--color-cash)' },
+  other: { label: 'Other', color: 'var(--text-muted)' },
+};
 
 export const SUPPORTED_CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'AUD'] as const;
 
