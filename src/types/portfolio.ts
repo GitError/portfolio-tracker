@@ -239,27 +239,6 @@ export interface RebalanceSuggestion {
   currentPriceCad: number;
 }
 
-export interface Transaction {
-  id: number;
-  holdingId: string;
-  transactionType: 'buy' | 'sell' | 'deposit' | 'withdrawal';
-  quantity: number;
-  price: number;
-  currency: string;
-  fee: number;
-  transactedAt: string;
-}
-
-export interface CreateTransactionRequest {
-  holdingId: string;
-  transactionType: 'buy' | 'sell' | 'deposit' | 'withdrawal';
-  quantity: number;
-  price: number;
-  currency: string;
-  fee: number;
-  transactedAt: string;
-}
-
 export interface SymbolMetadata {
   symbol: string;
   sector?: string;

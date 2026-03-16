@@ -9,7 +9,7 @@ import { useToast } from './ui/Toast';
 import { formatNumber } from '../lib/format';
 import type { Transaction, Holding } from '../types/portfolio';
 
-type TxType = 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'all';
+type TxType = 'buy' | 'sell' | 'all';
 
 const TX_TYPE_COLORS: Record<string, string> = {
   buy: 'var(--color-gain)',
@@ -84,8 +84,8 @@ export function TransactionHistory() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
   const [filterHoldingId, setFilterHoldingId] = useState<string>('all');
   const [filterType, setFilterType] = useState<TxType>('all');
@@ -160,7 +160,7 @@ export function TransactionHistory() {
     });
   }
 
-  async function handleDelete(id: number) {
+  async function handleDelete(id: string) {
     setDeletingId(id);
     try {
       await invoke('delete_transaction', { id });
@@ -257,8 +257,6 @@ export function TransactionHistory() {
             <option value="all">All Types</option>
             <option value="buy">Buy</option>
             <option value="sell">Sell</option>
-            <option value="deposit">Deposit</option>
-            <option value="withdrawal">Withdrawal</option>
           </select>
 
           {/* Holding selector for add */}
@@ -398,7 +396,6 @@ export function TransactionHistory() {
                         <th style={{ ...TH, textAlign: 'left' }}>Type</th>
                         <th style={{ ...TH, textAlign: 'right' }}>Quantity</th>
                         <th style={{ ...TH, textAlign: 'right' }}>Price</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Fee</th>
                         <th style={{ ...TH, textAlign: 'right' }}>Total Value</th>
                         <th style={{ ...TH, textAlign: 'center', width: 60 }}>Actions</th>
                       </tr>
@@ -452,17 +449,7 @@ export function TransactionHistory() {
                                 fontFamily: 'var(--font-mono)',
                               }}
                             >
-                              {formatNumber(tx.price, 2)} {tx.currency}
-                            </td>
-                            <td
-                              style={{
-                                ...TD,
-                                textAlign: 'right',
-                                fontFamily: 'var(--font-mono)',
-                                color: tx.fee > 0 ? 'var(--color-loss)' : 'var(--text-muted)',
-                              }}
-                            >
-                              {tx.fee > 0 ? formatNumber(tx.fee, 2) : '—'}
+                              {formatNumber(tx.price, 2)}
                             </td>
                             <td
                               style={{
@@ -472,7 +459,7 @@ export function TransactionHistory() {
                                 fontWeight: 600,
                               }}
                             >
-                              {formatNumber(totalValue, 2)} {tx.currency}
+                              {formatNumber(totalValue, 2)}
                             </td>
                             <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
                               {isPending ? (
