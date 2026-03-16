@@ -281,7 +281,7 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
         let cost_basis = parse_required_field(&record, cost_basis_index, row, "cost_basis")?
             .parse::<f64>()
             .map_err(|_| format!("Row {}: invalid_cost_basis", row))?;
-        if cost_basis <= 0.0 {
+        if cost_basis < 0.0 {
             return Err(format!("Row {}: invalid_cost_basis", row));
         }
 
@@ -590,28 +590,6 @@ pub async fn import_holdings_csv(
 ) -> Result<ImportResult, String> {
     let parsed_rows = parse_import_rows(&csv_content)?;
 
-    // Validate that the CSV rows' target weights don't exceed 100% on their own
-    let csv_weight_sum: f64 = parsed_rows.iter().map(|r| r.target_weight).sum();
-    if csv_weight_sum > 100.0 {
-        return Err(format!(
-            "Import failed: total target weight is {:.1}% (max 100%). Adjust weights before re-importing.",
-            csv_weight_sum
-        ));
-    }
-
-    // Also validate against existing holdings in the DB
-    let existing_weight_sum = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::sum_target_weights(&conn, None)?
-    };
-    if existing_weight_sum + csv_weight_sum > 100.0 {
-        return Err(format!(
-            "Import failed: total target weight would reach {:.1}% (existing portfolio is already {:.1}%). Adjust weights before re-importing.",
-            existing_weight_sum + csv_weight_sum,
-            existing_weight_sum
-        ));
-    }
-
     let existing_keys: HashSet<(String, String)> = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::get_all_holdings(&conn)?
@@ -716,6 +694,27 @@ pub async fn import_holdings_csv(
             },
             target_weight: row.target_weight,
         });
+    }
+
+    // Weight validation runs after deduplication so that re-importing an existing
+    // portfolio (all rows skipped as duplicates) never triggers a false overflow.
+    let pending_weight_sum: f64 = pending_inputs.iter().map(|i| i.target_weight).sum();
+    if pending_weight_sum > 100.0 {
+        return Err(format!(
+            "Import failed: total target weight is {:.1}% (max 100%). Adjust weights before re-importing.",
+            pending_weight_sum
+        ));
+    }
+    let existing_weight_sum = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::sum_target_weights(&conn, None)?
+    };
+    if existing_weight_sum + pending_weight_sum > 100.0 {
+        return Err(format!(
+            "Import failed: total target weight would reach {:.1}% (existing portfolio is already {:.1}%). Adjust weights before re-importing.",
+            existing_weight_sum + pending_weight_sum,
+            existing_weight_sum
+        ));
     }
 
     let mut imported = Vec::new();
@@ -1032,6 +1031,7 @@ pub async fn get_performance(
     let end = now.to_rfc3339();
 
     let start = match range.as_str() {
+        "1D" => (now - chrono::Duration::hours(24)).to_rfc3339(),
         "1W" => (now - chrono::Duration::days(7)).to_rfc3339(),
         "1M" => (now - chrono::Duration::days(30)).to_rfc3339(),
         "3M" => (now - chrono::Duration::days(90)).to_rfc3339(),
@@ -1042,7 +1042,16 @@ pub async fn get_performance(
     };
 
     let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())
+    let snapshots = db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())?;
+
+    // Deduplicate by calendar date, keeping only the latest snapshot per day.
+    let mut by_date: std::collections::BTreeMap<String, PerformancePoint> =
+        std::collections::BTreeMap::new();
+    for point in snapshots {
+        let date_key = point.date[..10].to_string();
+        by_date.insert(date_key, point);
+    }
+    Ok(by_date.into_values().collect())
 }
 
 // ── Dividend Commands ─────────────────────────────────────────────────────────
