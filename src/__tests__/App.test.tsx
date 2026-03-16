@@ -10,6 +10,8 @@ vi.mock('../hooks/usePortfolio', () => ({
     holdings: [],
     loading: true,
     error: null,
+    failedSymbols: [],
+    triggeredAlertIds: [],
     refreshPrices: vi.fn(),
     addHolding: vi.fn(),
     updateHolding: vi.fn(),

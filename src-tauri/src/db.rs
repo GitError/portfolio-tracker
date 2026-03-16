@@ -191,6 +191,52 @@ pub fn set_config(conn: &Connection, key: &str, value: &str) -> Result<(), Strin
     Ok(())
 }
 
+pub fn get_all_config(conn: &Connection) -> Result<Vec<(String, String)>, String> {
+    let mut stmt = conn
+        .prepare("SELECT key, value FROM app_config ORDER BY key")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub fn delete_all_alerts(conn: &Connection) -> Result<(), String> {
+    conn.execute("DELETE FROM price_alerts", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub fn delete_all_config(conn: &Connection) -> Result<(), String> {
+    conn.execute("DELETE FROM app_config", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Insert a price alert preserving its original ID and triggered state (for restore).
+pub fn insert_alert_with_id(conn: &Connection, alert: PriceAlert) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO price_alerts
+         (id, symbol, direction, threshold, note, triggered, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            alert.id,
+            alert.symbol,
+            alert.direction.as_str(),
+            alert.threshold,
+            alert.note,
+            alert.triggered,
+            alert.created_at,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding, String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();

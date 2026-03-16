@@ -445,6 +445,17 @@ pub struct RefreshResult {
     pub prices: Vec<PriceData>,
     /// Symbols for which the price fetch failed (network error, HTTP error, parse failure).
     pub failed_symbols: Vec<String>,
+    /// IDs of price alerts that were triggered during this refresh.
+    pub triggered_alerts: Vec<String>,
+}
+
+/// Full data export payload — includes all user data for backup/restore.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportPayload {
+    pub holdings: Vec<Holding>,
+    pub alerts: Vec<PriceAlert>,
+    pub config: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

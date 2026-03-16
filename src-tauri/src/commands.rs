@@ -899,6 +899,8 @@ pub async fn refresh_prices(
         failed: failed_symbols,
     } = fetch_result;
 
+    let mut triggered_alert_ids: Vec<String> = Vec::new();
+
     // Persist prices and FX rates to cache
     {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
@@ -946,10 +948,11 @@ pub async fn refresh_prices(
             eprintln!("Failed to prune portfolio snapshots: {}", e);
         }
 
-        // Check price alerts — log but don't fail
+        // Check price alerts — collect newly-triggered IDs, log errors but don't fail
         for price in &prices {
-            if let Err(e) = db::check_and_trigger_alerts(&conn, &price.symbol, price.price) {
-                eprintln!("Failed to check alerts for {}: {}", price.symbol, e);
+            match db::check_and_trigger_alerts(&conn, &price.symbol, price.price) {
+                Ok(ids) => triggered_alert_ids.extend(ids),
+                Err(e) => eprintln!("Failed to check alerts for {}: {}", price.symbol, e),
             }
         }
     }
@@ -957,6 +960,7 @@ pub async fn refresh_prices(
     Ok(RefreshResult {
         prices,
         failed_symbols,
+        triggered_alerts: triggered_alert_ids,
     })
 }
 
@@ -1118,21 +1122,61 @@ pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, Str
 #[tauri::command]
 pub async fn export_data(state: State<'_, DbState>) -> Result<String, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let holdings = db::get_all_holdings(&conn)?;
-    serde_json::to_string(&holdings).map_err(|e| e.to_string())
+    let payload = crate::types::ExportPayload {
+        holdings: db::get_all_holdings(&conn)?,
+        alerts: db::get_alerts(&conn)?,
+        config: db::get_all_config(&conn)?,
+    };
+    serde_json::to_string(&payload).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usize, String> {
-    let holdings: Vec<Holding> =
-        serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {e}"))?;
-    let count = holdings.len();
+    // Try full ExportPayload first; fall back to legacy plain Vec<Holding> format.
+    let payload: crate::types::ExportPayload = if let Ok(p) = serde_json::from_str(&json) {
+        p
+    } else {
+        let holdings: Vec<Holding> =
+            serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {e}"))?;
+        crate::types::ExportPayload {
+            holdings,
+            alerts: vec![],
+            config: vec![],
+        }
+    };
+
+    let count = payload.holdings.len();
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::delete_all_holdings(&conn).map_err(|e| e.to_string())?;
-    for holding in holdings {
-        db::insert_holding_with_id(&conn, holding).map_err(|e| e.to_string())?;
+
+    // Wrap in a transaction so a mid-import failure leaves the database intact.
+    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
+    let result = (|| -> Result<(), String> {
+        db::delete_all_holdings(&conn).map_err(|e| e.to_string())?;
+        db::delete_all_alerts(&conn)?;
+        db::delete_all_config(&conn)?;
+
+        for holding in payload.holdings {
+            db::insert_holding_with_id(&conn, holding).map_err(|e| e.to_string())?;
+        }
+        for alert in payload.alerts {
+            db::insert_alert_with_id(&conn, alert)?;
+        }
+        for (key, value) in payload.config {
+            db::set_config(&conn, &key, &value)?;
+        }
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            Ok(count)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
     }
-    Ok(count)
 }
 
 /// SQLite magic bytes: first 16 bytes of a valid SQLite database file.
