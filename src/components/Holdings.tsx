@@ -17,6 +17,7 @@ import { AddTransactionModal } from './AddTransactionModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
 import { Badge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
+import { Select } from './ui/Select';
 import { useToast } from './ui/Toast';
 import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -477,26 +478,15 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               width: 160,
             }}
           />
-          <select
+          <Select
             value={accountFilter}
-            onChange={(e) => handleAccountFilterChange(e.target.value as 'all' | AccountType)}
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-primary)',
-              color: 'var(--text-primary)',
-              padding: '6px 10px',
-              fontSize: 11,
-              fontFamily: 'var(--font-mono)',
-              borderRadius: '2px',
-            }}
-          >
-            <option value="all">All Accounts</option>
-            {ACCOUNT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => handleAccountFilterChange(value as 'all' | AccountType)}
+            options={[
+              { value: 'all', label: 'All Accounts' },
+              ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+            ]}
+            style={{ width: 160 }}
+          />
           <button
             onClick={() => setGroupByAccount((prev) => !prev)}
             title={groupByAccount ? 'Disable group by account' : 'Group by account'}

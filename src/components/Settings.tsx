@@ -4,6 +4,7 @@ import { Download, Upload } from 'lucide-react';
 import { useConfig } from '../hooks/useConfig';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { AccountsModal } from './AccountsModal';
+import { Select } from './ui/Select';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
 
@@ -59,41 +60,6 @@ function SettingRow({
       </div>
       <div style={{ flexShrink: 0 }}>{children}</div>
     </div>
-  );
-}
-
-function Select({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: { label: string; value: string }[];
-}) {
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        background: 'var(--bg-surface-alt)',
-        border: '1px solid var(--border-primary)',
-        color: 'var(--text-primary)',
-        fontSize: 13,
-        padding: '6px 10px',
-        borderRadius: 2,
-        cursor: 'pointer',
-        outline: 'none',
-        minWidth: 160,
-        fontFamily: 'var(--font-sans)',
-      }}
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-    </select>
   );
 }
 
@@ -548,6 +514,7 @@ export function Settings() {
             value={baseCurrency}
             onChange={setBaseCurrency}
             options={CURRENCIES.map((c) => ({ label: c, value: c }))}
+            style={{ minWidth: 160 }}
           />
         </SettingRow>
       </div>
@@ -570,6 +537,7 @@ export function Settings() {
             value={autoRefreshMsStr}
             onChange={(v) => setAutoRefreshInterval(Math.round(Number(v) / 60_000))}
             options={REFRESH_OPTIONS}
+            style={{ minWidth: 160 }}
           />
         </SettingRow>
         <SettingRow
