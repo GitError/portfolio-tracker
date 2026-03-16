@@ -233,6 +233,17 @@ export function Analytics() {
       value: parseFloat(c.weightPercent.toFixed(2)),
     })) ?? [];
 
+  // Only show geographic breakdown when at least 50% of non-cash holdings have
+  // country data. The v7 quote endpoint does not reliably return country, so we
+  // hide the chart until the data quality is sufficient.
+  const showGeographicBreakdown = (() => {
+    if (!analytics || analytics.metadata.length === 0) return false;
+    const withCountry = analytics.metadata.filter(
+      (m) => m.country != null && m.country !== ''
+    ).length;
+    return withCountry / analytics.metadata.length >= 0.5;
+  })();
+
   return (
     <div
       style={{
@@ -260,7 +271,7 @@ export function Analytics() {
               color: 'var(--text-secondary)',
             }}
           >
-            Sector, geographic breakdown and risk metrics
+            Sector breakdown and risk metrics
           </p>
         </div>
         <button
@@ -379,7 +390,12 @@ export function Analytics() {
 
           {/* ── Section 2 & 3: Charts row ── */}
           <div
-            style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 32 }}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: showGeographicBreakdown ? '1fr 1fr' : '1fr',
+              gap: 20,
+              marginBottom: 32,
+            }}
           >
             {/* Sector Pie */}
             <section
@@ -448,83 +464,85 @@ export function Analytics() {
               )}
             </section>
 
-            {/* Country Bar */}
-            <section
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-primary)',
-                borderRadius: 2,
-                padding: '20px',
-              }}
-            >
-              <h2
+            {/* Country Bar — only shown when >= 50% of holdings have country data */}
+            {showGeographicBreakdown && (
+              <section
                 style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: 'var(--text-secondary)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  margin: '0 0 16px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 2,
+                  padding: '20px',
                 }}
               >
-                Geographic Breakdown
-              </h2>
-              {barData.length > 0 ? (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart
-                    data={barData}
-                    layout="vertical"
-                    margin={{ top: 0, right: 20, left: 10, bottom: 0 }}
-                  >
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="var(--border-subtle)"
-                      horizontal={false}
-                    />
-                    <XAxis
-                      type="number"
-                      tickFormatter={(v: number) => `${v}%`}
-                      tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                      axisLine={{ stroke: 'var(--border-primary)' }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                      axisLine={false}
-                      tickLine={false}
-                      width={90}
-                    />
-                    <Tooltip
-                      formatter={(value) => [`${(value as number).toFixed(2)}%`, 'Weight']}
-                      contentStyle={{
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--border-primary)',
-                        borderRadius: 2,
-                        fontSize: 12,
-                        color: 'var(--text-primary)',
-                      }}
-                      cursor={{ fill: 'var(--bg-surface-hover)' }}
-                    />
-                    <Bar dataKey="value" fill="var(--color-accent)" radius={0} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div
+                <h2
                   style={{
-                    height: 260,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'var(--text-muted)',
                     fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--text-secondary)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    margin: '0 0 16px',
                   }}
                 >
-                  No geographic data available
-                </div>
-              )}
-            </section>
+                  Geographic Breakdown
+                </h2>
+                {barData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart
+                      data={barData}
+                      layout="vertical"
+                      margin={{ top: 0, right: 20, left: 10, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="var(--border-subtle)"
+                        horizontal={false}
+                      />
+                      <XAxis
+                        type="number"
+                        tickFormatter={(v: number) => `${v}%`}
+                        tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                        axisLine={{ stroke: 'var(--border-primary)' }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={90}
+                      />
+                      <Tooltip
+                        formatter={(value) => [`${(value as number).toFixed(2)}%`, 'Weight']}
+                        contentStyle={{
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-primary)',
+                          borderRadius: 2,
+                          fontSize: 12,
+                          color: 'var(--text-primary)',
+                        }}
+                        cursor={{ fill: 'var(--bg-surface-hover)' }}
+                      />
+                      <Bar dataKey="value" fill="var(--color-accent)" radius={0} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div
+                    style={{
+                      height: 260,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: 'var(--text-muted)',
+                      fontSize: 13,
+                    }}
+                  >
+                    No geographic data available
+                  </div>
+                )}
+              </section>
+            )}
           </div>
 
           {/* ── Section 4: Holdings Detail Table ── */}

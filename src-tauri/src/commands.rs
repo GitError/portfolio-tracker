@@ -1368,8 +1368,59 @@ pub async fn get_rebalance_suggestions(
 
 // ── Analytics Commands ────────────────────────────────────────────────────────
 
+/// Fetch per-symbol sector/industry/country from Yahoo Finance's v11 quoteSummary
+/// `assetProfile` module. Returns `None` for all three fields on any fetch/parse failure
+/// (failures are soft — they don't abort the whole analytics call).
+async fn fetch_asset_profile(
+    client: &reqwest::Client,
+    symbol: &str,
+) -> (String, Option<String>, Option<String>, Option<String>) {
+    let url = crate::config::YAHOO_QUOTE_SUMMARY_URL.replace("{}", symbol);
+
+    let json: Option<serde_json::Value> = async {
+        let resp = client
+            .get(&url)
+            .header("User-Agent", crate::config::USER_AGENT)
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        resp.json::<serde_json::Value>().await.ok()
+    }
+    .await;
+
+    let profile = json
+        .as_ref()
+        .and_then(|v| v.pointer("/quoteSummary/result/0/assetProfile"));
+
+    let extract = |key: &str| -> Option<String> {
+        profile
+            .and_then(|p| p.get(key))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+    };
+
+    (
+        symbol.to_string(),
+        extract("sector"),
+        extract("industry"),
+        extract("country"),
+    )
+}
+
 /// Fetch enriched symbol metadata (sector, industry, country, market cap, etc.)
-/// from Yahoo Finance's v7 quote endpoint.
+/// for the given list of symbols.
+///
+/// * Sector, industry, and country are fetched from the v11 `quoteSummary` / `assetProfile`
+///   endpoint, which reliably returns these fields (unlike the v7 quote endpoint).
+/// * Numeric fields (market cap, P/E, dividend yield, beta) continue to come from the
+///   bulk v7 quote endpoint.
+///
+/// Both requests are issued concurrently. A failure on either is treated as a soft
+/// error so that partial data is still returned.
 pub(crate) async fn get_symbol_metadata_internal(
     client: &reqwest::Client,
     symbols: &[String],
@@ -1378,65 +1429,83 @@ pub(crate) async fn get_symbol_metadata_internal(
         return Ok(vec![]);
     }
 
+    // ── 1. Bulk quote request for numeric fields ──────────────────────────────
     let joined = symbols.join(",");
-    let url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
+    let quote_url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
 
-    let response = client
-        .get(&url)
+    let quote_future = client
+        .get(&quote_url)
         .header("User-Agent", crate::config::USER_AGENT)
-        .send()
-        .await
-        .map_err(|e| format!("Metadata request failed: {}", e))?;
+        .send();
 
-    if !response.status().is_success() {
-        return Err(format!(
-            "Metadata request returned HTTP {}",
-            response.status()
-        ));
+    // ── 2. Per-symbol assetProfile requests for sector/industry/country ───────
+    let profile_futures: Vec<_> = symbols
+        .iter()
+        .map(|s| fetch_asset_profile(client, s))
+        .collect();
+
+    // Run both concurrently
+    let (quote_response, profile_results) =
+        futures::future::join(quote_future, futures::future::join_all(profile_futures)).await;
+
+    // Parse bulk quote response (best-effort). The response future has already resolved
+    // via `join`; we now just need to await the body deserialization.
+    let quote_json: Option<serde_json::Value> = async {
+        let resp = quote_response.ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        resp.json::<serde_json::Value>().await.ok()
     }
+    .await;
 
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse metadata response: {}", e))?;
-
-    let results = json
-        .pointer("/quoteResponse/result")
-        .and_then(|v| v.as_array())
-        .cloned()
+    let quote_items: HashMap<String, serde_json::Value> = quote_json
+        .and_then(|json| {
+            json.pointer("/quoteResponse/result")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|item| {
+                            let sym = item.get("symbol")?.as_str()?.to_string();
+                            Some((sym, item.clone()))
+                        })
+                        .collect()
+                })
+        })
         .unwrap_or_default();
 
-    let metadata: Vec<SymbolMetadata> = results
+    // Build a lookup map: symbol → (sector, industry, country) from assetProfile
+    type SectorTuple = (Option<String>, Option<String>, Option<String>);
+    let profile_map: HashMap<String, SectorTuple> = profile_results
         .into_iter()
-        .map(|item| {
-            let symbol = item
-                .get("symbol")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
+        .map(|(sym, sector, industry, country)| (sym, (sector, industry, country)))
+        .collect();
+
+    // ── 3. Merge into SymbolMetadata ─────────────────────────────────────────
+    let metadata: Vec<SymbolMetadata> = symbols
+        .iter()
+        .map(|symbol| {
+            let quote = quote_items.get(symbol);
+            let (sector, industry, country) = profile_map
+                .get(symbol)
+                .cloned()
+                .unwrap_or((None, None, None));
+
             SymbolMetadata {
-                symbol,
-                sector: item
-                    .get("sector")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string()),
-                industry: item
-                    .get("industry")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string()),
-                country: item
-                    .get("country")
-                    .and_then(|v| v.as_str())
-                    .filter(|s| !s.is_empty())
-                    .map(|s| s.to_string()),
-                market_cap: item.get("marketCap").and_then(|v| v.as_f64()),
-                pe_ratio: item.get("trailingPE").and_then(|v| v.as_f64()),
-                dividend_yield: item
-                    .get("trailingAnnualDividendYield")
+                symbol: symbol.clone(),
+                sector,
+                industry,
+                country,
+                market_cap: quote
+                    .and_then(|q| q.get("marketCap"))
                     .and_then(|v| v.as_f64()),
-                beta: item.get("beta").and_then(|v| v.as_f64()),
+                pe_ratio: quote
+                    .and_then(|q| q.get("trailingPE"))
+                    .and_then(|v| v.as_f64()),
+                dividend_yield: quote
+                    .and_then(|q| q.get("trailingAnnualDividendYield"))
+                    .and_then(|v| v.as_f64()),
+                beta: quote.and_then(|q| q.get("beta")).and_then(|v| v.as_f64()),
             }
         })
         .collect();

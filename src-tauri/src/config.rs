@@ -16,6 +16,11 @@ pub const YAHOO_CHART_URL: &str =
 
 pub const YAHOO_QUOTE_URL: &str = "https://query1.finance.yahoo.com/v7/finance/quote?symbols={}";
 
+/// Endpoint for per-symbol fundamental metadata (sector, industry, country).
+/// Replace `{}` with the symbol. Returns `quoteSummary.result[0].assetProfile`.
+pub const YAHOO_QUOTE_SUMMARY_URL: &str =
+    "https://query2.finance.yahoo.com/v11/finance/quoteSummary/{}?modules=assetProfile";
+
 /// User-Agent sent with every outbound HTTP request.
 /// Yahoo Finance returns 403 without a browser-like UA string.
 pub const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)";
