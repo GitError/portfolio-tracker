@@ -1456,9 +1456,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           {h.assetType === 'cash' ? (
                             '—'
                           ) : (
-                            <span
-                              style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                            >
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                               {formatNumber(h.currentPrice, 2)} {h.currency}
                               {isPriceStale(portfolio?.lastUpdated) && (
                                 <span title="Price may be stale (last refreshed over 2h ago)">
@@ -1497,8 +1495,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                             ...TD,
                             textAlign: 'right',
                             fontFamily: 'var(--font-mono)',
-                            color:
-                              h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                            color: h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
                           }}
                         >
                           {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
@@ -1556,9 +1553,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         </td>
                         <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
                           {isPending ? (
-                            <span
-                              style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}
-                            >
+                            <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
                               <span
                                 style={{
                                   fontSize: 11,
@@ -1600,9 +1595,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               </button>
                             </span>
                           ) : (
-                            <span
-                              style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}
-                            >
+                            <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
                               <button
                                 onClick={() => setTxModalHolding(h)}
                                 title="Log transaction"

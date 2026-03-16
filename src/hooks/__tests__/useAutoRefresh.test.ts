@@ -211,7 +211,9 @@ describe('useAutoRefresh hook', () => {
     });
 
     const { useAutoRefresh } = await import('../useAutoRefresh');
-    const { result } = renderHook(() => useAutoRefresh({ onRefresh: vi.fn().mockResolvedValue(undefined) }));
+    const { result } = renderHook(() =>
+      useAutoRefresh({ onRefresh: vi.fn().mockResolvedValue(undefined) })
+    );
 
     expect(result.current.intervalMinutes).toBe(15);
     expect(result.current.marketHoursOnly).toBe(true);
