@@ -27,6 +27,11 @@ fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool
 }
 
 pub fn init_db(conn: &Connection) -> Result<(), String> {
+    // Enable FK enforcement for this connection. SQLite disables it by default;
+    // every connection must opt in. This must run before any DML.
+    conn.execute_batch("PRAGMA foreign_keys = ON;")
+        .map_err(|e| e.to_string())?;
+
     conn.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS holdings (
