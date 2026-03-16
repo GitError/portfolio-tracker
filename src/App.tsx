@@ -116,7 +116,10 @@ function AppRoutes() {
               />
             }
           />
-          <Route path="/performance" element={<Performance portfolio={portfolio} />} />
+          <Route
+            path="/performance"
+            element={<Performance portfolio={portfolio} onRefresh={refreshPrices} />}
+          />
           <Route path="/stress" element={<StressTest />} />
           <Route path="/rebalance" element={<Rebalance />} />
           <Route path="/alerts" element={<Alerts />} />

@@ -289,6 +289,24 @@ export interface PortfolioAnalytics {
   countryBreakdown: CountryWeight[];
 }
 
+export type InsightSeverity = 'info' | 'warning' | 'critical';
+
+export interface ActionInsight {
+  id: string;
+  type:
+    | 'target_drift'
+    | 'concentration_risk'
+    | 'idle_cash'
+    | 'missing_targets'
+    | 'account_imbalance';
+  severity: InsightSeverity;
+  title: string;
+  explanation: string;
+  metrics?: Record<string, string | number>;
+  action?: string;
+  linkTo?: string; // route path like '/rebalance', '/holdings'
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
