@@ -82,6 +82,7 @@ const PANEL: React.CSSProperties = {
 
 interface PerformanceProps {
   portfolio: PortfolioSnapshot | null;
+  onRefresh?: () => void;
 }
 
 const STAT_LABEL: React.CSSProperties = {
@@ -137,7 +138,7 @@ function CustomTooltip({
   );
 }
 
-export function Performance({ portfolio }: PerformanceProps) {
+export function Performance({ portfolio, onRefresh }: PerformanceProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const range = (searchParams.get('range') as Range) || '1Y';
   const accountFilter = (searchParams.get('account') as 'all' | AccountType) || 'all';
@@ -260,7 +261,10 @@ export function Performance({ portfolio }: PerformanceProps) {
   if (perfIsEmpty) {
     return (
       <div style={{ ...PANEL }}>
-        <EmptyState message="Performance history will appear here after your first price refresh." />
+        <EmptyState
+          message="Performance history will appear here after your first price refresh."
+          action={onRefresh ? { label: 'Refresh Prices', onClick: onRefresh } : undefined}
+        />
       </div>
     );
   }
