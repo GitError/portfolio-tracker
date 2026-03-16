@@ -11,13 +11,7 @@ import { usePortfolio } from '../hooks/usePortfolio';
 import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
 import { SymbolSearch } from './ui/SymbolSearch';
-
-const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(cmd, args);
-}
+import { isTauri, tauriInvoke } from '../lib/tauri';
 
 // Mock prices for browser dev mode
 const MOCK_PRICES: Record<string, number> = {

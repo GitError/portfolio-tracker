@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-
-const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(cmd, args);
-}
+import { isTauri, tauriInvoke } from '../lib/tauri';
 
 const LOCAL_STORAGE_KEY = 'app-config';
 

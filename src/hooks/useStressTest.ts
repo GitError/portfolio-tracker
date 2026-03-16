@@ -1,15 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { PortfolioSnapshot, StressResult, StressScenario } from '../types/portfolio';
 import { fxShockKey } from '../lib/constants';
-
-// Tauri v2 always sets window.__TAURI_INTERNALS__ inside the webview.
-// window.__TAURI__ is only present when app.withGlobalTauri is true — don't use it.
-const isTauri = (): boolean => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(cmd, args);
-}
+import { isTauri, tauriInvoke } from '../lib/tauri';
 
 function computeLocally(snapshot: PortfolioSnapshot, scenario: StressScenario): StressResult {
   let totalStressed = 0;
