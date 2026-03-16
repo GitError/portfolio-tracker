@@ -22,7 +22,8 @@ import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
 
 function AppRoutes() {
-  const { portfolio, loading, error, failedSymbols, refreshPrices } = usePortfolio();
+  const { portfolio, loading, error, failedSymbols, triggeredAlertIds, refreshPrices } =
+    usePortfolio();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
@@ -80,6 +81,15 @@ function AppRoutes() {
   useEffect(() => {
     if (error) showToast(error, 'error');
   }, [error, showToast]);
+
+  // Surface triggered price alerts as toasts
+  useEffect(() => {
+    if (triggeredAlertIds.length === 1) {
+      showToast('Price alert triggered — check Alerts panel', 'info');
+    } else if (triggeredAlertIds.length > 1) {
+      showToast(`${triggeredAlertIds.length} price alerts triggered — check Alerts panel`, 'info');
+    }
+  }, [triggeredAlertIds, showToast]);
 
   // Callbacks passed to Holdings to register imperative handlers
   const handleRegisterOpenAddModal = useCallback((handler: () => void) => {

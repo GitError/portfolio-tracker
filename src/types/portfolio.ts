@@ -124,6 +124,14 @@ export interface RefreshResult {
   prices: PriceData[];
   /** Symbols for which the price fetch failed. Empty when all succeeded. */
   failedSymbols: string[];
+  /** IDs of price alerts triggered during this refresh. */
+  triggeredAlerts: string[];
+}
+
+export interface ExportPayload {
+  holdings: Holding[];
+  alerts: PriceAlert[];
+  config: [string, string][];
 }
 
 export interface FxRate {
