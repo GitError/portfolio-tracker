@@ -304,16 +304,32 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
             parsed
         };
 
+        let name = parse_optional_field(&record, name_index);
+        let exchange = parse_optional_field(&record, exchange_index).to_uppercase();
+
+        if symbol.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: symbol exceeds maximum length", row));
+        }
+        if name.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: name exceeds maximum length", row));
+        }
+        if currency.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: currency exceeds maximum length", row));
+        }
+        if exchange.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: exchange exceeds maximum length", row));
+        }
+
         rows.push(ParsedImportRow {
             row,
             symbol,
-            name: parse_optional_field(&record, name_index),
+            name,
             asset_type,
             account,
             quantity,
             cost_basis,
             currency,
-            exchange: parse_optional_field(&record, exchange_index).to_uppercase(),
+            exchange,
             target_weight,
         });
     }
@@ -541,13 +557,15 @@ pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, String
     db::get_all_holdings(&conn)
 }
 
+const WEIGHT_EPSILON: f64 = 0.01;
+
 #[tauri::command]
 pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
     let conn = db.0.lock().map_err(|e| e.to_string())?;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(&conn, None)?;
         let new_total = current_sum + holding.target_weight;
-        if new_total > 100.0 {
+        if new_total > 100.0 + WEIGHT_EPSILON {
             return Err(format!(
                 "Total target weight would exceed 100% (currently {:.1}%). Adjust existing allocations before adding this holding.",
                 current_sum
@@ -563,7 +581,7 @@ pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(&conn, Some(&holding.id))?;
         let new_total = current_sum + holding.target_weight;
-        if new_total > 100.0 {
+        if new_total > 100.0 + WEIGHT_EPSILON {
             return Err(format!(
                 "Total target weight would exceed 100% (currently {:.1}% across other holdings). Adjust existing allocations before saving.",
                 current_sum
@@ -704,21 +722,22 @@ pub async fn import_holdings_csv(
 
     // Weight validation runs after deduplication so that re-importing an existing
     // portfolio (all rows skipped as duplicates) never triggers a false overflow.
-    let pending_weight_sum: f64 = pending_inputs.iter().map(|i| i.target_weight).sum();
-    if pending_weight_sum > 100.0 {
+    // All pending inputs (cash and non-cash alike) are included in this sum.
+    let import_weight_sum: f64 = pending_inputs.iter().map(|h| h.target_weight).sum();
+    if import_weight_sum > 100.0 + WEIGHT_EPSILON {
         return Err(format!(
-            "Import failed: total target weight is {:.1}% (max 100%). Adjust weights before re-importing.",
-            pending_weight_sum
+            "Combined target weights ({:.2}%) exceed 100%",
+            import_weight_sum
         ));
     }
     let existing_weight_sum = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
         db::sum_target_weights(&conn, None)?
     };
-    if existing_weight_sum + pending_weight_sum > 100.0 {
+    if existing_weight_sum + import_weight_sum > 100.0 + WEIGHT_EPSILON {
         return Err(format!(
             "Import failed: total target weight would reach {:.1}% (existing portfolio is already {:.1}%). Adjust weights before re-importing.",
-            existing_weight_sum + pending_weight_sum,
+            existing_weight_sum + import_weight_sum,
             existing_weight_sum
         ));
     }
@@ -1532,6 +1551,21 @@ fn compute_portfolio_analytics(
     metadata: &[SymbolMetadata],
 ) -> PortfolioAnalytics {
     let total_value = snapshot.total_value;
+
+    if total_value == 0.0 {
+        return PortfolioAnalytics {
+            metadata: metadata.to_vec(),
+            risk_metrics: PortfolioRiskMetrics {
+                weighted_beta: None,
+                portfolio_yield: 0.0,
+                largest_position_weight: 0.0,
+                top_sector: None,
+                concentration_hhi: 0.0,
+            },
+            sector_breakdown: vec![],
+            country_breakdown: vec![],
+        };
+    }
 
     // Build a lookup map from symbol → metadata
     let meta_map: HashMap<String, &SymbolMetadata> =
