@@ -106,5 +106,5 @@ jobs:
             | Windows | `.exe` / `.msi` |
             | Linux | `.AppImage` / `.deb` |
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: ${{ matrix.args }}
