@@ -202,7 +202,7 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
   const benchmarkData = useMemo(() => {
     if (!benchmark || data.length === 0) return [];
     const raw = filterByRange(benchmark.points, range);
-    if (raw.length === 0) return [];
+    if (!raw || raw.length === 0) return [];
     const first = raw[0].value || 1;
     const base = data[0]?.value ?? 0;
     return raw.map((point) => ({
@@ -263,6 +263,17 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
       <div style={{ ...PANEL }}>
         <EmptyState
           message="Performance history will appear here after your first price refresh."
+          action={onRefresh ? { label: 'Refresh Prices', onClick: onRefresh } : undefined}
+        />
+      </div>
+    );
+  }
+
+  if (data.length === 0) {
+    return (
+      <div style={{ ...PANEL }}>
+        <EmptyState
+          message="No performance data available for the selected range."
           action={onRefresh ? { label: 'Refresh Prices', onClick: onRefresh } : undefined}
         />
       </div>
