@@ -54,9 +54,9 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
     });
   };
 
-  function handleSymbolChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const selected = holdings.find((h) => h.symbol === e.target.value);
-    setSymbol(e.target.value);
+  function handleSymbolChange(value: string) {
+    const selected = holdings.find((h) => h.symbol === value);
+    setSymbol(value);
     // Auto-clear threshold when symbol changes so user doesn't carry over stale price
     if (selected) setThreshold('');
   }
@@ -95,18 +95,11 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>SYMBOL</div>
           {holdings.length > 0 ? (
-            <select
-              style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
+            <Select
               value={symbol}
               onChange={handleSymbolChange}
-              required
-            >
-              {holdings.map((h) => (
-                <option key={h.id} value={h.symbol}>
-                  {h.symbol} — {h.name}
-                </option>
-              ))}
-            </select>
+              options={holdings.map((h) => ({ value: h.symbol, label: `${h.symbol} — ${h.name}` }))}
+            />
           ) : (
             <input
               style={inputStyle}
