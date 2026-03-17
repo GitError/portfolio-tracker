@@ -301,6 +301,7 @@ function buildSnapshot(): PortfolioSnapshot {
       .filter((holding) => holding.assetType === 'cash')
       .reduce((sum, holding) => sum + (holding.marketValueCad - holding.targetValue), 0),
     realizedGains: 0,
+    annualDividendIncome: 0,
   };
 }
 

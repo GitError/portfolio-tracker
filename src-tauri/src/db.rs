@@ -965,6 +965,28 @@ pub fn delete_dividend(conn: &Connection, id: i64) -> Result<bool, String> {
     Ok(n > 0)
 }
 
+/// Returns the sum of `amount_per_unit * quantity` for all dividends whose
+/// `pay_date` falls within the last 365 days. Only dividends belonging to
+/// holdings that still exist in the portfolio are included (via the JOIN).
+pub fn get_annual_dividend_income(conn: &Connection) -> Result<f64, String> {
+    let cutoff = (Utc::now() - chrono::Duration::days(365))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let income: f64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(d.amount_per_unit * h.quantity), 0.0)
+             FROM dividends d
+             JOIN holdings h ON h.id = d.holding_id
+             WHERE d.pay_date >= ?1",
+            params![cutoff],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(income)
+}
+
 #[allow(dead_code)]
 pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
     let mut stmt = conn
