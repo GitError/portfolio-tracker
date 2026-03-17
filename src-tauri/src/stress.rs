@@ -130,6 +130,7 @@ mod tests {
             total_target_weight: 0.0,
             target_cash_delta: 0.0,
             realized_gains: 0.0,
+            annual_dividend_income: 0.0,
         }
     }
 
