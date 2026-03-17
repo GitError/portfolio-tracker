@@ -94,7 +94,7 @@ jobs:
           # APPLE_TEAM_ID
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: Portfolio Tracker ${{ github.ref_name }}
+          releaseName: "Portfolio Tracker ${{ github.ref_name }}"
           releaseBody: |
             See the [changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release details.
 
