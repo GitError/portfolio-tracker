@@ -141,6 +141,8 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         ? 'var(--color-warning)'
         : 'var(--color-gain)';
   const [priceFetching, setPriceFetching] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [priceFetchError, setPriceFetchError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const selectedSymbolRef = useRef<string>('');
   const firstFocusRef = useRef<HTMLInputElement | null>(null);
@@ -193,11 +195,15 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         selectedSymbolRef.current = '';
       }
       setErrors({});
+      setSubmitError(null);
+      setPriceFetchError(null);
     } else {
       // Cancel any in-flight fetch when the modal closes
       abortRef.current?.abort();
       selectedSymbolRef.current = '';
       setPriceFetching(false);
+      setSubmitError(null);
+      setPriceFetchError(null);
     }
   }, [isOpen, editingHolding]);
 
@@ -238,7 +244,9 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         setForm((prev) => ({ ...prev, costBasis: String(price) }));
       }
     } catch {
-      // non-fatal: user can enter cost basis manually
+      if (selectedSymbolRef.current === fetchedForSymbol) {
+        setPriceFetchError(`Could not fetch price for ${fetchedForSymbol} — enter manually`);
+      }
     } finally {
       // Only clear the fetching indicator if we are still the active request
       if (selectedSymbolRef.current === fetchedForSymbol) {
@@ -274,6 +282,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
     }
 
     setSaving(true);
+    setSubmitError(null);
     try {
       const input: HoldingInput = {
         symbol: isCash ? `${form.currency}-CASH` : form.symbol.toUpperCase(),
@@ -288,6 +297,8 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       };
       await onSave(input);
       onClose();
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -467,7 +478,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
             {!isCash && (
               <Field
                 label={priceFetching ? 'Cost Per Unit (fetching…)' : 'Cost Per Unit'}
-                error={errors.costBasis}
+                error={errors.costBasis ?? priceFetchError ?? undefined}
               >
                 <input
                   type="number"
@@ -525,6 +536,24 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
             </Field>
           </div>
         </div>
+
+        {/* Submit error */}
+        {submitError && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: '9px 12px',
+              border: '1px solid var(--color-loss)',
+              background: 'rgba(255,71,87,0.08)',
+              color: 'var(--color-loss)',
+              fontSize: 12,
+              fontFamily: 'var(--font-mono)',
+              borderRadius: '2px',
+            }}
+          >
+            {submitError}
+          </div>
+        )}
 
         {/* Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>

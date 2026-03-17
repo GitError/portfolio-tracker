@@ -154,6 +154,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [editing, setEditing] = useState<Holding | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -256,18 +257,20 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
 
   async function handleBulkDelete() {
     setBulkDeleting(true);
+    setIsDeleting(true);
     const ids = Array.from(selected);
     try {
       for (const id of ids) {
         await deleteHolding(id);
       }
       showToast(`Deleted ${ids.length} holdings`, 'info');
+      setSelected(new Set());
     } catch (e) {
       showToast(String(e), 'error');
     } finally {
       setBulkDeleting(false);
+      setIsDeleting(false);
       setBulkDeletePending(false);
-      setSelected(new Set());
     }
   }
 
@@ -295,6 +298,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       return;
     }
     setDeletingId(id);
+    setIsDeleting(true);
     try {
       await deleteHolding(id);
       showToast('Holding deleted', 'info');
@@ -302,6 +306,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       showToast(String(e), 'error');
     } finally {
       setDeletingId(null);
+      setIsDeleting(false);
       setPendingDelete(null);
     }
   }
@@ -1093,14 +1098,16 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                         <button
                                           onClick={() => setPendingDelete(h.id)}
                                           title="Delete"
+                                          disabled={isDeleting}
                                           style={{
                                             background: 'none',
                                             border: 'none',
                                             color: 'var(--text-muted)',
-                                            cursor: 'pointer',
+                                            cursor: isDeleting ? 'not-allowed' : 'pointer',
                                             padding: 3,
                                             display: 'flex',
                                             alignItems: 'center',
+                                            opacity: isDeleting ? 0.4 : 1,
                                           }}
                                         >
                                           <Trash2 size={13} />
@@ -1201,7 +1208,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               </span>
               <button
                 onClick={() => setBulkDeletePending(true)}
-                disabled={bulkDeleting}
+                disabled={bulkDeleting || isDeleting}
                 style={{
                   padding: '4px 12px',
                   background: 'transparent',
@@ -1210,7 +1217,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                   borderRadius: '2px',
                   fontFamily: 'var(--font-mono)',
                   fontSize: 11,
-                  cursor: bulkDeleting ? 'not-allowed' : 'pointer',
+                  cursor: bulkDeleting || isDeleting ? 'not-allowed' : 'pointer',
                 }}
               >
                 Delete selected
@@ -1302,9 +1309,12 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                 overflowX: 'auto',
                 overflowY: 'auto',
                 maxHeight: 'calc(100vh - 260px)',
+                width: '100%',
               }}
             >
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <table
+                style={{ minWidth: 900, width: '100%', borderCollapse: 'collapse', fontSize: 12 }}
+              >
                 <thead style={{ position: 'sticky', top: 0, zIndex: 2 }}>
                   <tr>
                     <th style={{ ...TH, textAlign: 'center', width: 36, cursor: 'default' }}>
@@ -1339,7 +1349,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                 </thead>
                 <tbody>
                   {rows.map((h, i) => {
-                    const isDeleting = deletingId === h.id;
+                    const isRowDeleting = deletingId === h.id;
                     const isPending = pendingDelete === h.id;
                     const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
                     return (
@@ -1348,7 +1358,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         style={{
                           background: isPending
                             ? 'rgba(255,71,87,0.08)'
-                            : isDeleting
+                            : isRowDeleting
                               ? 'rgba(255,71,87,0.15)'
                               : selected.has(h.id)
                                 ? 'rgba(59,130,246,0.08)'
@@ -1356,12 +1366,12 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           transition: 'background 200ms',
                         }}
                         onMouseEnter={(e) => {
-                          if (!isPending && !isDeleting && !selected.has(h.id))
+                          if (!isPending && !isRowDeleting && !selected.has(h.id))
                             (e.currentTarget as HTMLElement).style.background =
                               'var(--bg-surface-hover)';
                         }}
                         onMouseLeave={(e) => {
-                          if (!isPending && !isDeleting)
+                          if (!isPending && !isRowDeleting)
                             (e.currentTarget as HTMLElement).style.background = selected.has(h.id)
                               ? 'rgba(59,130,246,0.08)'
                               : bg;
@@ -1630,14 +1640,16 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               <button
                                 onClick={() => setPendingDelete(h.id)}
                                 title="Delete"
+                                disabled={isDeleting}
                                 style={{
                                   background: 'none',
                                   border: 'none',
-                                  color: 'var(--text-muted)',
-                                  cursor: 'pointer',
+                                  color: isDeleting ? 'var(--text-muted)' : 'var(--text-muted)',
+                                  cursor: isDeleting ? 'not-allowed' : 'pointer',
                                   padding: 3,
                                   display: 'flex',
                                   alignItems: 'center',
+                                  opacity: isDeleting ? 0.4 : 1,
                                 }}
                               >
                                 <Trash2 size={13} />

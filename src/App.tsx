@@ -34,15 +34,22 @@ function AppRoutes() {
     onRefresh: refreshPrices,
   });
 
+  const [currencyChanging, setCurrencyChanging] = useState(false);
+
   // Refs for imperative handles registered by Holdings
   const openAddHoldingRef = useRef<(() => void) | null>(null);
   const exportCsvRef = useRef<(() => void) | null>(null);
 
   // When base currency changes, re-fetch prices so conversions update immediately (#98)
   const handleBaseCurrencyChange = useCallback(
-    (currency: string) => {
+    async (currency: string) => {
       setBaseCurrency(currency);
-      void refreshPrices();
+      setCurrencyChanging(true);
+      try {
+        await refreshPrices();
+      } finally {
+        setCurrencyChanging(false);
+      }
     },
     [setBaseCurrency, refreshPrices]
   );
@@ -108,7 +115,7 @@ function AppRoutes() {
           element={
             <Layout
               portfolio={portfolio}
-              loading={loading}
+              loading={loading || currencyChanging}
               onRefresh={refreshPrices}
               baseCurrency={baseCurrency}
               onBaseCurrencyChange={handleBaseCurrencyChange}

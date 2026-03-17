@@ -183,8 +183,16 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
     setRunning(true);
     setError(null);
     try {
-      setResult(await onImport(csvContent));
+      const importResult = await onImport(csvContent);
+      setResult(importResult);
       setPreview(null);
+      // Reset modal to initial state after a short delay so the user can see the result
+      setTimeout(() => {
+        setResult(null);
+        setFilename('');
+        setCsvContent('');
+        onClose();
+      }, 1500);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
