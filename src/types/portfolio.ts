@@ -70,6 +70,8 @@ export interface PortfolioSnapshot {
   targetCashDelta: number;
   /** Sum of all realized gains across holdings (AVCO by default). */
   realizedGains: number;
+  /** Sum of (amountPerUnit × quantity) for dividends paid in the last 365 days. */
+  annualDividendIncome: number;
 }
 
 // ── Transaction types ──────────────────────────────────────────────────────────

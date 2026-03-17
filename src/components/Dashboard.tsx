@@ -405,6 +405,21 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   : '—'}
               </div>
             </div>
+            <div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>Annual Income ({baseCurrency})</div>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  color:
+                    portfolio && portfolio.annualDividendIncome > 0
+                      ? 'var(--color-gain)'
+                      : 'var(--text-muted)',
+                }}
+              >
+                {portfolio ? formatCurrency(portfolio.annualDividendIncome, baseCurrency) : '—'}
+              </div>
+            </div>
           </div>
         </div>
 

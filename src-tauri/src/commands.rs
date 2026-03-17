@@ -373,6 +373,7 @@ fn build_portfolio_snapshot(
     base_currency: &str,
     last_updated: String,
     realized_gains: f64,
+    annual_dividend_income: f64,
 ) -> PortfolioSnapshot {
     if holdings.is_empty() {
         return PortfolioSnapshot {
@@ -387,6 +388,7 @@ fn build_portfolio_snapshot(
             total_target_weight: 0.0,
             target_cash_delta: 0.0,
             realized_gains,
+            annual_dividend_income,
         };
     }
 
@@ -512,6 +514,7 @@ fn build_portfolio_snapshot(
         total_target_weight,
         target_cash_delta,
         realized_gains,
+        annual_dividend_income,
     }
 }
 #[tauri::command]
@@ -541,6 +544,11 @@ pub async fn get_portfolio(
             .unwrap_or(0.0)
     };
 
+    let annual_dividend_income = {
+        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        db::get_annual_dividend_income(&conn).unwrap_or(0.0)
+    };
+
     Ok(build_portfolio_snapshot(
         &holdings,
         &cached_prices,
@@ -548,6 +556,7 @@ pub async fn get_portfolio(
         &base_currency,
         Utc::now().to_rfc3339(),
         realized_gains,
+        annual_dividend_income,
     ))
 }
 
@@ -953,6 +962,7 @@ pub async fn refresh_prices(
             &base_currency,
             Utc::now().to_rfc3339(),
             0.0,
+            0.0,
         );
         (snap.total_value, snap.total_cost, snap.total_gain_loss)
     };
@@ -1339,6 +1349,7 @@ pub async fn get_rebalance_suggestions(
         &base_currency,
         Utc::now().to_rfc3339(),
         0.0,
+        0.0,
     );
 
     let total_value = snapshot.total_value;
@@ -1717,6 +1728,7 @@ pub async fn get_portfolio_analytics(
         &base_currency,
         Utc::now().to_rfc3339(),
         0.0,
+        0.0,
     );
 
     // Only fetch metadata for non-cash symbols
@@ -2029,6 +2041,7 @@ mod tests {
             "CAD",
             "2024-01-01T00:00:00Z".to_string(),
             0.0,
+            0.0,
         );
 
         assert_eq!(snapshot.base_currency, "CAD");
@@ -2077,6 +2090,7 @@ mod tests {
             &fx,
             "USD",
             "2024-01-01T00:00:00Z".to_string(),
+            0.0,
             0.0,
         );
 
@@ -2209,6 +2223,7 @@ mod tests {
             "CAD",
             "2024-01-01T00:00:00Z".to_string(),
             0.0,
+            0.0,
         );
 
         assert!((snapshot.total_value - 1700.0).abs() < 0.001);
@@ -2241,6 +2256,7 @@ mod tests {
             &[],
             "CAD",
             Utc::now().to_rfc3339(),
+            0.0,
             0.0,
         );
 
@@ -2276,6 +2292,7 @@ mod tests {
             &[],
             "CAD",
             Utc::now().to_rfc3339(),
+            0.0,
             0.0,
         );
 

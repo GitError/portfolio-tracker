@@ -272,6 +272,8 @@ pub struct PortfolioSnapshot {
     pub target_cash_delta: f64,
     /// Sum of realized gains across all holdings (AVCO method, all-time).
     pub realized_gains: f64,
+    /// Sum of (amount_per_unit × quantity) for all dividends with a pay_date in the last 12 months.
+    pub annual_dividend_income: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
