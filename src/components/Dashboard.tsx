@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -66,6 +66,7 @@ function topMoversTitle(lastUpdated: string | undefined): string {
 }
 
 export function Dashboard({ portfolio, loading }: DashboardProps) {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFilter = (searchParams.get('account') ?? 'all') as 'all' | AccountType;
 
@@ -373,6 +374,37 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   : '—'}
               </div>
             </div>
+            <div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>Holdings</div>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {portfolio
+                  ? `${filteredHoldings.length} position${filteredHoldings.length !== 1 ? 's' : ''}`
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>Last Refreshed</div>
+              <div
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                }}
+              >
+                {portfolio
+                  ? new Date(portfolio.lastUpdated).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '—'}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -508,11 +540,42 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             background: 'var(--bg-surface)',
             display: 'flex',
             flexDirection: 'column',
-            minHeight: 0,
+            minHeight: 220,
             overflow: 'hidden',
           }}
         >
-          <div style={{ ...LABEL, flexShrink: 0 }}>{topMoversTitle(portfolio?.lastUpdated)}</div>
+          <div
+            style={{
+              ...LABEL,
+              flexShrink: 0,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <span>{topMoversTitle(portfolio?.lastUpdated)}</span>
+            {portfolio &&
+              filteredHoldings.filter((h) => h.assetType !== 'cash').length >
+                config.topMoversCount && (
+                <button
+                  onClick={() => void navigate('/holdings')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-accent)',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    padding: 0,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  View all →
+                </button>
+              )}
+          </div>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
