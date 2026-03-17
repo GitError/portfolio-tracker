@@ -9,7 +9,24 @@ use crate::types::{
     Transaction, TransactionInput, TransactionType,
 };
 
+const ALLOWED_TABLES: &[&str] = &[
+    "holdings",
+    "price_cache",
+    "fx_rates",
+    "symbol_cache",
+    "app_config",
+    "portfolio_snapshots",
+    "price_alerts",
+    "transactions",
+    "dividends",
+    "accounts",
+];
+
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
+    if !ALLOWED_TABLES.contains(&table) {
+        return Ok(false);
+    }
+
     let mut stmt = conn
         .prepare(&format!("PRAGMA table_info({})", table))
         .map_err(|e| e.to_string())?;

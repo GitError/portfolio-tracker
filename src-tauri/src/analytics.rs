@@ -106,9 +106,12 @@ fn compute_fifo(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                 let mut lot_cost_basis = 0.0f64;
 
                 while remaining_sell > 1e-9 {
-                    let (ref mut lot_qty, lot_price) = buy_queue
-                        .front_mut()
-                        .expect("invariant: queue non-empty while remaining_sell > 0");
+                    let Some((ref mut lot_qty, lot_price)) = buy_queue.front_mut() else {
+                        return Err(
+                            "Sell quantity exceeds total buy quantity — check transaction history"
+                                .into(),
+                        );
+                    };
 
                     let consumed = remaining_sell.min(*lot_qty);
                     lot_cost_basis += consumed * *lot_price;

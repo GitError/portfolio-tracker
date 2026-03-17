@@ -34,6 +34,9 @@ pub const DB_FILE_NAME: &str = "portfolio.db";
 /// Maximum number of rows accepted in a single CSV import.
 pub const MAX_IMPORT_ROWS: usize = 500;
 
+/// Maximum length (in bytes) for any individual string field in a CSV import row.
+pub const MAX_FIELD_LEN: usize = 500;
+
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 
 /// How long (seconds) a symbol search result is cached.
