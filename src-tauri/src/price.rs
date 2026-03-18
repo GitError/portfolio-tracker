@@ -5,6 +5,18 @@ use crate::config::{USER_AGENT, YAHOO_CHART_URL};
 use crate::types::PriceData;
 
 pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, String> {
+    fetch_price_with_fallback_currency(client, symbol, None).await
+}
+
+/// Like [`fetch_price`] but accepts an optional `fallback_currency` that is
+/// used when Yahoo Finance omits the `currency` field in its response.
+/// Providing the holding's own stored currency avoids silently mislabelling
+/// CAD-listed (or other non-USD) symbols as USD.
+pub async fn fetch_price_with_fallback_currency(
+    client: &Client,
+    symbol: &str,
+    fallback_currency: Option<&str>,
+) -> Result<PriceData, String> {
     let url = YAHOO_CHART_URL.replace("{}", symbol);
 
     let response = client
@@ -43,7 +55,17 @@ pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, Str
         0.0
     };
 
-    let currency = meta["currency"].as_str().unwrap_or("USD").to_string();
+    let currency = match meta["currency"].as_str() {
+        Some(c) => c.to_string(),
+        None => {
+            let used = fallback_currency.unwrap_or("USD");
+            eprintln!(
+                "Warning: Yahoo Finance omitted currency for {}; using {:?} as fallback",
+                symbol, used
+            );
+            used.to_string()
+        }
+    };
 
     Ok(PriceData {
         symbol: symbol.to_string(),
@@ -62,10 +84,21 @@ pub struct FetchAllPricesResult {
     pub failed: Vec<String>,
 }
 
-pub async fn fetch_all_prices(client: &Client, symbols: Vec<String>) -> FetchAllPricesResult {
+/// Fetch prices for all symbols in parallel.
+/// `symbol_currencies` maps each symbol to its holding currency so that when
+/// Yahoo Finance omits the `currency` field the holding's own currency is used
+/// as fallback instead of silently assuming USD.
+pub async fn fetch_all_prices(
+    client: &Client,
+    symbols: Vec<String>,
+    symbol_currencies: &std::collections::HashMap<String, String>,
+) -> FetchAllPricesResult {
     let futures: Vec<_> = symbols
         .iter()
-        .map(|symbol| fetch_price(client, symbol))
+        .map(|symbol| {
+            let fallback = symbol_currencies.get(symbol).map(String::as_str);
+            fetch_price_with_fallback_currency(client, symbol, fallback)
+        })
         .collect();
 
     let results = futures::future::join_all(futures).await;

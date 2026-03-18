@@ -12,7 +12,11 @@ pub fn compute_realized_gains(
 ) -> Result<RealizedGainsSummary, String> {
     match method {
         "fifo" => compute_fifo(transactions),
-        _ => compute_avco(transactions),
+        "avco" => compute_avco(transactions),
+        other => Err(format!(
+            "Unrecognized cost-basis method {:?}; expected \"avco\" or \"fifo\"",
+            other
+        )),
     }
 }
 
@@ -44,7 +48,7 @@ fn compute_avco(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                     ));
                 }
 
-                let sold_qty = tx.quantity.min(total_qty);
+                let sold_qty = tx.quantity;
                 let proceeds = sold_qty * tx.price;
                 let cost_basis = sold_qty * avg_cost;
                 let gain_loss = proceeds - cost_basis;
