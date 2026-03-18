@@ -546,7 +546,7 @@ pub async fn get_portfolio(
 
     let annual_dividend_income = {
         let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_annual_dividend_income(&conn).unwrap_or(0.0)
+        db::get_annual_dividend_income(&conn, &base_currency, &cached_fx).unwrap_or(0.0)
     };
 
     Ok(build_portfolio_snapshot(
