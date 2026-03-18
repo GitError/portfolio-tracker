@@ -53,17 +53,26 @@ pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[Fx
         return amount;
     }
 
-    let pair = format!("{}{}", from_upper, base_upper);
-    match rates.iter().find(|r| r.pair == pair) {
-        Some(rate) => amount * rate.rate,
-        None => {
-            eprintln!(
-                "FX rate not found for {} → {}, returning unconverted amount",
-                from_currency, base
-            );
-            amount
+    // Try the direct pair first: e.g. USDCAD when converting USD → CAD
+    let direct_pair = format!("{}{}", from_upper, base_upper);
+    if let Some(rate) = rates.iter().find(|r| r.pair == direct_pair) {
+        return amount * rate.rate;
+    }
+
+    // Fall back to the inverted pair: e.g. CADUSD when converting USD → CAD
+    // but base=CAD was previously cached as USDCAD.  Invert the stored rate.
+    let inverted_pair = format!("{}{}", base_upper, from_upper);
+    if let Some(rate) = rates.iter().find(|r| r.pair == inverted_pair) {
+        if rate.rate != 0.0 {
+            return amount / rate.rate;
         }
     }
+
+    eprintln!(
+        "FX rate not found for {} → {}, returning unconverted amount",
+        from_currency, base
+    );
+    amount
 }
 
 #[cfg(test)]
@@ -104,6 +113,16 @@ mod tests {
     fn missing_rate_returns_amount_unchanged() {
         let result = convert_to_base(200.0, "EUR", "CAD", &[]);
         assert_eq!(result, 200.0);
+    }
+
+    #[test]
+    fn cad_converts_to_usd_using_inverted_usdcad_pair() {
+        // Only USDCAD is cached (as stored when CAD was the base). When base switches
+        // to USD we must invert the stored rate rather than return unconverted.
+        let rates = vec![make_rate("USDCAD", 1.36)];
+        let result = convert_to_base(100.0, "CAD", "USD", &rates);
+        // 100 CAD / 1.36 ≈ 73.529
+        assert!((result - (100.0_f64 / 1.36)).abs() < 0.001);
     }
 
     #[test]

@@ -182,11 +182,30 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
-    conn.execute(
-        "UPDATE holdings SET account='cash' WHERE asset_type='cash' AND account='taxable'",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
+    // One-time migration: backfill cash-asset holdings that still have the default
+    // 'taxable' account type. Guarded by a migration flag so it runs exactly once
+    // and never overwrites a value the user has intentionally set afterwards.
+    let migration_done: bool = conn
+        .query_row(
+            "SELECT 1 FROM app_config WHERE key='migration_cash_account_backfill'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !migration_done {
+        conn.execute(
+            "UPDATE holdings SET account='cash' WHERE asset_type='cash' AND account='taxable'",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO app_config (key, value) VALUES ('migration_cash_account_backfill', '1')",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }
@@ -982,26 +1001,68 @@ pub fn delete_dividend(conn: &Connection, id: i64) -> Result<bool, String> {
     Ok(n > 0)
 }
 
-/// Returns the sum of `amount_per_unit * quantity` for all dividends whose
-/// `pay_date` falls within the last 365 days. Only dividends belonging to
-/// holdings that still exist in the portfolio are included (via the JOIN).
-pub fn get_annual_dividend_income(conn: &Connection) -> Result<f64, String> {
+/// Returns the sum of `amount_per_unit * quantity` (converted to `base_currency`)
+/// for all dividends whose `pay_date` falls within the last 365 days. Only dividends
+/// belonging to holdings that still exist in the portfolio are included (via the JOIN).
+///
+/// Each dividend row is multiplied by the FX rate for its currency → `base_currency`.
+/// If no rate is available for a given currency, a rate of 1.0 is used as a fallback
+/// (i.e., the amount is treated as already in the base currency).
+pub fn get_annual_dividend_income(
+    conn: &Connection,
+    base_currency: &str,
+    fx_rates: &[FxRate],
+) -> Result<f64, String> {
     let cutoff = (Utc::now() - chrono::Duration::days(365))
         .format("%Y-%m-%d")
         .to_string();
 
-    let income: f64 = conn
-        .query_row(
-            "SELECT COALESCE(SUM(d.amount_per_unit * h.quantity), 0.0)
+    // Fetch per-row amounts with their dividend currency so we can apply FX conversion.
+    let mut stmt = conn
+        .prepare(
+            "SELECT d.amount_per_unit * h.quantity, d.currency
              FROM dividends d
              JOIN holdings h ON h.id = d.holding_id
              WHERE d.pay_date >= ?1",
-            params![cutoff],
-            |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
 
-    Ok(income)
+    let rows = stmt
+        .query_map(params![cutoff], |row| {
+            Ok((row.get::<_, f64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let base_upper = base_currency.to_uppercase();
+
+    let mut total = 0.0_f64;
+    for row in rows {
+        let (raw_amount, currency) = row.map_err(|e| e.to_string())?;
+        let currency_upper = currency.to_uppercase();
+
+        let fx_rate = if currency_upper == base_upper {
+            1.0
+        } else {
+            // Try direct pair first (e.g. USDCAD), then inverted (e.g. CADUSD → 1/rate).
+            let direct = format!("{}{}", currency_upper, base_upper);
+            let inverted = format!("{}{}", base_upper, currency_upper);
+            if let Some(r) = fx_rates.iter().find(|r| r.pair == direct) {
+                r.rate
+            } else if let Some(r) = fx_rates.iter().find(|r| r.pair == inverted) {
+                if r.rate != 0.0 {
+                    1.0 / r.rate
+                } else {
+                    1.0
+                }
+            } else {
+                1.0 // fallback: no rate available, treat as base currency
+            }
+        };
+
+        total += raw_amount * fx_rate;
+    }
+
+    Ok(total)
 }
 
 #[allow(dead_code)]
@@ -1070,19 +1131,21 @@ pub fn update_account(
     Ok(())
 }
 
-/// Delete an account by id. Returns an error if any holding references this account's name.
+/// Delete an account by id. Returns an error if any holding references this account's type.
 pub fn delete_account(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
-    // Look up the account name first
-    let name: String = conn.query_row(
-        "SELECT name FROM accounts WHERE id=?1",
+    // Look up the account name and type
+    let (name, account_type): (String, String) = conn.query_row(
+        "SELECT name, type FROM accounts WHERE id=?1",
         params![id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
 
-    // Guard: refuse deletion when holdings reference this account name
+    // Guard: refuse deletion when holdings reference this account type.
+    // holdings.account stores the AccountType string (e.g. "tfsa", "taxable"),
+    // not the account's human-readable name.
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM holdings WHERE account=?1",
-        params![name],
+        params![account_type],
         |row| row.get(0),
     )?;
 
