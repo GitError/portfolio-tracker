@@ -8,6 +8,7 @@ import type {
   HoldingWithPrice,
   PortfolioSnapshot,
 } from '../types/portfolio';
+import { Select } from './ui/Select';
 
 interface AccountsModalProps {
   isOpen: boolean;
@@ -68,6 +69,11 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const referencedNames = holdingAccountNames(portfolio);
+
+  const accountTypeOptions = VALID_ACCOUNT_TYPES.map((t) => ({
+    value: t,
+    label: accountTypeLabel(t),
+  }));
 
   async function loadAccounts() {
     setLoading(true);
@@ -417,28 +423,13 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
                   boxSizing: 'border-box',
                 }}
               />
-              <select
+              <Select
                 value={form.accountType}
-                onChange={(e) => setForm((prev) => ({ ...prev, accountType: e.target.value }))}
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-primary)',
-                  padding: '7px 10px',
-                  fontSize: 12,
-                  fontFamily: 'var(--font-sans)',
-                  borderRadius: 2,
-                  outline: 'none',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                }}
-              >
-                {VALID_ACCOUNT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {accountTypeLabel(t)}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) =>
+                  setForm((prev) => ({ ...prev, accountType: value as ValidAccountType }))
+                }
+                options={accountTypeOptions}
+              />
               <input
                 type="text"
                 placeholder="Institution (optional, e.g. Questrade)"
