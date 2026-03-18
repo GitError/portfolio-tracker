@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import App from '../App';
+import { isTauri } from '../lib/tauri';
 
 // Mock Tauri — not available in jsdom
 vi.mock('../hooks/usePortfolio', () => ({
@@ -41,29 +42,25 @@ describe('App', () => {
 });
 
 describe('Tauri detection', () => {
-  it('isTauri returns false in browser (no __TAURI_INTERNALS__)', async () => {
-    // In the test environment window.__TAURI_INTERNALS__ is not set
-    expect('__TAURI_INTERNALS__' in window).toBe(false);
+  it('isTauri returns false in browser (no tauri globals)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).__TAURI_INTERNALS__;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).__TAURI__;
+    expect(isTauri()).toBe(false);
   });
 
-  it('mock data path is taken when __TAURI_INTERNALS__ absent', async () => {
-    // Directly import and exercise the hook logic by checking the detection
-    // key — if __TAURI_INTERNALS__ is absent, the browser mock path runs.
-    const hasTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-    expect(hasTauri).toBe(false);
-  });
-
-  it('isTauri would return true when __TAURI_INTERNALS__ is present', () => {
+  it('isTauri returns true when __TAURI_INTERNALS__ is present', () => {
     // Simulate what Tauri v2 sets on the window object
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       value: { invoke: vi.fn() },
       configurable: true,
       writable: true,
     });
-    expect('__TAURI_INTERNALS__' in window).toBe(true);
+    expect(isTauri()).toBe(true);
     // Cleanup
-    // @ts-expect-error — test teardown
-    delete window.__TAURI_INTERNALS__;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (window as any).__TAURI_INTERNALS__;
   });
 });
 
