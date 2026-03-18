@@ -470,7 +470,10 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             gap: 10,
             alignItems: 'center',
             flexWrap: 'wrap',
-            marginLeft: 'auto',
+            // Stretch to fill remaining space so wrapped lines keep right alignment.
+            flex: 1,
+            justifyContent: 'flex-end',
+            minWidth: 0,
           }}
         >
           <input
