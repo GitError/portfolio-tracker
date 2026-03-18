@@ -449,6 +449,9 @@ pub struct RefreshResult {
     pub failed_symbols: Vec<String>,
     /// IDs of price alerts that were triggered during this refresh.
     pub triggered_alerts: Vec<String>,
+    /// Human-readable errors that occurred while evaluating price alerts.
+    /// Non-empty when one or more alert checks failed so the frontend can surface them.
+    pub alert_errors: Vec<String>,
 }
 
 /// Full data export payload — includes all user data for backup/restore.

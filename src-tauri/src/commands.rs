@@ -444,9 +444,21 @@ fn build_portfolio_snapshot(
         // Exclude intraday purchases from daily PnL: a holding created today has
         // no prior-day close to compare against, so applying the day-over-day
         // change_percent would overstate the gain.
-        let today = Utc::now().date_naive().to_string(); // "YYYY-MM-DD"
-        let created_date = &holding.created_at[..10]; // first 10 chars of ISO 8601
-        if created_date < today.as_str() {
+        // Use a consistent UTC date boundary to avoid off-by-one errors at midnight.
+        let today_utc = Utc::now().date_naive().to_string(); // "YYYY-MM-DD"
+        let created_date_utc = holding
+            .created_at
+            .get(..10)
+            .and_then(|s| {
+                // Only treat as a valid date if it parses; skip bad rows safely.
+                if s.len() == 10 {
+                    Some(s)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or("");
+        if !created_date_utc.is_empty() && created_date_utc < today_utc.as_str() {
             daily_pnl += market_value_cad * (change_percent / 100.0);
         }
 
@@ -539,9 +551,16 @@ pub async fn get_portfolio(
         let cost_basis_method =
             db::get_config(&conn, "cost_basis_method")?.unwrap_or_else(|| "avco".to_string());
         let transactions = db::get_all_transactions(&conn)?;
-        compute_realized_gains_grouped(&transactions, &cost_basis_method)
-            .map(|s| s.total_realized_gain)
-            .unwrap_or(0.0)
+        match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
+            Ok(s) => s.total_realized_gain,
+            Err(e) => {
+                eprintln!(
+                    "realized_gains error (method={:?}): {}",
+                    cost_basis_method, e
+                );
+                return Err(e);
+            }
+        }
     };
 
     let annual_dividend_income = {
@@ -905,11 +924,20 @@ pub async fn refresh_prices(
         db::get_all_holdings(&conn)?
     };
 
-    // Collect unique symbols (skip cash)
+    // Collect unique symbols (skip cash) and a symbol→currency fallback map so
+    // that when Yahoo Finance omits the currency field we use the holding's own
+    // stored currency instead of silently defaulting to USD.
+    let mut symbol_currencies: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
     let symbols: Vec<String> = holdings
         .iter()
         .filter(|h| h.asset_type.as_str() != "cash")
-        .map(|h| h.symbol.clone())
+        .map(|h| {
+            symbol_currencies
+                .entry(h.symbol.clone())
+                .or_insert_with(|| h.currency.clone());
+            h.symbol.clone()
+        })
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
@@ -923,7 +951,7 @@ pub async fn refresh_prices(
         .collect();
 
     let (fetch_result, fx_rates) = tokio::join!(
-        fetch_all_prices(&client.0, symbols),
+        fetch_all_prices(&client.0, symbols, &symbol_currencies),
         fetch_all_fx_rates(&client.0, currencies, &base_currency)
     );
 
@@ -933,6 +961,7 @@ pub async fn refresh_prices(
     } = fetch_result;
 
     let mut triggered_alert_ids: Vec<String> = Vec::new();
+    let mut alert_errors: Vec<String> = Vec::new();
 
     // Persist prices and FX rates to cache
     {
@@ -982,11 +1011,15 @@ pub async fn refresh_prices(
             eprintln!("Failed to prune portfolio snapshots: {}", e);
         }
 
-        // Check price alerts — collect newly-triggered IDs, log errors but don't fail
+        // Check price alerts — collect newly-triggered IDs and surface errors
         for price in &prices {
             match db::check_and_trigger_alerts(&conn, &price.symbol, price.price) {
                 Ok(ids) => triggered_alert_ids.extend(ids),
-                Err(e) => eprintln!("Failed to check alerts for {}: {}", price.symbol, e),
+                Err(e) => {
+                    let msg = format!("Failed to check alerts for {}: {}", price.symbol, e);
+                    eprintln!("{}", msg);
+                    alert_errors.push(msg);
+                }
             }
         }
     }
@@ -995,6 +1028,7 @@ pub async fn refresh_prices(
         prices,
         failed_symbols,
         triggered_alerts: triggered_alert_ids,
+        alert_errors,
     })
 }
 
@@ -1087,7 +1121,17 @@ pub async fn get_performance(
     let mut by_date: std::collections::BTreeMap<String, PerformancePoint> =
         std::collections::BTreeMap::new();
     for point in snapshots {
-        let date_key = point.date[..10].to_string();
+        // Guard against corrupted rows whose date field is shorter than 10 chars.
+        let date_key = match point.date.get(..10) {
+            Some(d) => d.to_string(),
+            None => {
+                eprintln!(
+                    "get_performance: skipping snapshot with malformed date {:?}",
+                    point.date
+                );
+                continue;
+            }
+        };
         by_date.insert(date_key, point);
     }
     Ok(by_date.into_values().collect())
