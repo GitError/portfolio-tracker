@@ -57,6 +57,7 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
             name        TEXT NOT NULL,
             asset_type  TEXT NOT NULL,
             account     TEXT NOT NULL DEFAULT 'taxable',
+            account_id  TEXT,
             quantity    REAL NOT NULL,
             cost_basis  REAL NOT NULL,
             currency    TEXT NOT NULL,
@@ -207,6 +208,43 @@ pub fn init_db(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     }
 
+    // One-time migration: backfill holdings.account_id from legacy holdings.account (account type).
+    if !table_has_column(conn, "holdings", "account_id")? {
+        conn.execute("ALTER TABLE holdings ADD COLUMN account_id TEXT", [])
+            .map_err(|e| e.to_string())?;
+    }
+
+    let holdings_account_id_migration_done: bool = conn
+        .query_row(
+            "SELECT 1 FROM app_config WHERE key='migration_holdings_account_id_backfill'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !holdings_account_id_migration_done {
+        // Map the first account (by created_at) matching each holding's legacy account type.
+        conn.execute(
+            "UPDATE holdings
+             SET account_id = (
+                 SELECT id FROM accounts
+                 WHERE type = holdings.account
+                 ORDER BY created_at ASC
+                 LIMIT 1
+             )
+             WHERE account_id IS NULL OR account_id = ''",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO app_config (key, value)
+             VALUES ('migration_holdings_account_id_backfill', '1')",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     Ok(())
 }
 
@@ -283,15 +321,29 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
     let now = Utc::now().to_rfc3339();
     let asset_type_str = input.asset_type.as_str();
 
+    let effective_account_id = if let Some(account_id) = input.account_id {
+        Some(account_id)
+    } else {
+        // Best-effort fallback for legacy inserts / mocks:
+        // map the legacy holdings.account (account type) to the first matching account record.
+        conn.query_row(
+            "SELECT id FROM accounts WHERE type=?1 ORDER BY created_at ASC LIMIT 1",
+            params![input.account.as_str()],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+
     conn.execute(
-        "INSERT INTO holdings (id, symbol, name, asset_type, account, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT INTO holdings (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             id,
             input.symbol,
             input.name,
             asset_type_str,
             input.account.as_str(),
+            effective_account_id.as_deref(),
             input.quantity,
             input.cost_basis,
             input.currency,
@@ -309,6 +361,8 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
         name: input.name,
         asset_type: input.asset_type,
         account: input.account,
+        account_id: effective_account_id,
+        account_name: None,
         quantity: input.quantity,
         cost_basis: input.cost_basis,
         currency: input.currency,
@@ -323,15 +377,38 @@ pub fn update_holding(conn: &Connection, holding: Holding) -> Result<Holding, St
     let now = Utc::now().to_rfc3339();
     let asset_type_str = holding.asset_type.as_str();
 
+    let effective_account_id = if let Some(account_id) = holding.account_id.clone() {
+        Some(account_id)
+    } else {
+        conn.query_row(
+            "SELECT id FROM accounts WHERE type=?1 ORDER BY created_at ASC LIMIT 1",
+            params![holding.account.as_str()],
+            |r| r.get(0),
+        )
+        .ok()
+    };
+
     let rows = conn
         .execute(
-            "UPDATE holdings SET symbol=?1, name=?2, asset_type=?3, account=?4, quantity=?5, cost_basis=?6, currency=?7, exchange=?8, target_weight=?9, updated_at=?10
-             WHERE id=?11",
+            "UPDATE holdings SET
+                 symbol=?1,
+                 name=?2,
+                 asset_type=?3,
+                 account=?4,
+                 account_id=?5,
+                 quantity=?6,
+                 cost_basis=?7,
+                 currency=?8,
+                 exchange=?9,
+                 target_weight=?10,
+                 updated_at=?11
+             WHERE id=?12",
             params![
                 holding.symbol,
                 holding.name,
                 asset_type_str,
                 holding.account.as_str(),
+                effective_account_id.as_deref(),
                 holding.quantity,
                 holding.cost_basis,
                 holding.currency,
@@ -367,21 +444,23 @@ pub fn delete_all_holdings(conn: &Connection) -> Result<(), rusqlite::Error> {
 
 pub fn insert_holding_with_id(conn: &Connection, holding: Holding) -> Result<(), rusqlite::Error> {
     conn.execute(
-        "INSERT OR REPLACE INTO holdings (id, symbol, name, asset_type, account, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        "INSERT OR REPLACE INTO holdings
+         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             holding.id,
             holding.symbol,
             holding.name,
             holding.asset_type.as_str(),
             holding.account.as_str(),
+            holding.account_id.as_deref(),
             holding.quantity,
             holding.cost_basis,
             holding.currency,
             holding.exchange,
             holding.target_weight,
             holding.created_at,
-            holding.updated_at
+            holding.updated_at,
         ],
     )?;
     Ok(())
@@ -390,8 +469,24 @@ pub fn insert_holding_with_id(conn: &Connection, holding: Holding) -> Result<(),
 pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, symbol, name, asset_type, account, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at
-             FROM holdings ORDER BY created_at ASC",
+            "SELECT
+                h.id,
+                h.symbol,
+                h.name,
+                h.asset_type,
+                h.account,
+                h.account_id,
+                a.name AS account_name,
+                h.quantity,
+                h.cost_basis,
+                h.currency,
+                h.exchange,
+                h.target_weight,
+                h.created_at,
+                h.updated_at
+             FROM holdings h
+             LEFT JOIN accounts a ON a.id = h.account_id
+             ORDER BY h.created_at ASC",
         )
         .map_err(|e| e.to_string())?;
 
@@ -404,13 +499,15 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 row.get::<_, String>(2)?,
                 asset_type_str,
                 row.get::<_, String>(4)?,
-                row.get::<_, f64>(5)?,
-                row.get::<_, f64>(6)?,
-                row.get::<_, String>(7)?,
-                row.get::<_, String>(8)?,
-                row.get::<_, f64>(9)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, f64>(7)?,
+                row.get::<_, f64>(8)?,
+                row.get::<_, String>(9)?,
                 row.get::<_, String>(10)?,
-                row.get::<_, String>(11)?,
+                row.get::<_, f64>(11)?,
+                row.get::<_, String>(12)?,
+                row.get::<_, String>(13)?,
             ))
         })
         .map_err(|e| e.to_string())?
@@ -422,6 +519,8 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                 name,
                 asset_type_str,
                 account_str,
+                account_id,
+                account_name,
                 quantity,
                 cost_basis,
                 currency,
@@ -438,6 +537,8 @@ pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
                     name,
                     asset_type,
                     account,
+                    account_id,
+                    account_name,
                     quantity,
                     cost_basis,
                     currency,
@@ -1182,6 +1283,7 @@ mod tests {
             name: format!("{} Inc.", symbol),
             asset_type: AssetType::Stock,
             account: AccountType::Taxable,
+            account_id: None,
             quantity: 10.0,
             cost_basis: 100.0,
             currency: "CAD".to_string(),
