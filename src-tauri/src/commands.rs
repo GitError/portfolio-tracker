@@ -276,6 +276,11 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
         } else {
             normalize_symbol_for_import(&raw_symbol)
         };
+        // Validate length on the normalized symbol (not the raw input), because
+        // normalization (uppercase, country-suffix expansion) can change the length.
+        if symbol.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: symbol exceeds maximum length", row));
+        }
 
         let quantity = parse_required_field(&record, quantity_index, row, "quantity")?
             .parse::<f64>()
@@ -307,9 +312,6 @@ fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> 
         let name = parse_optional_field(&record, name_index);
         let exchange = parse_optional_field(&record, exchange_index).to_uppercase();
 
-        if symbol.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: symbol exceeds maximum length", row));
-        }
         if name.len() > crate::config::MAX_FIELD_LEN {
             return Err(format!("Row {}: name exceeds maximum length", row));
         }
@@ -566,7 +568,7 @@ pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, String
     db::get_all_holdings(&conn)
 }
 
-const WEIGHT_EPSILON: f64 = 0.01;
+const WEIGHT_EPSILON: f64 = 0.001;
 
 #[tauri::command]
 pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
@@ -1239,19 +1241,35 @@ pub async fn backup_database(
         return Err("Database file does not exist".to_string());
     }
 
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Could not resolve app data dir: {e}"))?;
+
     // Resolve the destination path. If only a filename is provided (no
-    // directory component), save the backup to the user's Desktop so it is
-    // easy to find.
+    // directory component), save the backup to the app data directory.
+    // Absolute paths are accepted only if their parent is the app data
+    // directory — this prevents writing backup files to arbitrary locations.
     let requested = std::path::PathBuf::from(&destination_path);
     let dest = if requested.is_absolute() {
+        let parent = requested
+            .parent()
+            .ok_or_else(|| "Destination path has no parent directory".to_string())?;
+        // Canonicalize both sides to resolve symlinks / ".." components before
+        // comparing; fall back to the non-canonical paths if they don't exist yet.
+        let canonical_parent =
+            std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+        let canonical_app_data =
+            std::fs::canonicalize(&app_data_dir).unwrap_or_else(|_| app_data_dir.clone());
+        if canonical_parent != canonical_app_data {
+            return Err(format!(
+                "Backup destination must be inside the app data directory ({})",
+                app_data_dir.display()
+            ));
+        }
         requested
     } else {
-        let desktop = app
-            .path()
-            .desktop_dir()
-            .or_else(|_| app.path().home_dir())
-            .map_err(|e| format!("Could not resolve home/desktop dir: {e}"))?;
-        desktop.join(&requested)
+        app_data_dir.join(&requested)
     };
 
     if let Some(parent) = dest.parent() {
@@ -1314,11 +1332,20 @@ pub async fn restore_database(
         }
     }
 
-    let dest = app
+    let app_data_dir = app
         .path()
         .app_data_dir()
-        .map_err(|e| format!("Could not resolve app data dir: {e}"))?
-        .join(crate::config::DB_FILE_NAME);
+        .map_err(|e| format!("Could not resolve app data dir: {e}"))?;
+
+    let dest = app_data_dir.join(crate::config::DB_FILE_NAME);
+
+    // Before overwriting the live database, create a safety backup.  If the
+    // copy fails we abort immediately so the live data is never touched.
+    if dest.exists() {
+        let bak = app_data_dir.join(format!("{}.bak", crate::config::DB_FILE_NAME));
+        std::fs::copy(&dest, &bak)
+            .map_err(|e| format!("Could not create safety backup before restore: {e}"))?;
+    }
 
     std::fs::copy(&src, &dest).map_err(|e| format!("Failed to restore database: {e}"))?;
 
