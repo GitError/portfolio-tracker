@@ -280,7 +280,7 @@ export function Alerts() {
   const active = alerts.filter((a) => !a.triggered);
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px', maxWidth: 800 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px' }}>
       {/* Header */}
       <div
         style={{
@@ -288,6 +288,7 @@ export function Alerts() {
           alignItems: 'center',
           justifyContent: 'space-between',
           marginBottom: 24,
+          width: '100%',
         }}
       >
         <div>
