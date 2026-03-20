@@ -6,6 +6,7 @@ import { AddTransactionModal } from './AddTransactionModal';
 import { EmptyState } from './ui/EmptyState';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
+import { Select } from './ui/Select';
 import { formatNumber } from '../lib/format';
 import type { Transaction, Holding } from '../types/portfolio';
 
@@ -96,6 +97,28 @@ export function TransactionHistory() {
 
   const holdings: Holding[] = useMemo(() => (portfolio?.holdings ?? []) as Holding[], [portfolio]);
 
+  const filterHoldingOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Holdings' },
+      ...holdings.map((h) => ({ value: h.id, label: `${h.symbol} — ${h.name}` })),
+    ],
+    [holdings]
+  );
+
+  const filterTypeOptions = useMemo(
+    () => [
+      { value: 'all', label: 'All Types' },
+      { value: 'buy', label: 'Buy' },
+      { value: 'sell', label: 'Sell' },
+    ],
+    []
+  );
+
+  const selectorHoldingOptions = useMemo(
+    () => holdings.map((h) => ({ value: h.id, label: h.symbol })),
+    [holdings]
+  );
+
   async function loadTransactions() {
     setLoading(true);
     setError(null);
@@ -184,16 +207,6 @@ export function TransactionHistory() {
     setModalOpen(true);
   }
 
-  const selectStyle: React.CSSProperties = {
-    background: 'var(--bg-surface)',
-    border: '1px solid var(--border-primary)',
-    color: 'var(--text-primary)',
-    padding: '6px 10px',
-    fontSize: 11,
-    fontFamily: 'var(--font-mono)',
-    borderRadius: '2px',
-  };
-
   return (
     <div>
       {/* Header */}
@@ -235,44 +248,32 @@ export function TransactionHistory() {
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Filter by holding */}
-          <select
-            value={filterHoldingId}
-            onChange={(e) => setFilterHoldingId(e.target.value)}
-            style={selectStyle}
-          >
-            <option value="all">All Holdings</option>
-            {holdings.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.symbol} — {h.name}
-              </option>
-            ))}
-          </select>
+          <div style={{ width: 230 }}>
+            <Select
+              value={filterHoldingId}
+              onChange={setFilterHoldingId}
+              options={filterHoldingOptions}
+            />
+          </div>
 
           {/* Filter by type */}
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value as TxType)}
-            style={selectStyle}
-          >
-            <option value="all">All Types</option>
-            <option value="buy">Buy</option>
-            <option value="sell">Sell</option>
-          </select>
+          <div style={{ width: 150 }}>
+            <Select
+              value={filterType}
+              onChange={(value) => setFilterType(value as TxType)}
+              options={filterTypeOptions}
+            />
+          </div>
 
           {/* Holding selector for add */}
           {holdings.length > 0 && (
-            <select
-              value={selectorHoldingId}
-              onChange={(e) => setSelectorHoldingId(e.target.value)}
-              style={selectStyle}
-              title="Select holding for new transaction"
-            >
-              {holdings.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.symbol}
-                </option>
-              ))}
-            </select>
+            <div style={{ width: 150 }} title="Select holding for new transaction">
+              <Select
+                value={selectorHoldingId}
+                onChange={setSelectorHoldingId}
+                options={selectorHoldingOptions}
+              />
+            </div>
           )}
 
           <button

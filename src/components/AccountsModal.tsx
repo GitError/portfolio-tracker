@@ -8,6 +8,7 @@ import type {
   HoldingWithPrice,
   PortfolioSnapshot,
 } from '../types/portfolio';
+import { Select } from './ui/Select';
 
 interface AccountsModalProps {
   isOpen: boolean;
@@ -69,6 +70,11 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
 
   const referencedNames = holdingAccountNames(portfolio);
 
+  const accountTypeOptions = VALID_ACCOUNT_TYPES.map((t) => ({
+    value: t,
+    label: accountTypeLabel(t),
+  }));
+
   async function loadAccounts() {
     setLoading(true);
     setError(null);
@@ -122,15 +128,14 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
         institution: form.institution?.trim() || undefined,
       };
       if (editingId) {
-        const updated = await invoke<Account>('update_account', {
+        await invoke<Account>('update_account', {
           id: editingId,
           account: payload,
         });
-        setAccounts((prev) => prev.map((a) => (a.id === editingId ? updated : a)));
       } else {
-        const created = await invoke<Account>('add_account', { account: payload });
-        setAccounts((prev) => [...prev, created]);
+        await invoke<Account>('add_account', { account: payload });
       }
+      await loadAccounts();
       setForm(EMPTY_FORM);
       setEditingId(null);
     } catch (e) {
@@ -145,7 +150,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
     setError(null);
     try {
       await invoke('delete_account', { id });
-      setAccounts((prev) => prev.filter((a) => a.id !== id));
+      await loadAccounts();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -165,6 +170,8 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        overflowY: 'auto',
+        padding: 24,
         zIndex: 1000,
       }}
       onClick={(e) => {
@@ -177,8 +184,9 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
           border: '1px solid var(--border-primary)',
           borderRadius: 2,
           width: '100%',
-          maxWidth: 520,
-          maxHeight: '80vh',
+          maxWidth: 720,
+          // Let the overlay scroll if content exceeds viewport height.
+          maxHeight: 'none',
           display: 'flex',
           flexDirection: 'column',
         }}
@@ -220,7 +228,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
         </div>
 
         {/* Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+        <div style={{ padding: '16px 20px' }}>
           {error && (
             <div
               style={{
@@ -274,7 +282,8 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
               }}
             >
               {accounts.map((acct) => {
-                const hasHoldings = referencedNames.has(acct.name);
+                // Holdings reference account *types* (e.g. "taxable"), not the user-visible account name.
+                const hasHoldings = referencedNames.has(acct.accountType);
                 const isDeleting = deletingId === acct.id;
                 const isEditing = editingId === acct.id;
                 return (
@@ -417,28 +426,13 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
                   boxSizing: 'border-box',
                 }}
               />
-              <select
+              <Select
                 value={form.accountType}
-                onChange={(e) => setForm((prev) => ({ ...prev, accountType: e.target.value }))}
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-primary)',
-                  color: 'var(--text-primary)',
-                  padding: '7px 10px',
-                  fontSize: 12,
-                  fontFamily: 'var(--font-sans)',
-                  borderRadius: 2,
-                  outline: 'none',
-                  width: '100%',
-                  boxSizing: 'border-box',
-                }}
-              >
-                {VALID_ACCOUNT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {accountTypeLabel(t)}
-                  </option>
-                ))}
-              </select>
+                onChange={(value) =>
+                  setForm((prev) => ({ ...prev, accountType: value as ValidAccountType }))
+                }
+                options={accountTypeOptions}
+              />
               <input
                 type="text"
                 placeholder="Institution (optional, e.g. Questrade)"

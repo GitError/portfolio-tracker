@@ -95,6 +95,8 @@ mod tests {
             } else {
                 AccountType::Taxable
             },
+            account_id: None,
+            account_name: None,
             quantity: 1.0,
             cost_basis: value,
             currency: currency.to_string(),
