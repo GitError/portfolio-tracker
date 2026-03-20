@@ -43,3 +43,6 @@ ci-cd/
 *.log
 npm-debug.log*
 .claude/
+
+# IDE
+.cursor/
