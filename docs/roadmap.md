@@ -26,10 +26,16 @@ Incremental improvements to the existing feature set.
 | ✅ | Auto-refresh | Background price refresh on a configurable interval (1m–1hr) with TopBar countdown. |
 | ✅ | Symbol Search | Live symbol autocomplete via Yahoo Finance with local caching. |
 | ✅ | Keyboard Shortcuts | Full keyboard navigation; `?` to see all shortcuts. |
-| ✅ | JSON Backup / Restore | Export and import all holdings as JSON. |
-| 🔲 | In-app Alert Notifications | Show a toast / notification when a price alert fires during auto-refresh (see [#158](https://github.com/GitError/portfolio-tracker/issues/158)). |
-| 🔲 | Full Backup / Restore | Extend export/import to include alerts, dividends, and settings — not just holdings (see [#159](https://github.com/GitError/portfolio-tracker/issues/159)). |
-| 🔲 | Dark / Light Theme Toggle | Add a light theme variant. The current terminal-dark theme remains the default. |
+| ✅ | JSON Backup / Restore | Export and import all data — holdings, alerts, transactions, dividends, and config. |
+| ✅ | In-app Alert Notifications | Toast notifications when price alerts fire during auto-refresh. |
+| ✅ | Transaction History | Per-holding buy/sell log; drives AVCO and FIFO cost basis calculations. |
+| ✅ | Analytics | Sector breakdown, country exposure, weighted beta, P/E, dividend yield, realized gains, and HHI concentration. |
+| ✅ | Accounts Modal | Named account management (TFSA, RRSP, FHSA, Taxable, Crypto, Other). |
+| ✅ | Action Center | Quick-access side panel for alert triggers and fast transaction entry. |
+| ✅ | Annual Dividend Income | Dashboard card shows trailing 12-month dividend income from recorded payment events. |
+| ✅ | SQLx Migration | Database layer migrated from rusqlite to SQLx with async connection pool and WAL mode. |
+| 🔲 | Dark / Light Theme Toggle | Light theme variant selectable in Settings (tracked as [#264](https://github.com/GitError/portfolio-tracker/issues/264)). |
+| 🔲 | i18n / Multi-language | Language picker in Settings; i18next-based translations (tracked as [#263](https://github.com/GitError/portfolio-tracker/issues/263)). |
 
 ---
 
@@ -64,5 +70,8 @@ Features that require significant architectural work or are still being evaluate
 
 | Version | Feature |
 |---------|---------|
-| v0.1.x | CSV import/export, historical snapshots, benchmark overlay, price alerts, account types, rebalancing with target weights, dividend tracking, settings panel, configurable base currency, auto-refresh, symbol search, keyboard shortcuts, JSON backup/restore |
+| v0.1.0-4 | SQLx migration (async pool + WAL mode), `src/` → `frontend/` rename, export/import extended to include transactions and dividends |
+| v0.1.0-3 | Annual dividend income in Dashboard, backend hardening, analytics and performance fixes |
+| v0.1.0-2 | Transaction History, Analytics, Accounts modal, Action Center, in-app alert toast notifications, full backup/restore |
+| v0.2.0 | CSV import/export, historical snapshots, price alerts, account types, rebalancing, dividend tracking, settings panel, configurable base currency, auto-refresh, symbol search, keyboard shortcuts, JSON backup/restore |
 | v0.1.0 | Initial release: Dashboard, Holdings, Performance, Stress Test, multi-currency FX, local SQLite persistence |
