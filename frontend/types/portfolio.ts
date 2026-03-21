@@ -25,6 +25,10 @@ export interface HoldingInput {
   currency: string;
   exchange: string;
   targetWeight: number;
+  indicatedAnnualDividend: number | null;
+  indicatedAnnualDividendCurrency: string | null;
+  dividendFrequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'irregular' | null;
+  maturityDate: string | null;
 }
 
 export interface Holding {
@@ -40,6 +44,10 @@ export interface Holding {
   targetWeight: number; // desired % of total portfolio value
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
+  indicatedAnnualDividend: number | null;
+  indicatedAnnualDividendCurrency: string | null;
+  dividendFrequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'irregular' | null;
+  maturityDate: string | null;
 }
 
 export interface HoldingWithPrice extends Holding {
@@ -54,6 +62,8 @@ export interface HoldingWithPrice extends Holding {
   targetDeltaValue: number; // targetValue - marketValueCad
   targetDeltaPercent: number; // targetWeight - weight
   dailyChangePercent: number;
+  // Inherited from Holding: indicatedAnnualDividend, indicatedAnnualDividendCurrency,
+  // dividendFrequency, maturityDate
 }
 
 export interface PortfolioSnapshot {
@@ -120,6 +130,9 @@ export interface PriceData {
   change: number;
   changePercent: number;
   updatedAt: string;
+  open: number | null;
+  previousClose: number | null;
+  volume: number | null;
 }
 
 export interface RefreshResult {
@@ -272,6 +285,7 @@ export interface SymbolMetadata {
   peRatio?: number;
   dividendYield?: number;
   beta?: number;
+  eps?: number | null;
 }
 
 export interface SectorWeight {

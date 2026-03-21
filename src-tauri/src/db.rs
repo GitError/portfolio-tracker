@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::types::{
     Account, AccountType, AlertDirection, AssetType, Dividend, DividendInput, FxRate, Holding,
-    HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolResult,
-    Transaction, TransactionInput, TransactionType,
+    HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolMetadata,
+    SymbolResult, Transaction, TransactionInput, TransactionType,
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -111,8 +111,8 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
 
     sqlx::query(
         "INSERT INTO holdings
-         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
     )
     .bind(&id)
     .bind(&input.symbol)
@@ -127,6 +127,10 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
     .bind(input.target_weight)
     .bind(&now)
     .bind(&now)
+    .bind(input.indicated_annual_dividend)
+    .bind(&input.indicated_annual_dividend_currency)
+    .bind(&input.dividend_frequency)
+    .bind(&input.maturity_date)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -146,6 +150,10 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
         target_weight: input.target_weight,
         created_at: now.clone(),
         updated_at: now,
+        indicated_annual_dividend: input.indicated_annual_dividend,
+        indicated_annual_dividend_currency: input.indicated_annual_dividend_currency,
+        dividend_frequency: input.dividend_frequency,
+        maturity_date: input.maturity_date,
     })
 }
 
@@ -179,8 +187,12 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
              currency=$8,
              exchange=$9,
              target_weight=$10,
-             updated_at=$11
-         WHERE id=$12",
+             updated_at=$11,
+             indicated_annual_dividend=$12,
+             indicated_annual_dividend_currency=$13,
+             dividend_frequency=$14,
+             maturity_date=$15
+         WHERE id=$16",
     )
     .bind(&holding.symbol)
     .bind(&holding.name)
@@ -193,6 +205,10 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
     .bind(&holding.exchange)
     .bind(holding.target_weight)
     .bind(&now)
+    .bind(holding.indicated_annual_dividend)
+    .bind(&holding.indicated_annual_dividend_currency)
+    .bind(&holding.dividend_frequency)
+    .bind(&holding.maturity_date)
     .bind(&holding.id)
     .execute(pool)
     .await
@@ -229,8 +245,8 @@ pub async fn delete_all_holdings(pool: &SqlitePool) -> Result<(), String> {
 pub async fn insert_holding_with_id(pool: &SqlitePool, holding: Holding) -> Result<(), String> {
     sqlx::query(
         "INSERT OR REPLACE INTO holdings
-         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
     )
     .bind(&holding.id)
     .bind(&holding.symbol)
@@ -245,6 +261,10 @@ pub async fn insert_holding_with_id(pool: &SqlitePool, holding: Holding) -> Resu
     .bind(holding.target_weight)
     .bind(&holding.created_at)
     .bind(&holding.updated_at)
+    .bind(holding.indicated_annual_dividend)
+    .bind(&holding.indicated_annual_dividend_currency)
+    .bind(&holding.dividend_frequency)
+    .bind(&holding.maturity_date)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -268,7 +288,11 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
             h.exchange,
             h.target_weight,
             h.created_at,
-            h.updated_at
+            h.updated_at,
+            h.indicated_annual_dividend,
+            h.indicated_annual_dividend_currency,
+            h.dividend_frequency,
+            h.maturity_date
          FROM holdings h
          LEFT JOIN accounts a ON a.id = h.account_id
          ORDER BY h.created_at ASC",
@@ -299,6 +323,10 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
                 target_weight: r.get(11),
                 created_at: r.get(12),
                 updated_at: r.get(13),
+                indicated_annual_dividend: r.get::<Option<f64>, _>(14),
+                indicated_annual_dividend_currency: r.get::<Option<String>, _>(15),
+                dividend_frequency: r.get::<Option<String>, _>(16),
+                maturity_date: r.get::<Option<String>, _>(17),
             }
         })
         .collect();
@@ -310,14 +338,17 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
 
 pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), String> {
     sqlx::query(
-        "INSERT INTO price_cache (symbol, price, currency, change, change_percent, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        "INSERT INTO price_cache (symbol, price, currency, change, change_percent, updated_at, open, previous_close, volume)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT(symbol) DO UPDATE SET
            price=excluded.price,
            currency=excluded.currency,
            change=excluded.change,
            change_percent=excluded.change_percent,
-           updated_at=excluded.updated_at",
+           updated_at=excluded.updated_at,
+           open=excluded.open,
+           previous_close=excluded.previous_close,
+           volume=excluded.volume",
     )
     .bind(&price.symbol)
     .bind(price.price)
@@ -325,6 +356,9 @@ pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), St
     .bind(price.change)
     .bind(price.change_percent)
     .bind(&price.updated_at)
+    .bind(price.open)
+    .bind(price.previous_close)
+    .bind(price.volume)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -334,7 +368,7 @@ pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), St
 pub async fn get_cached_prices(pool: &SqlitePool) -> Result<Vec<PriceData>, String> {
     use sqlx::Row;
     let rows = sqlx::query(
-        "SELECT symbol, price, currency, change, change_percent, updated_at FROM price_cache",
+        "SELECT symbol, price, currency, change, change_percent, updated_at, open, previous_close, volume FROM price_cache",
     )
     .fetch_all(pool)
     .await
@@ -349,6 +383,9 @@ pub async fn get_cached_prices(pool: &SqlitePool) -> Result<Vec<PriceData>, Stri
             change: r.get(3),
             change_percent: r.get(4),
             updated_at: r.get(5),
+            open: r.get::<Option<f64>, _>(6),
+            previous_close: r.get::<Option<f64>, _>(7),
+            volume: r.get::<Option<i64>, _>(8),
         })
         .collect())
 }
@@ -474,6 +511,92 @@ pub async fn get_symbol_cache_exact(
             exchange: r.get(3),
             currency: r.get(4),
         }
+    }))
+}
+
+// ── Symbol fundamentals cache ─────────────────────────────────────────────────
+
+/// Persist fundamentals fields into symbol_cache for a given symbol.
+/// Only updates the fundamentals columns; basic symbol info (name, asset_type, etc.) is unchanged.
+pub async fn upsert_symbol_fundamentals(
+    pool: &SqlitePool,
+    meta: &SymbolMetadata,
+) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO symbol_cache (symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT(symbol) DO UPDATE SET
+           sector=excluded.sector,
+           industry=excluded.industry,
+           country=excluded.country,
+           beta=excluded.beta,
+           pe_ratio=excluded.pe_ratio,
+           dividend_yield=excluded.dividend_yield,
+           eps=excluded.eps,
+           market_cap=excluded.market_cap,
+           fundamentals_updated_at=excluded.fundamentals_updated_at",
+    )
+    .bind(&meta.symbol)
+    .bind(&meta.sector)
+    .bind(&meta.industry)
+    .bind(&meta.country)
+    .bind(meta.beta)
+    .bind(meta.pe_ratio)
+    .bind(meta.dividend_yield)
+    .bind(meta.eps)
+    .bind(meta.market_cap)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Returns cached fundamentals for a symbol if they were updated within `max_age_secs` seconds.
+/// Returns `None` when there is no cache entry or the entry is stale.
+pub async fn get_symbol_fundamentals_from_cache(
+    pool: &SqlitePool,
+    symbol: &str,
+    max_age_secs: i64,
+) -> Result<Option<SymbolMetadata>, String> {
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at
+         FROM symbol_cache
+         WHERE UPPER(symbol) = UPPER($1) AND fundamentals_updated_at IS NOT NULL
+         LIMIT 1",
+    )
+    .bind(symbol)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let row = match row {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+
+    // Check freshness
+    let updated_at: String = row.get(9);
+    let cached_time = chrono::DateTime::parse_from_rfc3339(&updated_at)
+        .map(|dt| dt.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now() - chrono::Duration::seconds(max_age_secs + 1));
+    let age = (Utc::now() - cached_time).num_seconds();
+    if age > max_age_secs {
+        return Ok(None);
+    }
+
+    Ok(Some(SymbolMetadata {
+        symbol: row.get(0),
+        sector: row.get::<Option<String>, _>(1),
+        industry: row.get::<Option<String>, _>(2),
+        country: row.get::<Option<String>, _>(3),
+        beta: row.get::<Option<f64>, _>(4),
+        pe_ratio: row.get::<Option<f64>, _>(5),
+        dividend_yield: row.get::<Option<f64>, _>(6),
+        eps: row.get::<Option<f64>, _>(7),
+        market_cap: row.get::<Option<f64>, _>(8),
     }))
 }
 
@@ -1062,6 +1185,10 @@ mod tests {
             currency: "CAD".to_string(),
             exchange: String::new(),
             target_weight: 0.0,
+            indicated_annual_dividend: None,
+            indicated_annual_dividend_currency: None,
+            dividend_frequency: None,
+            maturity_date: None,
         }
     }
 

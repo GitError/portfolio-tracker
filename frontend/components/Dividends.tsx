@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DollarSign, Plus, Trash2 } from 'lucide-react';
-import type { Dividend, DividendInput, Holding } from '../types/portfolio';
+import { DollarSign, Plus, Trash2, TrendingUp } from 'lucide-react';
+import type { Dividend, DividendInput, Holding, HoldingWithPrice } from '../types/portfolio';
+import { usePortfolio } from '../hooks/usePortfolio';
 import { formatCurrency } from '../lib/format';
 import { MOCK_DIVIDENDS, MOCK_HOLDINGS } from '../lib/mockData';
 import { EmptyState } from './ui/EmptyState';
@@ -162,6 +163,7 @@ export function Dividends() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const { showToast } = useToast();
+  const { portfolio } = usePortfolio();
 
   const loadData = useCallback(async () => {
     try {
@@ -226,6 +228,23 @@ export function Dividends() {
     },
     [showToast]
   );
+
+  // Forward income: holdings with indicatedAnnualDividend set
+  const forwardIncomeRows = useMemo(() => {
+    const holdingsWithPrice: HoldingWithPrice[] = portfolio?.holdings ?? [];
+    return holdingsWithPrice
+      .filter((h) => h.indicatedAnnualDividend != null && h.indicatedAnnualDividend > 0)
+      .map((h) => ({
+        id: h.id,
+        symbol: h.symbol,
+        name: h.name,
+        currency: h.indicatedAnnualDividendCurrency ?? h.currency,
+        frequency: h.dividendFrequency,
+        iadPerUnit: h.indicatedAnnualDividend as number,
+        quantity: h.quantity,
+        estimatedAnnualIncome: (h.indicatedAnnualDividend as number) * h.quantity,
+      }));
+  }, [portfolio]);
 
   // Summary stats
   const summary = useMemo(() => {
@@ -338,6 +357,184 @@ export function Dividends() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Forward Income section */}
+      {forwardIncomeRows.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 10,
+            }}
+          >
+            <TrendingUp size={14} style={{ color: 'var(--color-gain)' }} />
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                fontFamily: 'var(--font-sans)',
+                color: 'var(--text-primary)',
+              }}
+            >
+              Forward Income
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                fontFamily: 'var(--font-mono)',
+              }}
+            >
+              (based on indicated annual dividend × quantity)
+            </span>
+          </div>
+          <div style={{ border: '1px solid var(--border-primary)', overflow: 'hidden' }}>
+            {/* Header */}
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '90px 1fr 110px 90px 100px 120px',
+                padding: '7px 14px',
+                background: 'var(--bg-surface-alt)',
+                borderBottom: '1px solid var(--border-primary)',
+              }}
+            >
+              {['SYMBOL', 'NAME', 'FREQUENCY', 'CURRENCY', 'IAD / UNIT', 'EST. ANNUAL'].map((h) => (
+                <div
+                  key={h}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--text-muted)',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {h}
+                </div>
+              ))}
+            </div>
+            {forwardIncomeRows.map((row, i) => (
+              <div
+                key={row.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '90px 1fr 110px 90px 100px 120px',
+                  padding: '9px 14px',
+                  alignItems: 'center',
+                  background: i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)',
+                  borderBottom:
+                    i < forwardIncomeRows.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  {row.symbol}
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-secondary)',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {row.name}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    color: row.frequency ? 'var(--text-secondary)' : 'var(--text-muted)',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {row.frequency ?? '—'}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {row.currency}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 12,
+                    color: 'var(--color-gain)',
+                    textAlign: 'right',
+                  }}
+                >
+                  {formatCurrency(row.iadPerUnit, row.currency)}
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: 'var(--color-gain)',
+                    textAlign: 'right',
+                  }}
+                >
+                  {formatCurrency(row.estimatedAnnualIncome, row.currency)}
+                </div>
+              </div>
+            ))}
+            {/* Total row */}
+            {forwardIncomeRows.length > 1 && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '90px 1fr 110px 90px 100px 120px',
+                  padding: '9px 14px',
+                  background: 'var(--bg-surface-alt)',
+                  borderTop: '2px solid var(--border-primary)',
+                }}
+              >
+                <div
+                  style={{
+                    gridColumn: '1 / 6',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 10,
+                    color: 'var(--text-muted)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  Total ({forwardIncomeRows.length} holdings)
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    color: 'var(--color-gain)',
+                    textAlign: 'right',
+                  }}
+                >
+                  {formatCurrency(
+                    forwardIncomeRows.reduce((s, r) => s + r.estimatedAnnualIncome, 0),
+                    forwardIncomeRows[0]?.currency ?? 'CAD'
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

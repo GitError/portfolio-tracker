@@ -478,6 +478,10 @@ fn build_portfolio_snapshot(
             target_weight: holding.target_weight,
             created_at: holding.created_at.clone(),
             updated_at: holding.updated_at.clone(),
+            indicated_annual_dividend: holding.indicated_annual_dividend,
+            indicated_annual_dividend_currency: holding.indicated_annual_dividend_currency.clone(),
+            dividend_frequency: holding.dividend_frequency.clone(),
+            maturity_date: holding.maturity_date.clone(),
             current_price,
             current_price_cad,
             market_value_cad,
@@ -684,6 +688,10 @@ pub async fn import_holdings_csv(
                 currency: row.currency,
                 exchange: row.exchange,
                 target_weight: row.target_weight,
+                indicated_annual_dividend: None,
+                indicated_annual_dividend_currency: None,
+                dividend_frequency: None,
+                maturity_date: None,
             });
             continue;
         }
@@ -744,6 +752,10 @@ pub async fn import_holdings_csv(
                 row.exchange
             },
             target_weight: row.target_weight,
+            indicated_annual_dividend: None,
+            indicated_annual_dividend_currency: None,
+            dividend_frequency: None,
+            maturity_date: None,
         });
     }
 
@@ -1095,6 +1107,12 @@ pub async fn get_symbol_price(
     client: State<'_, HttpClient>,
 ) -> Result<PriceData, String> {
     fetch_price(&client.0, &symbol).await
+}
+
+#[tauri::command]
+pub async fn get_cached_prices(db: State<'_, DbState>) -> Result<Vec<PriceData>, String> {
+    let pool = &db.0;
+    db::get_cached_prices(pool).await
 }
 
 #[tauri::command]
@@ -1551,12 +1569,45 @@ pub(crate) async fn get_symbol_metadata_internal(
     client: &reqwest::Client,
     symbols: &[String],
 ) -> Result<Vec<SymbolMetadata>, String> {
+    get_symbol_metadata_with_cache(client, symbols, None).await
+}
+
+/// Internal helper that optionally checks symbol_cache before hitting Yahoo Finance.
+/// When `pool` is provided, fundamentals cached within 24 hours are returned directly.
+pub(crate) async fn get_symbol_metadata_with_cache(
+    client: &reqwest::Client,
+    symbols: &[String],
+    pool: Option<&sqlx::SqlitePool>,
+) -> Result<Vec<SymbolMetadata>, String> {
     if symbols.is_empty() {
         return Ok(vec![]);
     }
 
+    const CACHE_TTL_SECS: i64 = 86_400; // 24 hours
+
+    // ── 0. Check DB cache when pool is available ──────────────────────────────
+    let mut results: Vec<Option<SymbolMetadata>> = vec![None; symbols.len()];
+    let mut stale_indices: Vec<usize> = Vec::new();
+
+    if let Some(pool) = pool {
+        for (i, symbol) in symbols.iter().enumerate() {
+            match db::get_symbol_fundamentals_from_cache(pool, symbol, CACHE_TTL_SECS).await {
+                Ok(Some(cached)) => results[i] = Some(cached),
+                _ => stale_indices.push(i),
+            }
+        }
+    } else {
+        stale_indices = (0..symbols.len()).collect();
+    }
+
+    if stale_indices.is_empty() {
+        return Ok(results.into_iter().flatten().collect());
+    }
+
+    let stale_symbols: Vec<String> = stale_indices.iter().map(|&i| symbols[i].clone()).collect();
+
     // ── 1. Bulk quote request for numeric fields ──────────────────────────────
-    let joined = symbols.join(",");
+    let joined = stale_symbols.join(",");
     let quote_url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
 
     let quote_future = client
@@ -1565,7 +1616,7 @@ pub(crate) async fn get_symbol_metadata_internal(
         .send();
 
     // ── 2. Per-symbol assetProfile requests for sector/industry/country ───────
-    let profile_futures: Vec<_> = symbols
+    let profile_futures: Vec<_> = stale_symbols
         .iter()
         .map(|s| fetch_asset_profile(client, s))
         .collect();
@@ -1574,8 +1625,7 @@ pub(crate) async fn get_symbol_metadata_internal(
     let (quote_response, profile_results) =
         futures::future::join(quote_future, futures::future::join_all(profile_futures)).await;
 
-    // Parse bulk quote response (best-effort). The response future has already resolved
-    // via `join`; we now just need to await the body deserialization.
+    // Parse bulk quote response (best-effort).
     let quote_json: Option<serde_json::Value> = async {
         let resp = quote_response.ok()?;
         if !resp.status().is_success() {
@@ -1607,45 +1657,53 @@ pub(crate) async fn get_symbol_metadata_internal(
         .map(|(sym, sector, industry, country)| (sym, (sector, industry, country)))
         .collect();
 
-    // ── 3. Merge into SymbolMetadata ─────────────────────────────────────────
-    let metadata: Vec<SymbolMetadata> = symbols
-        .iter()
-        .map(|symbol| {
-            let quote = quote_items.get(symbol);
-            let (sector, industry, country) = profile_map
-                .get(symbol)
-                .cloned()
-                .unwrap_or((None, None, None));
+    // ── 3. Merge fetched data and persist to cache ────────────────────────────
+    for (&original_idx, symbol) in stale_indices.iter().zip(stale_symbols.iter()) {
+        let quote = quote_items.get(symbol);
+        let (sector, industry, country) = profile_map
+            .get(symbol)
+            .cloned()
+            .unwrap_or((None, None, None));
 
-            SymbolMetadata {
-                symbol: symbol.clone(),
-                sector,
-                industry,
-                country,
-                market_cap: quote
-                    .and_then(|q| q.get("marketCap"))
-                    .and_then(|v| v.as_f64()),
-                pe_ratio: quote
-                    .and_then(|q| q.get("trailingPE"))
-                    .and_then(|v| v.as_f64()),
-                dividend_yield: quote
-                    .and_then(|q| q.get("trailingAnnualDividendYield"))
-                    .and_then(|v| v.as_f64()),
-                beta: quote.and_then(|q| q.get("beta")).and_then(|v| v.as_f64()),
-            }
-        })
-        .collect();
+        let meta = SymbolMetadata {
+            symbol: symbol.clone(),
+            sector,
+            industry,
+            country,
+            market_cap: quote
+                .and_then(|q| q.get("marketCap"))
+                .and_then(|v| v.as_f64()),
+            pe_ratio: quote
+                .and_then(|q| q.get("trailingPE"))
+                .and_then(|v| v.as_f64()),
+            dividend_yield: quote
+                .and_then(|q| q.get("trailingAnnualDividendYield"))
+                .and_then(|v| v.as_f64()),
+            beta: quote.and_then(|q| q.get("beta")).and_then(|v| v.as_f64()),
+            eps: quote
+                .and_then(|q| q.get("epsTrailingTwelveMonths"))
+                .and_then(|v| v.as_f64()),
+        };
 
-    Ok(metadata)
+        // Persist to cache (best-effort)
+        if let Some(pool) = pool {
+            let _ = db::upsert_symbol_fundamentals(pool, &meta).await;
+        }
+
+        results[original_idx] = Some(meta);
+    }
+
+    Ok(results.into_iter().flatten().collect())
 }
 
 #[tauri::command]
 pub async fn get_symbol_metadata(
-    _state: State<'_, DbState>,
+    state: State<'_, DbState>,
     http: State<'_, HttpClient>,
     symbols: Vec<String>,
 ) -> Result<Vec<SymbolMetadata>, String> {
-    get_symbol_metadata_internal(&http.0, &symbols).await
+    let pool = &state.0;
+    get_symbol_metadata_with_cache(&http.0, &symbols, Some(pool)).await
 }
 
 fn compute_portfolio_analytics(
@@ -1827,7 +1885,7 @@ pub async fn get_portfolio_analytics(
         .into_iter()
         .collect();
 
-    let metadata = get_symbol_metadata_internal(&http.0, &non_cash_symbols)
+    let metadata = get_symbol_metadata_with_cache(&http.0, &non_cash_symbols, Some(pool))
         .await
         .unwrap_or_default();
 
@@ -1881,6 +1939,10 @@ mod tests {
             target_weight: 0.0,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             updated_at: "2024-01-01T00:00:00Z".to_string(),
+            indicated_annual_dividend: None,
+            indicated_annual_dividend_currency: None,
+            dividend_frequency: None,
+            maturity_date: None,
         }
     }
 
@@ -2107,6 +2169,9 @@ mod tests {
                 change: 1.0,
                 change_percent: 2.0,
                 updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
             },
             PriceData {
                 symbol: "AAPL".to_string(),
@@ -2115,6 +2180,9 @@ mod tests {
                 change: 1.0,
                 change_percent: 10.0,
                 updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
             },
         ];
         let fx = vec![FxRate {
@@ -2157,6 +2225,9 @@ mod tests {
                 change: 0.0,
                 change_percent: 0.0,
                 updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
             },
             PriceData {
                 symbol: "MSFT".to_string(),
@@ -2165,6 +2236,9 @@ mod tests {
                 change: 0.0,
                 change_percent: 0.0,
                 updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
             },
         ];
         let fx = vec![FxRate {
@@ -2303,6 +2377,9 @@ mod tests {
             change: 0.0,
             change_percent: 0.0,
             updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
         }];
 
         let snapshot = build_portfolio_snapshot(
@@ -2337,6 +2414,9 @@ mod tests {
             change: 2.0,
             change_percent: 5.0, // would be 60.0 CAD if applied
             updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
         }];
 
         let snapshot = build_portfolio_snapshot(
@@ -2373,6 +2453,9 @@ mod tests {
             change: 20.0,
             change_percent: 10.0, // 10% of 2200 = 220
             updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
         }];
 
         let snapshot = build_portfolio_snapshot(
