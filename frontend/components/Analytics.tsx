@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { RefreshCw, ArrowUpDown } from 'lucide-react';
+import { isTauri, tauriInvoke } from '../lib/tauri';
 import {
   PieChart,
   Pie,
@@ -186,8 +186,22 @@ export function Analytics() {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<PortfolioAnalytics>('get_portfolio_analytics');
-      setAnalytics(result);
+      if (isTauri()) {
+        const result = await tauriInvoke<PortfolioAnalytics>('get_portfolio_analytics');
+        setAnalytics(result);
+      } else {
+        // Browser dev mode: analytics require live data from Tauri
+        setAnalytics({
+          metadata: [],
+          sectorBreakdown: [],
+          countryBreakdown: [],
+          riskMetrics: {
+            portfolioYield: 0,
+            concentrationHhi: 0,
+            largestPositionWeight: 0,
+          },
+        });
+      }
     } catch (err) {
       setError(String(err));
     } finally {
