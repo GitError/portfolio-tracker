@@ -1,33 +1,35 @@
 import { useState, useRef } from 'react';
 import { Download, Upload } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { useConfig } from '../hooks/useConfig';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
+import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import { AccountsModal } from './AccountsModal';
 import { Select } from './ui/Select';
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
 
-const REFRESH_OPTIONS: { label: string; value: string }[] = [
-  { label: 'Disabled', value: '0' },
-  { label: '1 minute', value: '60000' },
-  { label: '5 minutes', value: '300000' },
-  { label: '15 minutes', value: '900000' },
-  { label: '30 minutes', value: '1800000' },
-  { label: '1 hour', value: '3600000' },
+const REFRESH_OPTION_KEYS: { key: string; value: string }[] = [
+  { key: 'refresh.disabled', value: '0' },
+  { key: 'refresh.1min', value: '60000' },
+  { key: 'refresh.5min', value: '300000' },
+  { key: 'refresh.15min', value: '900000' },
+  { key: 'refresh.30min', value: '1800000' },
+  { key: 'refresh.1hour', value: '3600000' },
 ];
 
-const COST_BASIS_OPTIONS: { label: string; value: string; description: string }[] = [
+const COST_BASIS_OPTION_KEYS: { labelKey: string; value: string; descriptionKey: string }[] = [
   {
-    label: 'Average Cost (AVCO)',
+    labelKey: 'costBasis.avco.label',
     value: 'AVCO',
-    description: 'Uses the average purchase price across all lots.',
+    descriptionKey: 'costBasis.avco.description',
   },
   {
-    label: 'First In, First Out (FIFO)',
+    labelKey: 'costBasis.fifo.label',
     value: 'FIFO',
-    description: 'Oldest shares are considered sold first.',
+    descriptionKey: 'costBasis.fifo.description',
   },
 ];
 
@@ -471,6 +473,7 @@ function DataManagementSection() {
 async function noopRefresh(): Promise<void> {}
 
 export function Settings() {
+  const { t } = useTranslation();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
   const { value: costBasisMethod, setValue: setCostBasisMethod } = useConfig(
     'cost_basis_method',
@@ -478,6 +481,7 @@ export function Settings() {
   );
   const { theme, setTheme } = useTheme();
   const [accountsOpen, setAccountsOpen] = useState(false);
+  const { language, setLanguage } = useLanguage();
 
   // Auto-refresh controls — reads/writes the same config keys as useAutoRefresh
   // in AppRoutes, so changes take effect immediately app-wide.
@@ -490,6 +494,20 @@ export function Settings() {
 
   // Derive the ms string for the select control
   const autoRefreshMsStr = String(intervalMinutes * 60_000);
+
+  const refreshOptions = REFRESH_OPTION_KEYS.map((opt) => ({
+    label: t(opt.key),
+    value: opt.value,
+  }));
+  const costBasisOptions = COST_BASIS_OPTION_KEYS.map((opt) => ({
+    label: t(opt.labelKey),
+    value: opt.value,
+    description: t(opt.descriptionKey),
+  }));
+  const languageOptions = SUPPORTED_LANGUAGES.map((lang) => ({
+    label: `${lang.nativeName} (${lang.name})`,
+    value: lang.code,
+  }));
 
   return (
     <div
@@ -509,14 +527,14 @@ export function Settings() {
           marginBottom: 4,
         }}
       >
-        Settings
+        {t('settings.title')}
       </h1>
       <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-        Configure display, refresh, and calculation preferences.
+        {t('settings.subtitle')}
       </p>
 
       {/* General */}
-      <SectionHeader title="General" />
+      <SectionHeader title={t('settings.general')} />
       <div
         style={{
           background: 'var(--bg-surface)',
@@ -525,10 +543,7 @@ export function Settings() {
           padding: '0 16px',
         }}
       >
-        <SettingRow
-          label="Accounts"
-          description="Create and manage named accounts (TFSA, RRSP, etc.) to group your holdings."
-        >
+        <SettingRow label={t('settings.accounts')} description={t('settings.accountsDescription')}>
           <button
             onClick={() => setAccountsOpen(true)}
             style={{
@@ -543,7 +558,7 @@ export function Settings() {
               cursor: 'pointer',
             }}
           >
-            Manage Accounts
+            {t('settings.manageAccounts')}
           </button>
         </SettingRow>
       </div>
@@ -551,7 +566,7 @@ export function Settings() {
       <AccountsModal isOpen={accountsOpen} onClose={() => setAccountsOpen(false)} />
 
       {/* Display */}
-      <SectionHeader title="Display" />
+      <SectionHeader title={t('settings.display')} />
       <div
         style={{
           background: 'var(--bg-surface)',
@@ -560,9 +575,19 @@ export function Settings() {
           padding: '0 16px',
         }}
       >
+        <SettingRow label={t('settings.language')} description={t('settings.languageDescription')}>
+          <Select
+            value={language}
+            onChange={(code) => {
+              void setLanguage(code);
+            }}
+            options={languageOptions}
+            style={{ minWidth: 200 }}
+          />
+        </SettingRow>
         <SettingRow
-          label="Base Currency"
-          description="All portfolio values are converted and displayed in this currency."
+          label={t('settings.baseCurrency')}
+          description={t('settings.baseCurrencyDescription')}
         >
           <Select
             value={baseCurrency}
@@ -592,7 +617,7 @@ export function Settings() {
       </div>
 
       {/* Data */}
-      <SectionHeader title="Data" />
+      <SectionHeader title={t('settings.data')} />
       <div
         style={{
           background: 'var(--bg-surface)',
@@ -602,19 +627,19 @@ export function Settings() {
         }}
       >
         <SettingRow
-          label="Auto-Refresh Interval"
-          description="Automatically refresh prices in the background at this interval."
+          label={t('settings.autoRefresh')}
+          description={t('settings.autoRefreshDescription')}
         >
           <Select
             value={autoRefreshMsStr}
             onChange={(v) => setAutoRefreshInterval(Math.round(Number(v) / 60_000))}
-            options={REFRESH_OPTIONS}
+            options={refreshOptions}
             style={{ minWidth: 160 }}
           />
         </SettingRow>
         <SettingRow
-          label="Market Hours Only"
-          description="Only auto-refresh during NYSE trading hours (Mon–Fri 09:30–16:00 ET)."
+          label={t('settings.marketHoursOnly')}
+          description={t('settings.marketHoursOnlyDescription')}
         >
           <button
             onClick={() => setMarketHoursOnly(!marketHoursOnly)}
@@ -633,13 +658,13 @@ export function Settings() {
               transition: 'background 150ms, border-color 150ms, color 150ms',
             }}
           >
-            {marketHoursOnly ? 'On' : 'Off'}
+            {marketHoursOnly ? t('common.on') : t('common.off')}
           </button>
         </SettingRow>
       </div>
 
       {/* Calculations */}
-      <SectionHeader title="Calculations" />
+      <SectionHeader title={t('settings.calculations')} />
       <div
         style={{
           background: 'var(--bg-surface)',
@@ -648,7 +673,7 @@ export function Settings() {
           padding: '0 16px',
         }}
       >
-        {COST_BASIS_OPTIONS.map((opt, i) => (
+        {costBasisOptions.map((opt, i) => (
           <div
             key={opt.value}
             onClick={() => setCostBasisMethod(opt.value)}
@@ -658,7 +683,7 @@ export function Settings() {
               gap: 12,
               padding: '14px 0',
               borderBottom:
-                i < COST_BASIS_OPTIONS.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                i < costBasisOptions.length - 1 ? '1px solid var(--border-subtle)' : 'none',
               cursor: 'pointer',
             }}
           >
@@ -693,11 +718,11 @@ export function Settings() {
       </div>
 
       {/* Data Management */}
-      <SectionHeader title="Data Management" />
+      <SectionHeader title={t('settings.dataManagement')} />
       <DataManagementSection />
 
       {/* About */}
-      <SectionHeader title="About" />
+      <SectionHeader title={t('settings.about')} />
       <div
         style={{
           background: 'var(--bg-surface)',
@@ -706,7 +731,7 @@ export function Settings() {
           padding: '0 16px',
         }}
       >
-        <SettingRow label="Version">
+        <SettingRow label={t('settings.version')}>
           <span
             style={{
               fontFamily: 'var(--font-mono)',

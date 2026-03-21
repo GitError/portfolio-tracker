@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
   Table2,
@@ -25,21 +26,23 @@ interface SidebarProps {
   portfolio: PortfolioSnapshot | null;
 }
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', Icon: LayoutDashboard },
-  { to: '/holdings', label: 'Holdings', Icon: Table2 },
-  { to: '/performance', label: 'Performance', Icon: TrendingUp },
-  { to: '/stress', label: 'Stress Test', Icon: AlertTriangle },
-  { to: '/rebalance', label: 'Rebalance', Icon: Scale },
-  { to: '/alerts', label: 'Alerts', Icon: Bell },
-  { to: '/transactions', label: 'Transactions', Icon: Receipt },
-  { to: '/analytics', label: 'Analytics', Icon: BarChart2 },
-  { to: '/dividends', label: 'Dividends', Icon: DollarSign },
-  { to: '/settings', label: 'Settings', Icon: Settings2 },
-  { to: '/help', label: 'Help', Icon: HelpCircle },
+const NAV_ITEM_DEFS = [
+  { to: '/', key: 'nav.dashboard', Icon: LayoutDashboard },
+  { to: '/holdings', key: 'nav.holdings', Icon: Table2 },
+  { to: '/performance', key: 'nav.performance', Icon: TrendingUp },
+  { to: '/stress', key: 'nav.stressTest', Icon: AlertTriangle },
+  { to: '/rebalance', key: 'nav.rebalance', Icon: Scale },
+  { to: '/alerts', key: 'nav.alerts', Icon: Bell },
+  { to: '/transactions', key: 'nav.transactions', Icon: Receipt },
+  { to: '/analytics', key: 'nav.analytics', Icon: BarChart2 },
+  { to: '/dividends', key: 'nav.dividends', Icon: DollarSign },
+  { to: '/settings', key: 'nav.settings', Icon: Settings2 },
+  { to: '/help', key: 'nav.help', Icon: HelpCircle },
 ];
 
 export function Sidebar({ portfolio }: SidebarProps) {
+  const { t } = useTranslation();
+  const navItems = NAV_ITEM_DEFS.map((item) => ({ ...item, label: t(item.key) }));
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored === null ? false : stored === 'true';
@@ -106,7 +109,7 @@ export function Sidebar({ portfolio }: SidebarProps) {
 
       {/* Nav */}
       <div style={{ flex: 1, paddingTop: 8 }}>
-        {NAV_ITEMS.map(({ to, label, Icon }) => (
+        {navItems.map(({ to, label, Icon }) => (
           <NavLink
             key={to}
             to={to}
