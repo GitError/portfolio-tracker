@@ -33,7 +33,7 @@
   --font-sans: 'IBM Plex Sans', -apple-system, sans-serif;
 }
 
-[data-theme="dark"] {
+[data-theme='dark'] {
   /* Backgrounds */
   --bg-primary: #0a0a0f;
   --bg-surface: #12121a;
@@ -62,7 +62,7 @@
   --color-cash: #00d4aa;
 }
 
-[data-theme="light"] {
+[data-theme='light'] {
   /* Backgrounds */
   --bg-primary: #f5f5f7;
   --bg-surface: #ffffff;
@@ -91,13 +91,13 @@
   --color-cash: #00a882;
 }
 
-[data-theme="light"] ::-webkit-scrollbar-track {
+[data-theme='light'] ::-webkit-scrollbar-track {
   background: #f0f0f5;
 }
-[data-theme="light"] ::-webkit-scrollbar-thumb {
+[data-theme='light'] ::-webkit-scrollbar-thumb {
   background: #c0c0d0;
 }
-[data-theme="light"] ::selection {
+[data-theme='light'] ::selection {
   background: #2563eb33;
 }
 
