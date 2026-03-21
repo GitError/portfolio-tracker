@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke } from '../lib/tauri';
 import { Pencil, Trash2, X, Plus } from 'lucide-react';
 import { ACCOUNT_TYPE_CONFIG } from '../lib/constants';
 import type {
@@ -79,7 +79,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<Account[]>('get_accounts');
+      const result = await tauriInvoke<Account[]>('get_accounts');
       setAccounts(result);
     } catch (e) {
       setError(String(e));
@@ -128,12 +128,12 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
         institution: form.institution?.trim() || undefined,
       };
       if (editingId) {
-        await invoke<Account>('update_account', {
+        await tauriInvoke<Account>('update_account', {
           id: editingId,
           account: payload,
         });
       } else {
-        await invoke<Account>('add_account', { account: payload });
+        await tauriInvoke<Account>('add_account', { account: payload });
       }
       await loadAccounts();
       setForm(EMPTY_FORM);
@@ -149,7 +149,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
     setDeletingId(id);
     setError(null);
     try {
-      await invoke('delete_account', { id });
+      await tauriInvoke('delete_account', { id });
       await loadAccounts();
     } catch (e) {
       setError(String(e));
