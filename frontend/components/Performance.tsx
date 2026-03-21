@@ -12,7 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import { useSearchParams } from 'react-router-dom';
-import { ALL_PERF_DATA, BENCHMARK_SERIES, calcStats, filterByRange } from '../lib/perfMockData';
+import { ALL_PERF_DATA, calcStats, filterByRange } from '../lib/perfMockData';
 import type { PerfDataPoint } from '../lib/perfMockData';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -72,7 +72,6 @@ function useRealPerformance(range: string): {
 type Range = '1D' | '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 const RANGES: Range[] = ['1D', '1W', '1M', '3M', '6M', '1Y', 'ALL'];
 type AssetFilter = 'all' | AssetType;
-type BenchmarkId = 'none' | 'sp500' | 'nasdaq100' | 'tsx' | 'bitcoin';
 
 const PANEL: React.CSSProperties = {
   background: 'var(--bg-surface)',
@@ -143,7 +142,6 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
   const range = (searchParams.get('range') as Range) || '1Y';
   const accountFilter = (searchParams.get('account') as 'all' | AccountType) || 'all';
   const assetFilter = (searchParams.get('asset') as AssetFilter) || 'all';
-  const benchmarkId = (searchParams.get('benchmark') as BenchmarkId) || 'none';
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
 
   function updateParam(key: string, value: string) {
@@ -195,34 +193,8 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
   }, [realData, scaledMockData, range]);
 
   const stats = useMemo(() => calcStats(data), [data]);
-  const benchmark = useMemo(
-    () => BENCHMARK_SERIES.find((series) => series.id === benchmarkId) ?? null,
-    [benchmarkId]
-  );
-  const benchmarkData = useMemo(() => {
-    if (!benchmark || data.length === 0) return [];
-    const raw = filterByRange(benchmark.points, range);
-    if (!raw || raw.length === 0) return [];
-    const first = raw[0].value || 1;
-    const base = data[0]?.value ?? 0;
-    return raw.map((point) => ({
-      ...point,
-      value: Math.round((point.value / first) * base * 100) / 100,
-    }));
-  }, [benchmark, data, range]);
-  const benchmarkStats = useMemo(() => calcStats(benchmarkData), [benchmarkData]);
-  const relativeReturn = useMemo(() => {
-    if (!stats || !benchmarkStats) return null;
-    return stats.totalReturnPct - benchmarkStats.totalReturnPct;
-  }, [stats, benchmarkStats]);
 
-  const mergedData = useMemo(() => {
-    const benchmarkByDate = new Map(benchmarkData.map((point) => [point.date, point.value]));
-    return data.map((point) => ({
-      ...point,
-      benchmarkValue: benchmarkByDate.get(point.date) ?? null,
-    }));
-  }, [data, benchmarkData]);
+  const mergedData = useMemo(() => data, [data]);
 
   // Thin out data for 1Y/ALL to avoid too many ticks
   const chartData = useMemo(() => {
@@ -239,13 +211,6 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
       { value: 'etf', label: ASSET_TYPE_CONFIG.etf.label },
       { value: 'cash', label: ASSET_TYPE_CONFIG.cash.label },
       { value: 'crypto', label: ASSET_TYPE_CONFIG.crypto.label },
-    ],
-    []
-  );
-  const benchmarkOptions = useMemo(
-    () => [
-      { value: 'none', label: 'No Benchmark' },
-      ...BENCHMARK_SERIES.map((series) => ({ value: series.id, label: series.label })),
     ],
     []
   );
@@ -349,13 +314,6 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
                 options={assetOptions}
               />
             </div>
-            <div style={{ width: 180 }}>
-              <Select
-                value={benchmarkId}
-                onChange={(value) => updateParam('benchmark', value)}
-                options={benchmarkOptions}
-              />
-            </div>
           </div>
           <div style={{ display: 'flex', gap: 1 }}>
             {RANGES.map((r) => (
@@ -425,17 +383,6 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
                 strokeWidth: 2,
               }}
             />
-            {benchmark && benchmarkData.length > 0 && (
-              <Area
-                type="monotone"
-                dataKey="benchmarkValue"
-                stroke="var(--color-warning)"
-                strokeWidth={2}
-                fillOpacity={0}
-                dot={false}
-                isAnimationActive={false}
-              />
-            )}
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -546,25 +493,6 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
               value: formatCurrency(data[data.length - 1]?.value ?? 0, baseCurrency),
               sub: `as of last data point · ${baseCurrency}`,
               color: 'var(--text-primary)',
-            },
-            {
-              label: 'Benchmark',
-              value: benchmark?.label ?? 'None',
-              sub:
-                relativeReturn === null
-                  ? 'overlay disabled'
-                  : `${relativeReturn >= 0 ? '+' : ''}${relativeReturn.toFixed(2)}% vs benchmark`,
-              color: relativeReturn === null ? 'var(--text-secondary)' : pnlColor(relativeReturn),
-            },
-            {
-              label: 'Benchmark Return',
-              value:
-                benchmarkStats && benchmark ? formatPercent(benchmarkStats.totalReturnPct) : '—',
-              sub: benchmark ? `${benchmark.label} · ${range}` : 'select a benchmark',
-              color:
-                benchmarkStats && benchmark
-                  ? pnlColor(benchmarkStats.totalReturnPct)
-                  : 'var(--text-secondary)',
             },
           ].map((s, i) => (
             <div

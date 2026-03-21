@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Plus, Trash2 } from 'lucide-react';
+import { isTauri, tauriInvoke } from '../lib/tauri';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddTransactionModal } from './AddTransactionModal';
 import { EmptyState } from './ui/EmptyState';
@@ -123,8 +123,13 @@ export function TransactionHistory() {
     setLoading(true);
     setError(null);
     try {
-      const txs = await invoke<Transaction[]>('get_transactions', {});
-      setTransactions(txs);
+      if (isTauri()) {
+        const txs = await tauriInvoke<Transaction[]>('get_transactions', {});
+        setTransactions(txs);
+      } else {
+        // Browser dev mode: no transactions available without Tauri
+        setTransactions([]);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -186,7 +191,9 @@ export function TransactionHistory() {
   async function handleDelete(id: string) {
     setDeletingId(id);
     try {
-      await invoke('delete_transaction', { id });
+      if (isTauri()) {
+        await tauriInvoke('delete_transaction', { id });
+      }
       setTransactions((prev) => prev.filter((tx) => tx.id !== id));
       showToast('Transaction deleted', 'info');
     } catch (err) {

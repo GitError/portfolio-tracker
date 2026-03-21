@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { Download, Upload } from 'lucide-react';
+import { isTauri, tauriInvoke } from '../lib/tauri';
 import { useConfig } from '../hooks/useConfig';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { AccountsModal } from './AccountsModal';
@@ -154,12 +154,15 @@ function DataManagementSection() {
     setBackupStatus({ kind: 'loading' });
     const filename = buildBackupFilename();
     try {
+      if (!isTauri()) {
+        setBackupStatus({ kind: 'error', message: 'Backup is only available in the desktop app.' });
+        return;
+      }
       // The dialog plugin is not available in this build. We pass a bare
       // filename; the backend resolves it to the user's Desktop so it is
       // easy to find.
-      const destPath = filename;
-      const savedPath = await invoke<string>('backup_database', {
-        destinationPath: destPath,
+      const savedPath = await tauriInvoke<string>('backup_database', {
+        destinationPath: filename,
       });
       setBackupStatus({ kind: 'success', path: savedPath });
     } catch (err) {
@@ -183,7 +186,14 @@ function DataManagementSection() {
     const { filePath } = restoreStatus;
     setRestoreStatus({ kind: 'loading' });
     try {
-      const message = await invoke<string>('restore_database', { sourcePath: filePath });
+      if (!isTauri()) {
+        setRestoreStatus({
+          kind: 'error',
+          message: 'Restore is only available in the desktop app.',
+        });
+        return;
+      }
+      const message = await tauriInvoke<string>('restore_database', { sourcePath: filePath });
       setRestoreStatus({ kind: 'success', message });
     } catch (err) {
       setRestoreStatus({ kind: 'error', message: String(err) });
