@@ -14,10 +14,6 @@ The app runs as a native macOS window with a Bloomberg-inspired dark terminal UI
 
 ---
 
-## Screenshot
-
-![Portfolio Tracker dashboard showing portfolio value, allocation, and holdings](docs/screenshot-dashboard.png)
-
 ---
 
 ## Download
