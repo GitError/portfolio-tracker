@@ -115,6 +115,10 @@ mod tests {
             target_delta_value: 0.0,
             target_delta_percent: 0.0,
             daily_change_percent: 0.0,
+            indicated_annual_dividend: None,
+            indicated_annual_dividend_currency: None,
+            dividend_frequency: None,
+            maturity_date: None,
         }
     }
 
