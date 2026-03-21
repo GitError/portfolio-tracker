@@ -533,17 +533,24 @@ pub async fn get_snapshots_in_range(
 }
 
 pub async fn prune_snapshots(pool: &SqlitePool) -> Result<(), String> {
-    // Keep at least 730 daily snapshots (2 years) so ALL / 1Y chart ranges
-    // always have data. Delete only rows beyond that minimum, keeping the
-    // single MAX(id) representative per calendar day for older entries.
+    // Step 1: deduplicate — keep only the latest snapshot per calendar day.
     sqlx::query(
         "DELETE FROM portfolio_snapshots
          WHERE id NOT IN (
              SELECT MAX(id)
              FROM portfolio_snapshots
              GROUP BY DATE(recorded_at)
-         )
-         AND DATE(recorded_at) < (
+         )",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Step 2: retain the 730 most-recent distinct days (≈ 2 years).
+    // Any day older than the 730th-most-recent is removed entirely.
+    sqlx::query(
+        "DELETE FROM portfolio_snapshots
+         WHERE DATE(recorded_at) < (
              SELECT DATE(recorded_at)
              FROM (
                  SELECT DISTINCT DATE(recorded_at) AS recorded_at
