@@ -14,10 +14,6 @@ The app runs as a native macOS window with a Bloomberg-inspired dark terminal UI
 
 ---
 
-## Screenshot
-
-![Portfolio Tracker dashboard showing portfolio value, allocation, and holdings](docs/screenshot-dashboard.png)
-
 ---
 
 ## Download
@@ -41,10 +37,14 @@ Release builds are published from tags matching `v*.*.*` and first appear as dra
 - **Rebalancing** — Set target allocation weights per holding; see drift from target, required trades, and deployable cash guidance
 - **Price Alerts** — Set above/below price threshold alerts per symbol; triggered alerts are flagged in the UI
 - **Dividend Tracking** — Record dividend payments per unit with ex-date and pay-date; view payout history and totals by symbol
+- **Transaction History** — Log buy/sell transactions per holding; used for AVCO / FIFO cost basis calculations
+- **Analytics** — Sector breakdown, country exposure, weighted beta, P/E, dividend yield, realized gains, and portfolio risk metrics
+- **Accounts** — Manage named accounts (TFSA, RRSP, FHSA, Taxable, Crypto, Other); holdings assigned to accounts for account-level filtering
+- **Action Center** — Quick-access side panel for recent price alert triggers and fast transaction entry
 - **Settings** — Configure base currency (CAD, USD, EUR, GBP, AUD, CHF, JPY), auto-refresh interval (1m–1hr), and cost basis method (AVCO / FIFO)
 - **Multi-currency** — USD, EUR, GBP, CHF, JPY, and more; all positions converted to base currency at live FX rates fetched on demand
 - **Keyboard shortcuts** — Full keyboard navigation; press `?` to see all shortcuts
-- **Backup / Restore** — Export and import all holdings as JSON for portable backups
+- **Backup / Restore** — Export and import all data (holdings, alerts, transactions, dividends, config) as JSON
 
 ---
 
@@ -53,13 +53,13 @@ Release builds are published from tags matching `v*.*.*` and first appear as dra
 | Layer     | Technology                                        |
 |-----------|---------------------------------------------------|
 | Shell     | [Tauri v2](https://tauri.app)                     |
-| Backend   | Rust — tokio, reqwest, rusqlite, chrono, uuid     |
+| Backend   | Rust — tokio, reqwest, sqlx, chrono, uuid         |
 | Frontend  | React 18 + TypeScript + Vite                      |
 | Styling   | Tailwind CSS v4                                   |
 | Charts    | [Recharts](https://recharts.org)                  |
 | Icons     | [lucide-react](https://lucide.dev)                |
 | Router    | react-router-dom v7                               |
-| Database  | SQLite (bundled via rusqlite)                     |
+| Database  | SQLite via SQLx (WAL mode, async connection pool) |
 
 ---
 
@@ -79,7 +79,7 @@ portfolio-tracker/
 │       ├── fx.rs       # FX rate fetching + conversion helpers
 │       ├── search.rs   # Symbol search via Yahoo Finance
 │       └── stress.rs   # Stress test engine
-└── src/                # React frontend
+└── frontend/           # React frontend
     ├── App.tsx         # Router, providers, keyboard shortcut wiring
     ├── components/
     │   ├── Dashboard.tsx           # Route /
@@ -89,9 +89,13 @@ portfolio-tracker/
     │   ├── Rebalance.tsx           # Route /rebalance
     │   ├── Alerts.tsx              # Route /alerts
     │   ├── Dividends.tsx           # Route /dividends
+    │   ├── TransactionHistory.tsx  # Route /transactions
+    │   ├── Analytics.tsx           # Route /analytics
     │   ├── Settings.tsx            # Route /settings
     │   ├── AddHoldingModal.tsx     # Add / edit holding dialog
     │   ├── ImportHoldingsModal.tsx # CSV import dialog
+    │   ├── AccountsModal.tsx       # Named account management
+    │   ├── ActionCenter.tsx        # Quick-access alerts + transactions panel
     │   ├── Layout.tsx              # App shell: sidebar + topbar + content
     │   ├── Sidebar.tsx             # Icon nav, mini portfolio value
     │   ├── TopBar.tsx              # Refresh, base currency picker, daily P&L
@@ -106,12 +110,13 @@ portfolio-tracker/
     │   ├── format.ts               # Currency / number / percent formatters
     │   ├── colors.ts               # PnL color helpers
     │   ├── constants.ts            # Preset scenarios, asset/account configs
+    │   ├── tauri.ts                # isTauri() guard + tauriInvoke wrapper
     │   └── currencyContext.tsx     # Base currency React context
     └── types/
         └── portfolio.ts            # TypeScript types (mirrors Rust structs exactly)
 ```
 
-The Rust backend exposes Tauri commands that the React frontend calls via `invoke()`. The SQLite database lives in the macOS app data directory (`~/Library/Application Support/portfolio-tracker/portfolio.db`). Price data is fetched from Yahoo Finance on demand and cached locally between refreshes.
+The Rust backend exposes Tauri commands that the React frontend calls via `tauriInvoke()` (wrapped with an `isTauri()` guard for browser dev mode). The SQLite database lives in the macOS app data directory (`~/Library/Application Support/portfolio-tracker/portfolio.db`) and is accessed via an async SQLx connection pool with WAL mode enabled. Price data is fetched from Yahoo Finance on demand and cached locally between refreshes.
 
 ---
 
@@ -141,7 +146,7 @@ cargo tauri dev     # Full Tauri app (Rust backend + React frontend)
 npm run dev         # Frontend only in browser (mock data, no Rust required)
 ```
 
-> **First run:** `cargo tauri dev` will be slow on the first build — rusqlite compiles SQLite from source. Subsequent builds are fast.
+> **First run:** `cargo tauri dev` will be slow on the first build — Rust dependencies compile from source. Subsequent builds are fast thanks to incremental compilation and `swatinem/rust-cache` in CI.
 
 ### First-time setup
 

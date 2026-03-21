@@ -321,6 +321,85 @@ If a rate cannot be fetched, the most recently cached rate is used and a warning
 
 ---
 
+## Transaction History
+
+The Transaction History view shows every buy and sell transaction recorded for each holding, used to calculate cost basis under the selected AVCO or FIFO method.
+
+### Logging a Transaction
+
+Click **Add Transaction** and fill in:
+
+| Field | Description |
+|-------|-------------|
+| Holding | The holding this transaction belongs to |
+| Type | Buy or Sell |
+| Quantity | Number of units transacted |
+| Price | Price per unit in the holding's native currency |
+| Date | Transaction date and time |
+
+Transactions feed directly into the cost basis calculations shown in the Holdings table. The AVCO method averages all purchase prices; FIFO uses the oldest lot first on each sale.
+
+---
+
+## Analytics
+
+The Analytics view provides portfolio-level risk and composition metrics derived from Yahoo Finance fundamental data.
+
+### Sector Breakdown
+
+A donut chart and table showing what percentage of your portfolio (by market value) falls into each GICS sector (Technology, Financials, Energy, etc.). Cash and unclassified holdings are grouped as "Other".
+
+### Country Exposure
+
+Breakdown of portfolio weight by the country of domicile of each holding. Useful for understanding geographic concentration risk.
+
+### Risk Metrics
+
+| Metric | Description |
+|--------|-------------|
+| Weighted Beta | Portfolio-level beta, weighted by market value |
+| Portfolio Yield | Weighted dividend yield across all holdings |
+| P/E Ratio | Weighted price-to-earnings ratio |
+| Largest Position | Weight of the single largest holding |
+| HHI Concentration | Herfindahl–Hirschman Index — higher = more concentrated |
+| Top Sector | Sector with the greatest portfolio weight |
+
+### Realized Gains
+
+Displays the cumulative realized gain/loss from all completed sell transactions, calculated using the configured cost basis method (AVCO or FIFO).
+
+> Analytics data is fetched from Yahoo Finance on first visit and cached for up to 24 hours so subsequent navigation is instant.
+
+---
+
+## Accounts
+
+The Accounts feature lets you organize holdings by named account (TFSA, RRSP, FHSA, Taxable, Crypto, Other). Each account has a name, type, and optional notes.
+
+### Managing Accounts
+
+Open the **Accounts** modal from the Holdings toolbar. You can:
+- Create named accounts (e.g. "Questrade TFSA", "Wealthsimple RRSP")
+- Delete accounts that have no holdings assigned
+
+Holdings are assigned to an account when you add or edit them. The Holdings table can be filtered by account using the account dropdown.
+
+---
+
+## Action Center
+
+The Action Center is a quick-access side panel that surfaces recent price alert triggers and provides a fast path to log transactions without navigating away from your current view.
+
+### Alert Triggers
+
+Recent alert triggers appear in a list with symbol, threshold crossed, and timestamp. Triggered alerts can be reset directly from the Action Center.
+
+### Fast Transaction Entry
+
+The Action Center includes a compact transaction form. Enter symbol, type (buy/sell), quantity, and price to log a transaction immediately.
+
+---
+
 ## Keyboard Shortcuts
 
 Press `?` at any time to open the shortcuts overlay. Full list:
@@ -336,6 +415,7 @@ Press `?` at any time to open the shortcuts overlay. Full list:
 | `⌘E` | Export holdings to CSV |
 | `⌘,` | Open Settings |
 | `?` | Toggle keyboard shortcuts overlay |
+| `Esc` | Close overlays / modals |
 
 > Shortcuts do not fire when focus is inside an input, textarea, or select field.
 
@@ -343,6 +423,6 @@ Press `?` at any time to open the shortcuts overlay. Full list:
 
 ## Backup and Restore
 
-Use **Export Data** (in the Holdings menu) to download your full holdings list as a JSON file. Use **Import Data** to restore from that file. Import replaces all current holdings — export first if you want to preserve existing data.
+Use **Export Data** (in the Holdings menu) to download a full JSON backup — holdings, alerts, transactions, dividends, and settings. Use **Import Data** to restore from that file. Import replaces all current data — export first if you want to preserve existing data.
 
-For a CSV-based backup, use **Export CSV** (`⌘E`) from the Holdings view.
+For a CSV-based backup of holdings only, use **Export CSV** (`⌘E`) from the Holdings view.
