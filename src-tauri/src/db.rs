@@ -51,22 +51,6 @@ pub async fn get_all_config(pool: &SqlitePool) -> Result<Vec<(String, String)>, 
         .collect())
 }
 
-pub async fn delete_all_alerts(pool: &SqlitePool) -> Result<(), String> {
-    sqlx::query("DELETE FROM price_alerts")
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub async fn delete_all_config(pool: &SqlitePool) -> Result<(), String> {
-    sqlx::query("DELETE FROM app_config")
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
 // ── Alerts (restore) ──────────────────────────────────────────────────────────
 
 /// Insert a price alert preserving its original ID and triggered state (for restore).
@@ -216,14 +200,6 @@ pub async fn delete_holding(pool: &SqlitePool, id: &str) -> Result<bool, String>
         .await
         .map_err(|e| e.to_string())?;
     Ok(result.rows_affected() > 0)
-}
-
-pub async fn delete_all_holdings(pool: &SqlitePool) -> Result<(), String> {
-    sqlx::query("DELETE FROM holdings")
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
 }
 
 pub async fn insert_holding_with_id(pool: &SqlitePool, holding: Holding) -> Result<(), String> {
@@ -737,6 +713,29 @@ pub async fn insert_transaction(
     })
 }
 
+/// Insert a transaction preserving its original ID and timestamps (for restore).
+pub async fn insert_transaction_with_id(
+    pool: &SqlitePool,
+    transaction: Transaction,
+) -> Result<(), String> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO transactions
+         (id, holding_id, transaction_type, quantity, price, transacted_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&transaction.id)
+    .bind(&transaction.holding_id)
+    .bind(transaction.transaction_type.as_str())
+    .bind(transaction.quantity)
+    .bind(transaction.price)
+    .bind(&transaction.transacted_at)
+    .bind(&transaction.created_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 pub async fn get_transactions_for_holding(
     pool: &SqlitePool,
     holding_id: &str,
@@ -822,6 +821,26 @@ pub async fn insert_dividend(
         pay_date: input.pay_date,
         created_at,
     })
+}
+
+/// Insert a dividend preserving its original ID and timestamps (for restore).
+pub async fn insert_dividend_with_id(pool: &SqlitePool, dividend: Dividend) -> Result<(), String> {
+    sqlx::query(
+        "INSERT OR REPLACE INTO dividends
+         (id, holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(dividend.id)
+    .bind(&dividend.holding_id)
+    .bind(dividend.amount_per_unit)
+    .bind(&dividend.currency)
+    .bind(&dividend.ex_date)
+    .bind(&dividend.pay_date)
+    .bind(&dividend.created_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {

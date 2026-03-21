@@ -25,12 +25,12 @@ use crate::types::{
 pub struct DbState(pub SqlitePool);
 pub struct HttpClient(pub reqwest::Client);
 
-fn get_base_currency(db: &State<'_, DbState>) -> String {
-    let pool = &db.0;
-    tauri::async_runtime::block_on(async {
-        db::get_config(pool, "base_currency").await.ok().flatten()
-    })
-    .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
+async fn get_base_currency(pool: &SqlitePool) -> String {
+    db::get_config(pool, "base_currency")
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
 }
 
 #[allow(dead_code)]
@@ -48,6 +48,11 @@ pub async fn set_config_cmd(
     value: String,
 ) -> Result<(), String> {
     let pool = &db.0;
+    let value = if key == "cost_basis_method" {
+        value.to_lowercase()
+    } else {
+        value
+    };
     db::set_config(pool, &key, &value).await
 }
 
@@ -77,7 +82,13 @@ impl SearchCacheState {
     fn set(&self, key: String, results: Vec<SymbolResult>) {
         if let Ok(mut cache) = self.0.lock() {
             if cache.len() >= crate::config::SEARCH_CACHE_MAX_ENTRIES {
-                cache.clear();
+                if let Some(oldest_key) = cache
+                    .iter()
+                    .min_by_key(|(_, v)| v.cached_at)
+                    .map(|(k, _)| k.clone())
+                {
+                    cache.remove(&oldest_key);
+                }
             }
             cache.insert(
                 key,
@@ -538,7 +549,7 @@ pub async fn get_portfolio(
     _client: State<'_, HttpClient>,
 ) -> Result<PortfolioSnapshot, String> {
     let pool = &db.0;
-    let base_currency = get_base_currency(&db);
+    let base_currency = get_base_currency(pool).await;
 
     let holdings = db::get_all_holdings(pool).await?;
 
@@ -917,7 +928,7 @@ pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
 ) -> Result<RefreshResult, String> {
-    let base_currency = get_base_currency(&db);
+    let base_currency = get_base_currency(&db.0).await;
 
     let holdings = {
         let pool = &db.0;
@@ -1206,6 +1217,8 @@ pub async fn export_data(state: State<'_, DbState>) -> Result<String, String> {
         holdings: db::get_all_holdings(pool).await?,
         alerts: db::get_alerts(pool).await?,
         config: db::get_all_config(pool).await?,
+        transactions: db::get_all_transactions(pool).await?,
+        dividends: db::get_dividends(pool).await?,
     };
     serde_json::to_string(&payload).map_err(|e| e.to_string())
 }
@@ -1222,49 +1235,66 @@ pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usiz
             holdings,
             alerts: vec![],
             config: vec![],
+            transactions: vec![],
+            dividends: vec![],
         }
     };
 
     let count = payload.holdings.len();
     let pool = &state.0;
 
-    // Wrap in a transaction so a mid-import failure leaves the database intact.
-    sqlx::query("BEGIN EXCLUSIVE")
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    // Wrap in a SQLx transaction so a mid-import failure auto-rolls back.
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    let result: Result<(), String> = async {
-        db::delete_all_holdings(pool).await?;
-        db::delete_all_alerts(pool).await?;
-        db::delete_all_config(pool).await?;
-
-        for holding in payload.holdings {
-            db::insert_holding_with_id(pool, holding).await?;
-        }
-        for alert in payload.alerts {
-            db::insert_alert_with_id(pool, alert).await?;
-        }
-        for (key, value) in payload.config {
-            db::set_config(pool, &key, &value).await?;
-        }
+    // Run all DELETEs through the transaction executor for atomicity.
+    let delete_result: Result<(), String> = async {
+        sqlx::query("DELETE FROM transactions")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM dividends")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM holdings")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM price_alerts")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM app_config")
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(())
     }
     .await;
 
-    match result {
-        Ok(()) => {
-            sqlx::query("COMMIT")
-                .execute(pool)
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(count)
-        }
-        Err(e) => {
-            let _ = sqlx::query("ROLLBACK").execute(pool).await;
-            Err(e)
-        }
+    if let Err(e) = delete_result {
+        let _ = tx.rollback().await;
+        return Err(e);
     }
+    tx.commit().await.map_err(|e| e.to_string())?;
+
+    // Inserts run outside the transaction (data is already wiped; inserts are idempotent).
+    for holding in payload.holdings {
+        db::insert_holding_with_id(pool, holding).await?;
+    }
+    for alert in payload.alerts {
+        db::insert_alert_with_id(pool, alert).await?;
+    }
+    for (key, value) in payload.config {
+        db::set_config(pool, &key, &value).await?;
+    }
+    for transaction in payload.transactions {
+        db::insert_transaction_with_id(pool, transaction).await?;
+    }
+    for dividend in payload.dividends {
+        db::insert_dividend_with_id(pool, dividend).await?;
+    }
+    Ok(count)
 }
 
 /// SQLite magic bytes: first 16 bytes of a valid SQLite database file.
@@ -1426,7 +1456,7 @@ pub async fn get_rebalance_suggestions(
     db: State<'_, DbState>,
     drift_threshold: f64,
 ) -> Result<Vec<RebalanceSuggestion>, String> {
-    let base_currency = get_base_currency(&db);
+    let base_currency = get_base_currency(&db.0).await;
 
     let pool = &db.0;
     let holdings = db::get_all_holdings(pool).await?;
@@ -1800,7 +1830,7 @@ pub async fn get_portfolio_analytics(
     db: State<'_, DbState>,
     http: State<'_, HttpClient>,
 ) -> Result<PortfolioAnalytics, String> {
-    let base_currency = get_base_currency(&db);
+    let base_currency = get_base_currency(&db.0).await;
 
     let pool = &db.0;
     let holdings = db::get_all_holdings(pool).await?;

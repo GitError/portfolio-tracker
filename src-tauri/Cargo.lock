@@ -3082,7 +3082,7 @@ dependencies = [
 
 [[package]]
 name = "portfolio-tracker"
-version = "0.1.0-3"
+version = "0.1.0-4"
 dependencies = [
  "chrono",
  "csv",
