@@ -12,7 +12,7 @@ portfolio-tracker/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   └── src/
+│   └── frontend/
 │       ├── main.rs              ← Tauri entry point
 │       ├── lib.rs               ← App bootstrap, state init, command registration
 │       ├── config.rs            ← App-level constants (DB name, user-agent, TTLs)
@@ -23,7 +23,7 @@ portfolio-tracker/
 │       ├── fx.rs                ← FX rate fetching + conversion helpers
 │       ├── search.rs            ← Symbol search via Yahoo Finance
 │       └── stress.rs            ← Stress test engine
-├── src/
+├── frontend/
 │   ├── App.tsx                  ← Router, providers, keyboard shortcut wiring
 │   ├── main.tsx                 ← React entry
 │   ├── index.css                ← Tailwind + global styles + design tokens
@@ -94,10 +94,10 @@ portfolio-tracker/
 - reqwest calls must include header `User-Agent: Mozilla/5.0` (Yahoo Finance blocks bare requests)
 
 ### TypeScript
-- Types in `src/types/portfolio.ts` must mirror Rust types exactly (camelCase)
-- Hooks in `src/hooks/` wrap `invoke()` calls with loading/error states
+- Types in `frontend/types/portfolio.ts` must mirror Rust types exactly (camelCase)
+- Hooks in `frontend/hooks/` wrap `invoke()` calls with loading/error states
 - All currency values are `number` (f64 from Rust), formatted at render time only
-- Use `src/lib/format.ts` for ALL number display — never inline `toFixed()` etc.
+- Use `frontend/lib/format.ts` for ALL number display — never inline `toFixed()` etc.
 
 ### Styling
 - Tailwind utility classes only — no CSS modules, no styled-components
@@ -113,7 +113,7 @@ portfolio-tracker/
 All agents MUST use these exact types. This is the contract.
 
 ```typescript
-// src/types/portfolio.ts
+// frontend/types/portfolio.ts
 
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash';
 
@@ -205,7 +205,7 @@ export interface StressResult {
 
 ## Design System
 
-### CSS Variables (define in `src/index.css`)
+### CSS Variables (define in `frontend/index.css`)
 
 ```css
 :root {

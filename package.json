@@ -12,14 +12,14 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "lint": "eslint src --max-warnings 0",
-    "format": "prettier --write src",
-    "format:check": "prettier --check src",
+    "lint": "eslint frontend --max-warnings 0",
+    "format": "prettier --write frontend",
+    "format:check": "prettier --check frontend",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "review": "eslint src && tsc --noEmit && prettier --check src",
+    "review": "eslint frontend && tsc --noEmit && prettier --check frontend",
     "review:diff": "git diff --name-only HEAD | grep -E '\\.(ts|tsx)$' | xargs eslint"
   },
   "dependencies": {
