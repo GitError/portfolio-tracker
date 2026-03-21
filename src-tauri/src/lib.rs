@@ -9,8 +9,8 @@ mod stress;
 mod types;
 
 use commands::{DbState, HttpClient, SearchCacheState};
-use rusqlite::Connection;
-use std::sync::Mutex;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use std::str::FromStr;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -23,17 +23,33 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
 
             let db_path = app_data_dir.join(config::DB_FILE_NAME);
-            let conn = Connection::open(&db_path)
-                .map_err(|e| format!("Failed to open SQLite database: {e}"))?;
+            let db_url = format!("sqlite:{}", db_path.to_string_lossy());
 
-            db::init_db(&conn).map_err(|e| format!("Failed to initialize database schema: {e}"))?;
+            let options = SqliteConnectOptions::from_str(&db_url)
+                .map_err(|e| e.to_string())?
+                .create_if_missing(true)
+                .foreign_keys(true)
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+
+            let pool = tauri::async_runtime::block_on(async {
+                SqlitePoolOptions::new()
+                    .max_connections(5)
+                    .connect_with(options)
+                    .await
+            })
+            .map_err(|e| format!("Failed to open SQLite database: {e}"))?;
+
+            tauri::async_runtime::block_on(async {
+                sqlx::migrate!("./migrations").run(&pool).await
+            })
+            .map_err(|e| format!("Failed to run database migrations: {e}"))?;
 
             let http_client = reqwest::Client::builder()
                 .user_agent(config::USER_AGENT)
                 .build()
                 .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
-            app.manage(DbState(Mutex::new(conn)));
+            app.manage(DbState(pool));
             app.manage(HttpClient(http_client));
             app.manage(SearchCacheState::new());
 
