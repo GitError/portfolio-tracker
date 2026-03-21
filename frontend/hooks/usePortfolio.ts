@@ -87,6 +87,10 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       currency,
       exchange: (cells[columnIndex('exchange')] ?? '').toUpperCase(),
       targetWeight: Number(cells[columnIndex('target_weight')]) || 0,
+      indicatedAnnualDividend: null,
+      indicatedAnnualDividendCurrency: null,
+      dividendFrequency: null,
+      maturityDate: null,
     };
   });
 }

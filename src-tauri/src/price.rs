@@ -43,14 +43,17 @@ pub async fn fetch_price_with_fallback_currency(
         .as_f64()
         .ok_or_else(|| format!("Missing regularMarketPrice for {}", symbol))?;
 
-    let previous_close = meta["chartPreviousClose"]
+    let previous_close_val = meta["chartPreviousClose"]
         .as_f64()
-        .or_else(|| meta["previousClose"].as_f64())
-        .unwrap_or(price);
+        .or_else(|| meta["previousClose"].as_f64());
 
-    let change = price - previous_close;
-    let change_percent = if previous_close != 0.0 {
-        (change / previous_close) * 100.0
+    let open = meta["regularMarketOpen"].as_f64();
+    let volume = meta["regularMarketVolume"].as_i64();
+
+    let change_base = previous_close_val.unwrap_or(price);
+    let change = price - change_base;
+    let change_percent = if change_base != 0.0 {
+        (change / change_base) * 100.0
     } else {
         0.0
     };
@@ -74,6 +77,9 @@ pub async fn fetch_price_with_fallback_currency(
         change,
         change_percent,
         updated_at: Utc::now().to_rfc3339(),
+        open,
+        previous_close: previous_close_val,
+        volume,
     })
 }
 

@@ -30,6 +30,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 12,
     createdAt: '2023-01-15T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '2',
@@ -51,6 +55,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 10,
     createdAt: '2023-02-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '3',
@@ -72,6 +80,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 8,
     createdAt: '2023-03-10T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '4',
@@ -93,6 +105,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 8,
     createdAt: '2022-11-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '5',
@@ -114,6 +130,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 8,
     createdAt: '2022-12-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   // ETFs
   {
@@ -136,6 +156,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 14,
     createdAt: '2022-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '7',
@@ -157,6 +181,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 12,
     createdAt: '2022-07-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   // Crypto
   {
@@ -179,6 +207,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 6,
     createdAt: '2023-01-20T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '9',
@@ -200,6 +232,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 4,
     createdAt: '2023-02-10T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   // Cash
   {
@@ -222,6 +258,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 6,
     createdAt: '2023-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '11',
@@ -243,6 +283,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 2,
     createdAt: '2023-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
   {
     id: '12',
@@ -264,6 +308,10 @@ const RAW_HOLDINGS: MockHolding[] = [
     targetWeight: 10,
     createdAt: '2023-06-01T10:00:00Z',
     updatedAt: '2024-01-15T10:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
   },
 ];
 

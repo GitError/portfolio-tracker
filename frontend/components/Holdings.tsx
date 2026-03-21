@@ -22,7 +22,14 @@ import { useToast } from './ui/Toast';
 import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ACCOUNT_TYPE_CONFIG } from '../lib/constants';
-import type { AccountType, Holding, HoldingInput, HoldingWithPrice } from '../types/portfolio';
+import type {
+  AccountType,
+  Holding,
+  HoldingInput,
+  HoldingWithPrice,
+  PriceData,
+} from '../types/portfolio';
+import { isTauri, tauriInvoke } from '../lib/tauri';
 
 type SortKey = keyof Pick<
   HoldingWithPrice,
@@ -161,6 +168,10 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [txModalHolding, setTxModalHolding] = useState<Holding | undefined>(undefined);
   const [groupByAccount, setGroupByAccount] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [showPrevClose, setShowPrevClose] = useState(false);
+  const [showOpen, setShowOpen] = useState(false);
+  const [showMaturity, setShowMaturity] = useState(false);
+  const [priceMap, setPriceMap] = useState<Record<string, PriceData>>({});
 
   // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
   useEffect(() => {
@@ -407,6 +418,22 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     });
   }
 
+  // Load cached price data for open/prevClose columns
+  useEffect(() => {
+    if (!isTauri()) return;
+    tauriInvoke<PriceData[]>('get_cached_prices')
+      .then((prices) => {
+        const map: Record<string, PriceData> = {};
+        for (const p of prices) {
+          map[p.symbol] = p;
+        }
+        setPriceMap(map);
+      })
+      .catch(() => {
+        /* best-effort */
+      });
+  }, [portfolio]);
+
   const isEmpty = holdings.length === 0;
 
   // Register imperative handles so parent can trigger open/export via keyboard shortcuts
@@ -502,6 +529,38 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             ]}
             style={{ width: 160 }}
           />
+          {/* Column visibility toggles */}
+          {[
+            {
+              label: 'Prev Close',
+              active: showPrevClose,
+              toggle: () => setShowPrevClose((v) => !v),
+            },
+            { label: 'Open', active: showOpen, toggle: () => setShowOpen((v) => !v) },
+            { label: 'Maturity', active: showMaturity, toggle: () => setShowMaturity((v) => !v) },
+          ].map(({ label, active, toggle }) => (
+            <button
+              key={label}
+              onClick={toggle}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '6px 10px',
+                background: active ? 'rgba(59,130,246,0.12)' : 'var(--bg-surface)',
+                border: active
+                  ? '1px solid var(--color-accent)'
+                  : '1px solid var(--border-primary)',
+                color: active ? 'var(--color-accent)' : 'var(--text-muted)',
+                borderRadius: '2px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          ))}
           <button
             onClick={() => setGroupByAccount((prev) => !prev)}
             title={groupByAccount ? 'Disable group by account' : 'Group by account'}
@@ -1347,6 +1406,9 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         </span>
                       </th>
                     ))}
+                    {showPrevClose && <th style={{ ...TH, textAlign: 'right' }}>Prev Close</th>}
+                    {showOpen && <th style={{ ...TH, textAlign: 'right' }}>Open</th>}
+                    {showMaturity && <th style={{ ...TH, textAlign: 'right' }}>Maturity</th>}
                     <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
@@ -1562,6 +1624,92 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         >
                           {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}
                         </td>
+                        {showPrevClose && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {h.assetType === 'cash'
+                              ? '—'
+                              : priceMap[h.symbol]?.previousClose != null
+                                ? `${formatNumber(priceMap[h.symbol].previousClose!, 2)} ${h.currency}`
+                                : '—'}
+                          </td>
+                        )}
+                        {showOpen && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {h.assetType === 'cash'
+                              ? '—'
+                              : priceMap[h.symbol]?.open != null
+                                ? `${formatNumber(priceMap[h.symbol].open!, 2)} ${h.currency}`
+                                : '—'}
+                          </td>
+                        )}
+                        {showMaturity &&
+                          (() => {
+                            const md = h.maturityDate;
+                            if (!md) return <td style={TD} />;
+                            const daysUntil = Math.ceil(
+                              (new Date(md).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+                            );
+                            const color =
+                              daysUntil <= 0
+                                ? 'var(--color-loss)'
+                                : daysUntil <= 90
+                                  ? 'var(--color-warning)'
+                                  : 'var(--text-secondary)';
+                            return (
+                              <td
+                                style={{
+                                  ...TD,
+                                  textAlign: 'right',
+                                  fontFamily: 'var(--font-mono)',
+                                  color,
+                                }}
+                              >
+                                {md}
+                                {daysUntil <= 90 && daysUntil > 0 && (
+                                  <span
+                                    style={{
+                                      marginLeft: 4,
+                                      fontSize: 10,
+                                      background: 'rgba(251,191,36,0.15)',
+                                      color: 'var(--color-warning)',
+                                      padding: '1px 4px',
+                                      borderRadius: 2,
+                                    }}
+                                  >
+                                    {daysUntil}d
+                                  </span>
+                                )}
+                                {daysUntil <= 0 && (
+                                  <span
+                                    style={{
+                                      marginLeft: 4,
+                                      fontSize: 10,
+                                      background: 'rgba(255,71,87,0.15)',
+                                      color: 'var(--color-loss)',
+                                      padding: '1px 4px',
+                                      borderRadius: 2,
+                                    }}
+                                  >
+                                    MATURED
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })()}
                         <td style={{ ...TD, textAlign: 'center', borderRight: 'none' }}>
                           {isPending ? (
                             <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>

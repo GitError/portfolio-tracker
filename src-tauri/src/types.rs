@@ -195,6 +195,10 @@ pub struct Holding {
     pub target_weight: f64,
     pub created_at: String,
     pub updated_at: String,
+    pub indicated_annual_dividend: Option<f64>,
+    pub indicated_annual_dividend_currency: Option<String>,
+    pub dividend_frequency: Option<String>,
+    pub maturity_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +214,10 @@ pub struct HoldingInput {
     pub currency: String,
     pub exchange: String,
     pub target_weight: f64,
+    pub indicated_annual_dividend: Option<f64>,
+    pub indicated_annual_dividend_currency: Option<String>,
+    pub dividend_frequency: Option<String>,
+    pub maturity_date: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,6 +229,9 @@ pub struct PriceData {
     pub change: f64,
     pub change_percent: f64,
     pub updated_at: String,
+    pub open: Option<f64>,
+    pub previous_close: Option<f64>,
+    pub volume: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,6 +259,10 @@ pub struct HoldingWithPrice {
     pub target_weight: f64,
     pub created_at: String,
     pub updated_at: String,
+    pub indicated_annual_dividend: Option<f64>,
+    pub indicated_annual_dividend_currency: Option<String>,
+    pub dividend_frequency: Option<String>,
+    pub maturity_date: Option<String>,
     pub current_price: f64,
     pub current_price_cad: f64,
     pub market_value_cad: f64,
@@ -483,6 +498,7 @@ pub struct SymbolMetadata {
     pub pe_ratio: Option<f64>,
     pub dividend_yield: Option<f64>,
     pub beta: Option<f64>,
+    pub eps: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

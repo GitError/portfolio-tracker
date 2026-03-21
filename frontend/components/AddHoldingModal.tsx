@@ -50,6 +50,10 @@ interface FormState {
   currency: string;
   exchange: string;
   targetWeight: string;
+  indicatedAnnualDividend: string;
+  indicatedAnnualDividendCurrency: string;
+  dividendFrequency: string;
+  maturityDate: string;
 }
 
 interface FormErrors {
@@ -70,6 +74,10 @@ const EMPTY_FORM: FormState = {
   currency: 'USD',
   exchange: '',
   targetWeight: '0',
+  indicatedAnnualDividend: '',
+  indicatedAnnualDividendCurrency: '',
+  dividendFrequency: '',
+  maturityDate: '',
 };
 
 const INPUT_STYLE: React.CSSProperties = {
@@ -125,6 +133,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Sum of target weights for all holdings OTHER than the one being edited
   const otherWeightsSum = holdings
@@ -188,6 +197,13 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           currency: editingHolding.currency,
           exchange: editingHolding.exchange,
           targetWeight: String(editingHolding.targetWeight ?? 0),
+          indicatedAnnualDividend:
+            editingHolding.indicatedAnnualDividend != null
+              ? String(editingHolding.indicatedAnnualDividend)
+              : '',
+          indicatedAnnualDividendCurrency: editingHolding.indicatedAnnualDividendCurrency ?? '',
+          dividendFrequency: editingHolding.dividendFrequency ?? '',
+          maturityDate: editingHolding.maturityDate ?? '',
         });
         selectedSymbolRef.current = editingHolding.symbol;
       } else {
@@ -284,6 +300,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
     setSaving(true);
     setSubmitError(null);
     try {
+      const iadRaw = parseFloat(form.indicatedAnnualDividend);
       const input: HoldingInput = {
         symbol: isCash ? `${form.currency}-CASH` : form.symbol.toUpperCase(),
         name: form.name,
@@ -294,6 +311,16 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         currency: form.currency,
         exchange: form.exchange.toUpperCase(),
         targetWeight: thisWeight,
+        indicatedAnnualDividend:
+          isNaN(iadRaw) || form.indicatedAnnualDividend === '' ? null : iadRaw,
+        indicatedAnnualDividendCurrency:
+          form.indicatedAnnualDividend !== '' && form.indicatedAnnualDividendCurrency
+            ? form.indicatedAnnualDividendCurrency
+            : form.indicatedAnnualDividend !== ''
+              ? form.currency
+              : null,
+        dividendFrequency: (form.dividendFrequency || null) as HoldingInput['dividendFrequency'],
+        maturityDate: form.maturityDate || null,
       };
       await onSave(input);
       onClose();
@@ -535,6 +562,90 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
               )}
             </Field>
           </div>
+
+          {/* Advanced section toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--text-muted)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              cursor: 'pointer',
+              padding: '6px 0',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              marginTop: 4,
+            }}
+          >
+            {showAdvanced ? '▾' : '▸'} Advanced (dividend, maturity)
+          </button>
+
+          {showAdvanced && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* IAD + IAD currency + Frequency */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                <Field label="Indicated Annual Div / Unit">
+                  <input
+                    type="number"
+                    value={form.indicatedAnnualDividend}
+                    onChange={set('indicatedAnnualDividend')}
+                    placeholder="e.g. 2.50"
+                    min="0"
+                    step="0.0001"
+                    style={INPUT_STYLE}
+                    onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+                  />
+                </Field>
+                <Field label="Div Currency">
+                  <input
+                    type="text"
+                    value={form.indicatedAnnualDividendCurrency}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        indicatedAnnualDividendCurrency: e.target.value.toUpperCase(),
+                      }))
+                    }
+                    placeholder={form.currency || 'USD'}
+                    maxLength={8}
+                    style={INPUT_STYLE}
+                    onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+                  />
+                </Field>
+                <Field label="Dividend Frequency">
+                  <Select
+                    value={form.dividendFrequency}
+                    onChange={(v) => setForm((prev) => ({ ...prev, dividendFrequency: v }))}
+                    options={[
+                      { value: '', label: '— None —' },
+                      { value: 'monthly', label: 'Monthly' },
+                      { value: 'quarterly', label: 'Quarterly' },
+                      { value: 'semi-annual', label: 'Semi-Annual' },
+                      { value: 'annual', label: 'Annual' },
+                      { value: 'irregular', label: 'Irregular' },
+                    ]}
+                  />
+                </Field>
+              </div>
+              {/* Maturity date */}
+              <Field label="Maturity Date (optional)">
+                <input
+                  type="date"
+                  value={form.maturityDate}
+                  onChange={set('maturityDate')}
+                  style={{ ...INPUT_STYLE, colorScheme: 'dark' }}
+                  onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
+                  onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
+                />
+              </Field>
+            </div>
+          )}
         </div>
 
         {/* Submit error */}
