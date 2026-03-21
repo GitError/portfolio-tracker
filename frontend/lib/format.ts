@@ -1,3 +1,5 @@
+import i18next from './i18n';
+
 const INVALID_NUMBER = '—';
 
 function isValidNumber(value: number | null | undefined): value is number {
@@ -6,8 +8,9 @@ function isValidNumber(value: number | null | undefined): value is number {
 
 export function formatCurrency(amount: number | null | undefined, currency = 'CAD'): string {
   if (!isValidNumber(amount)) return INVALID_NUMBER;
+  const locale = i18next.language || 'en';
   return (
-    new Intl.NumberFormat('en-CA', {
+    new Intl.NumberFormat(locale, {
       style: 'decimal',
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -25,7 +28,8 @@ export function formatPercent(decimal: number | null | undefined): string {
 
 export function formatNumber(n: number | null | undefined, decimals = 2): string {
   if (!isValidNumber(n)) return INVALID_NUMBER;
-  return new Intl.NumberFormat('en-CA', {
+  const locale = i18next.language || 'en';
+  return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(n);

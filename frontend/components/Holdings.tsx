@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Plus,
   Pencil,
@@ -86,6 +87,7 @@ interface HoldingsProps {
 }
 
 export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
+  const { t } = useTranslation();
   const {
     portfolio,
     holdings,
@@ -191,23 +193,31 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
   const columns: { key: SortKey; label: string; align: 'left' | 'right' }[] = useMemo(
     () => [
-      { key: 'symbol', label: 'Symbol', align: 'left' },
-      { key: 'name', label: 'Name', align: 'left' },
-      { key: 'assetType', label: 'Type', align: 'left' },
-      { key: 'account', label: 'Account', align: 'left' },
-      { key: 'exchange', label: 'Exchange', align: 'left' },
-      { key: 'quantity', label: 'Qty', align: 'right' },
-      { key: 'costBasis', label: 'Cost Basis', align: 'right' },
-      { key: 'currentPrice', label: 'Price', align: 'right' },
-      { key: 'marketValueCad', label: `Mkt Value (${baseCurrency})`, align: 'right' },
+      { key: 'symbol', label: t('holdings.columns.symbol'), align: 'left' },
+      { key: 'name', label: t('holdings.columns.name'), align: 'left' },
+      { key: 'assetType', label: t('holdings.columns.type'), align: 'left' },
+      { key: 'account', label: t('holdings.columns.account'), align: 'left' },
+      { key: 'exchange', label: t('holdings.columns.exchange'), align: 'left' },
+      { key: 'quantity', label: t('holdings.columns.quantity'), align: 'right' },
+      { key: 'costBasis', label: t('holdings.columns.costBasis'), align: 'right' },
+      { key: 'currentPrice', label: t('holdings.columns.currentPrice'), align: 'right' },
+      {
+        key: 'marketValueCad',
+        label: `${t('holdings.columns.marketValue')} (${baseCurrency})`,
+        align: 'right',
+      },
       { key: 'weight', label: 'Current %', align: 'right' },
-      { key: 'targetWeight', label: 'Target %', align: 'right' },
+      { key: 'targetWeight', label: t('holdings.columns.targetWeight'), align: 'right' },
       { key: 'targetDeltaPercent', label: 'Delta %', align: 'right' },
       { key: 'targetDeltaValue', label: `Rebalance (${baseCurrency})`, align: 'right' },
-      { key: 'gainLoss', label: `Gain/Loss (${baseCurrency})`, align: 'right' },
+      {
+        key: 'gainLoss',
+        label: `${t('holdings.columns.gainLoss')} (${baseCurrency})`,
+        align: 'right',
+      },
       { key: 'gainLossPercent', label: 'G/L %', align: 'right' },
     ],
-    [baseCurrency]
+    [baseCurrency, t]
   );
 
   const rows: HoldingWithPrice[] = useMemo(() => {
@@ -475,7 +485,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               color: 'var(--text-primary)',
             }}
           >
-            Holdings
+            {t('holdings.title')}
           </span>
           <span
             style={{
@@ -488,7 +498,9 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               borderRadius: '2px',
             }}
           >
-            {holdings.length} positions
+            {t(holdings.length === 1 ? 'common.positions' : 'common.positions_plural', {
+              count: holdings.length,
+            })}
           </span>
         </div>
         <div
@@ -524,7 +536,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             value={accountFilter}
             onChange={(value) => handleAccountFilterChange(value as 'all' | AccountType)}
             options={[
-              { value: 'all', label: 'All Accounts' },
+              { value: 'all', label: t('holdings.allAccounts') },
               ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
             ]}
             style={{ width: 160 }}
@@ -600,7 +612,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             }}
           >
             <Download size={12} />
-            Export CSV
+            {t('holdings.exportCsv')}
           </button>
           <button
             onClick={() => setImportOpen(true)}
@@ -619,7 +631,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             }}
           >
             <Upload size={12} />
-            Import CSV
+            {t('holdings.importCsv')}
           </button>
           <button
             onClick={() => {
@@ -642,7 +654,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             }}
           >
             <Plus size={13} />
-            Add Holding
+            {t('holdings.addHolding')}
           </button>
         </div>
       </div>
@@ -848,7 +860,9 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                   </span>
                                 </th>
                               ))}
-                              <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                              <th style={{ ...TH, textAlign: 'center' }}>
+                                {t('holdings.columns.actions')}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
