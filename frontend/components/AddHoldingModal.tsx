@@ -319,7 +319,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
             : form.indicatedAnnualDividend !== ''
               ? form.currency
               : null,
-        dividendFrequency: form.dividendFrequency || null,
+        dividendFrequency: (form.dividendFrequency || null) as HoldingInput['dividendFrequency'],
         maturityDate: form.maturityDate || null,
       };
       await onSave(input);

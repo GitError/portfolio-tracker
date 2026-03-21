@@ -1565,12 +1565,6 @@ async fn fetch_asset_profile(
 ///
 /// Both requests are issued concurrently. A failure on either is treated as a soft
 /// error so that partial data is still returned.
-pub(crate) async fn get_symbol_metadata_internal(
-    client: &reqwest::Client,
-    symbols: &[String],
-) -> Result<Vec<SymbolMetadata>, String> {
-    get_symbol_metadata_with_cache(client, symbols, None).await
-}
 
 /// Internal helper that optionally checks symbol_cache before hitting Yahoo Finance.
 /// When `pool` is provided, fundamentals cached within 24 hours are returned directly.
