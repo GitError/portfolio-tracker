@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { tauriInvoke } from '../lib/tauri';
 import { Pencil, Trash2, X, Plus } from 'lucide-react';
 import { ACCOUNT_TYPE_CONFIG } from '../lib/constants';
 import type {
