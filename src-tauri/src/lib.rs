@@ -29,7 +29,8 @@ pub fn run() {
                 .map_err(|e| e.to_string())?
                 .create_if_missing(true)
                 .foreign_keys(true)
-                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+                .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+                .busy_timeout(std::time::Duration::from_millis(5000));
 
             let pool = tauri::async_runtime::block_on(async {
                 SqlitePoolOptions::new()
