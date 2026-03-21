@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
+use sqlx::SqlitePool;
 use tauri::{Manager, State};
 
 use crate::analytics::compute_realized_gains_grouped;
@@ -21,21 +22,22 @@ use crate::types::{
     Transaction, TransactionInput,
 };
 
-pub struct DbState(pub Mutex<rusqlite::Connection>);
+pub struct DbState(pub SqlitePool);
 pub struct HttpClient(pub reqwest::Client);
 
 fn get_base_currency(db: &State<'_, DbState>) -> String {
-    db.0.lock()
-        .ok()
-        .and_then(|conn| db::get_config(&conn, "base_currency").ok().flatten())
-        .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
+    let pool = &db.0;
+    tauri::async_runtime::block_on(async {
+        db::get_config(pool, "base_currency").await.ok().flatten()
+    })
+    .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
 }
 
 #[allow(dead_code)]
 #[tauri::command]
 pub async fn get_config_cmd(db: State<'_, DbState>, key: String) -> Result<Option<String>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::get_config(&conn, &key)
+    let pool = &db.0;
+    db::get_config(pool, &key).await
 }
 
 #[allow(dead_code)]
@@ -45,8 +47,8 @@ pub async fn set_config_cmd(
     key: String,
     value: String,
 ) -> Result<(), String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::set_config(&conn, &key, &value)
+    let pool = &db.0;
+    db::set_config(pool, &key, &value).await
 }
 
 pub(crate) struct SearchCacheEntry {
@@ -348,10 +350,8 @@ async fn validate_symbol(
     client: &State<'_, HttpClient>,
     symbol: &str,
 ) -> Result<Option<SymbolResult>, String> {
-    if let Some(cached) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_symbol_cache_exact(&conn, symbol)?
-    } {
+    let pool = &db.0;
+    if let Some(cached) = db::get_symbol_cache_exact(pool, symbol).await? {
         return Ok(Some(cached));
     }
 
@@ -361,8 +361,7 @@ async fn validate_symbol(
         .find(|candidate| candidate.symbol.eq_ignore_ascii_case(symbol));
 
     if let Some(ref symbol_result) = result {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let _ = db::upsert_symbol(&conn, symbol_result);
+        let _ = db::upsert_symbol(pool, symbol_result).await;
     }
 
     Ok(result)
@@ -538,23 +537,19 @@ pub async fn get_portfolio(
     db: State<'_, DbState>,
     _client: State<'_, HttpClient>,
 ) -> Result<PortfolioSnapshot, String> {
+    let pool = &db.0;
     let base_currency = get_base_currency(&db);
 
-    let holdings = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
-    };
+    let holdings = db::get_all_holdings(pool).await?;
 
-    let (cached_prices, cached_fx) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
-    };
+    let cached_prices = db::get_cached_prices(pool).await?;
+    let cached_fx = db::get_fx_rates(pool).await?;
 
     let realized_gains = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        let cost_basis_method =
-            db::get_config(&conn, "cost_basis_method")?.unwrap_or_else(|| "avco".to_string());
-        let transactions = db::get_all_transactions(&conn)?;
+        let cost_basis_method = db::get_config(pool, "cost_basis_method")
+            .await?
+            .unwrap_or_else(|| "avco".to_string());
+        let transactions = db::get_all_transactions(pool).await?;
         match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
             Ok(s) => s.total_realized_gain,
             Err(e) => {
@@ -567,10 +562,9 @@ pub async fn get_portfolio(
         }
     };
 
-    let annual_dividend_income = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_annual_dividend_income(&conn, &base_currency, &cached_fx).unwrap_or(0.0)
-    };
+    let annual_dividend_income = db::get_annual_dividend_income(pool, &base_currency, &cached_fx)
+        .await
+        .unwrap_or(0.0);
 
     Ok(build_portfolio_snapshot(
         &holdings,
@@ -585,17 +579,17 @@ pub async fn get_portfolio(
 
 #[tauri::command]
 pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::get_all_holdings(&conn)
+    let pool = &db.0;
+    db::get_all_holdings(pool).await
 }
 
 const WEIGHT_EPSILON: f64 = 0.001;
 
 #[tauri::command]
 pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let pool = &db.0;
     if holding.target_weight > 0.0 {
-        let current_sum = db::sum_target_weights(&conn, None)?;
+        let current_sum = db::sum_target_weights(pool, None).await?;
         let new_total = current_sum + holding.target_weight;
         if new_total > 100.0 + WEIGHT_EPSILON {
             return Err(format!(
@@ -604,14 +598,14 @@ pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Resul
             ));
         }
     }
-    db::insert_holding(&conn, holding)
+    db::insert_holding(pool, holding).await
 }
 
 #[tauri::command]
 pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let pool = &db.0;
     if holding.target_weight > 0.0 {
-        let current_sum = db::sum_target_weights(&conn, Some(&holding.id))?;
+        let current_sum = db::sum_target_weights(pool, Some(&holding.id)).await?;
         let new_total = current_sum + holding.target_weight;
         if new_total > 100.0 + WEIGHT_EPSILON {
             return Err(format!(
@@ -620,21 +614,19 @@ pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<
             ));
         }
     }
-    db::update_holding(&conn, holding)
+    db::update_holding(pool, holding).await
 }
 
 #[tauri::command]
 pub async fn delete_holding(db: State<'_, DbState>, id: String) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::delete_holding(&conn, &id)
+    let pool = &db.0;
+    db::delete_holding(pool, &id).await
 }
 
 #[tauri::command]
 pub async fn export_holdings_csv(db: State<'_, DbState>) -> Result<String, String> {
-    let holdings = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
-    };
+    let pool = &db.0;
+    let holdings = db::get_all_holdings(pool).await?;
     build_holdings_csv(&holdings)
 }
 
@@ -647,8 +639,9 @@ pub async fn import_holdings_csv(
     let parsed_rows = parse_import_rows(&csv_content)?;
 
     let existing_keys: HashSet<(String, String)> = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
+        let pool = &db.0;
+        db::get_all_holdings(pool)
+            .await?
             .into_iter()
             .map(|holding| {
                 (
@@ -765,8 +758,8 @@ pub async fn import_holdings_csv(
         ));
     }
     let existing_weight_sum = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::sum_target_weights(&conn, None)?
+        let pool = &db.0;
+        db::sum_target_weights(pool, None).await?
     };
     if existing_weight_sum + import_weight_sum > 100.0 + WEIGHT_EPSILON {
         return Err(format!(
@@ -778,9 +771,9 @@ pub async fn import_holdings_csv(
 
     let mut imported = Vec::new();
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let pool = &db.0;
         for input in pending_inputs {
-            imported.push(db::insert_holding(&conn, input)?);
+            imported.push(db::insert_holding(pool, input).await?);
         }
     }
 
@@ -799,8 +792,9 @@ pub async fn preview_import_csv(
 ) -> Result<PreviewImportResult, String> {
     let parsed_rows = parse_import_rows(&csv_content)?;
     let existing_keys: HashSet<(String, String)> = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
+        let pool = &db.0;
+        db::get_all_holdings(pool)
+            .await?
             .into_iter()
             .map(|h| (h.symbol.to_uppercase(), h.account.as_str().to_string()))
             .collect()
@@ -926,8 +920,8 @@ pub async fn refresh_prices(
     let base_currency = get_base_currency(&db);
 
     let holdings = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
+        let pool = &db.0;
+        db::get_all_holdings(pool).await?
     };
 
     // Collect unique symbols (skip cash) and a symbol→currency fallback map so
@@ -971,27 +965,25 @@ pub async fn refresh_prices(
 
     // Persist prices and FX rates to cache
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let pool = &db.0;
         for price in &prices {
-            db::upsert_price(&conn, price)?;
+            db::upsert_price(pool, price).await?;
         }
         for rate in &fx_rates {
-            db::upsert_fx_rate(&conn, rate)?;
+            db::upsert_fx_rate(pool, rate).await?;
         }
     }
 
     // Build a portfolio snapshot to record the current total value
     let snapshot_totals = {
-        let (holdings, cached_prices, cached_fx) = {
-            let conn = db.0.lock().map_err(|e| e.to_string())?;
-            (
-                db::get_all_holdings(&conn)?,
-                db::get_cached_prices(&conn)?,
-                db::get_fx_rates(&conn)?,
-            )
-        };
+        let pool = &db.0;
+        let (snap_holdings, cached_prices, cached_fx) = tokio::try_join!(
+            db::get_all_holdings(pool),
+            db::get_cached_prices(pool),
+            db::get_fx_rates(pool),
+        )?;
         let snap = build_portfolio_snapshot(
-            &holdings,
+            &snap_holdings,
             &cached_prices,
             &cached_fx,
             &base_currency,
@@ -1004,22 +996,24 @@ pub async fn refresh_prices(
 
     // Record the snapshot and prune old data; log errors but don't fail the command
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let pool = &db.0;
         if let Err(e) = db::insert_snapshot(
-            &conn,
+            pool,
             snapshot_totals.0,
             snapshot_totals.1,
             snapshot_totals.2,
-        ) {
+        )
+        .await
+        {
             eprintln!("Failed to insert portfolio snapshot: {}", e);
         }
-        if let Err(e) = db::prune_snapshots(&conn) {
+        if let Err(e) = db::prune_snapshots(pool).await {
             eprintln!("Failed to prune portfolio snapshots: {}", e);
         }
 
         // Check price alerts — collect newly-triggered IDs and surface errors
         for price in &prices {
-            match db::check_and_trigger_alerts(&conn, &price.symbol, price.price) {
+            match db::check_and_trigger_alerts(pool, &price.symbol, price.price).await {
                 Ok(ids) => triggered_alert_ids.extend(ids),
                 Err(e) => {
                     let msg = format!("Failed to check alerts for {}: {}", price.symbol, e);
@@ -1068,8 +1062,10 @@ pub async fn search_symbols(
 
     // 2. SQLite persistent cache
     let db_results = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::search_symbol_cache(&conn, &key).unwrap_or_default()
+        let pool = &db.0;
+        db::search_symbol_cache(pool, &key)
+            .await
+            .unwrap_or_default()
     };
 
     // 3. Yahoo Finance API
@@ -1083,9 +1079,9 @@ pub async fn search_symbols(
 
     // Persist new results to SQLite and in-memory cache
     {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
+        let pool = &db.0;
         for r in &results {
-            let _ = db::upsert_symbol(&conn, r);
+            let _ = db::upsert_symbol(pool, r).await;
         }
     }
     cache.set(key, results.clone());
@@ -1120,8 +1116,8 @@ pub async fn get_performance(
         _ => (now - chrono::Duration::days(30)).to_rfc3339(),
     };
 
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let snapshots = db::get_snapshots_in_range(&conn, &start, &end).map_err(|e| e.to_string())?;
+    let pool = &db.0;
+    let snapshots = db::get_snapshots_in_range(pool, &start, &end).await?;
 
     // Deduplicate by calendar date, keeping only the latest snapshot per day.
     let mut by_date: std::collections::BTreeMap<String, PerformancePoint> =
@@ -1147,8 +1143,8 @@ pub async fn get_performance(
 
 #[tauri::command]
 pub async fn get_dividends(db: State<'_, DbState>) -> Result<Vec<Dividend>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::get_dividends(&conn)
+    let pool = &db.0;
+    db::get_dividends(pool).await
 }
 
 #[tauri::command]
@@ -1156,30 +1152,30 @@ pub async fn add_dividend(
     db: State<'_, DbState>,
     dividend: DividendInput,
 ) -> Result<Dividend, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let pool = &db.0;
     // Look up the symbol for the holding
-    let holdings = db::get_all_holdings(&conn)?;
+    let holdings = db::get_all_holdings(pool).await?;
     let symbol = holdings
         .iter()
         .find(|h| h.id == dividend.holding_id)
         .map(|h| h.symbol.as_str())
         .unwrap_or("")
         .to_string();
-    db::insert_dividend(&conn, dividend, &symbol)
+    db::insert_dividend(pool, dividend, &symbol).await
 }
 
 #[tauri::command]
 pub async fn delete_dividend(db: State<'_, DbState>, id: i64) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::delete_dividend(&conn, id)
+    let pool = &db.0;
+    db::delete_dividend(pool, id).await
 }
 
 // ── Price Alert Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn get_alerts(db: State<'_, DbState>) -> Result<Vec<PriceAlert>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::get_alerts(&conn)
+    let pool = &db.0;
+    db::get_alerts(pool).await
 }
 
 #[tauri::command]
@@ -1187,29 +1183,29 @@ pub async fn add_alert(
     db: State<'_, DbState>,
     alert: PriceAlertInput,
 ) -> Result<PriceAlert, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::insert_alert(&conn, alert)
+    let pool = &db.0;
+    db::insert_alert(pool, alert).await
 }
 
 #[tauri::command]
 pub async fn delete_alert(db: State<'_, DbState>, id: String) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::delete_alert(&conn, &id)
+    let pool = &db.0;
+    db::delete_alert(pool, &id).await
 }
 
 #[tauri::command]
 pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::reset_alert(&conn, &id)
+    let pool = &db.0;
+    db::reset_alert(pool, &id).await
 }
 
 #[tauri::command]
 pub async fn export_data(state: State<'_, DbState>) -> Result<String, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let pool = &state.0;
     let payload = crate::types::ExportPayload {
-        holdings: db::get_all_holdings(&conn)?,
-        alerts: db::get_alerts(&conn)?,
-        config: db::get_all_config(&conn)?,
+        holdings: db::get_all_holdings(pool).await?,
+        alerts: db::get_alerts(pool).await?,
+        config: db::get_all_config(pool).await?,
     };
     serde_json::to_string(&payload).map_err(|e| e.to_string())
 }
@@ -1230,34 +1226,42 @@ pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usiz
     };
 
     let count = payload.holdings.len();
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let pool = &state.0;
 
     // Wrap in a transaction so a mid-import failure leaves the database intact.
-    conn.execute_batch("BEGIN").map_err(|e| e.to_string())?;
-    let result = (|| -> Result<(), String> {
-        db::delete_all_holdings(&conn).map_err(|e| e.to_string())?;
-        db::delete_all_alerts(&conn)?;
-        db::delete_all_config(&conn)?;
+    sqlx::query("BEGIN EXCLUSIVE")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result: Result<(), String> = async {
+        db::delete_all_holdings(pool).await?;
+        db::delete_all_alerts(pool).await?;
+        db::delete_all_config(pool).await?;
 
         for holding in payload.holdings {
-            db::insert_holding_with_id(&conn, holding).map_err(|e| e.to_string())?;
+            db::insert_holding_with_id(pool, holding).await?;
         }
         for alert in payload.alerts {
-            db::insert_alert_with_id(&conn, alert)?;
+            db::insert_alert_with_id(pool, alert).await?;
         }
         for (key, value) in payload.config {
-            db::set_config(&conn, &key, &value)?;
+            db::set_config(pool, &key, &value).await?;
         }
         Ok(())
-    })();
+    }
+    .await;
 
     match result {
         Ok(()) => {
-            conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+            sqlx::query("COMMIT")
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
             Ok(count)
         }
         Err(e) => {
-            let _ = conn.execute_batch("ROLLBACK");
+            let _ = sqlx::query("ROLLBACK").execute(pool).await;
             Err(e)
         }
     }
@@ -1274,8 +1278,10 @@ pub async fn backup_database(
 ) -> Result<String, String> {
     // Flush WAL to ensure the file on disk is complete before we copy it.
     {
-        let conn = state.0.lock().map_err(|e| e.to_string())?;
-        conn.execute_batch("PRAGMA wal_checkpoint(FULL);")
+        let pool = &state.0;
+        sqlx::query("PRAGMA wal_checkpoint(FULL)")
+            .execute(pool)
+            .await
             .map_err(|e| format!("WAL checkpoint failed: {e}"))?;
     }
 
@@ -1357,21 +1363,36 @@ pub async fn restore_database(
         return Err("The selected file is not a valid SQLite database".to_string());
     }
 
-    // Open the source file with rusqlite to verify it has a holdings table.
+    // Open the source file with sqlx to verify it has a holdings table.
     {
-        let verify_conn = rusqlite::Connection::open(&src)
+        use sqlx::Row;
+        let verify_url = format!("sqlite:{}?mode=ro", src.to_string_lossy());
+        let verify_pool = sqlx::SqlitePool::connect(&verify_url)
+            .await
             .map_err(|e| format!("Cannot open backup as SQLite: {e}"))?;
-        verify_conn
-            .execute_batch("PRAGMA integrity_check;")
+
+        let integrity_row = sqlx::query("PRAGMA integrity_check")
+            .fetch_one(&verify_pool)
+            .await
             .map_err(|e| format!("Integrity check failed on backup: {e}"))?;
-        let has_holdings: bool = verify_conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='holdings'",
-                [],
-                |row| row.get::<_, i64>(0),
-            )
-            .map(|n| n > 0)
-            .map_err(|e| format!("Could not verify holdings table: {e}"))?;
+        let integrity_result: String = integrity_row.get(0);
+        if integrity_result != "ok" {
+            verify_pool.close().await;
+            return Err(format!(
+                "Integrity check failed on backup: {}",
+                integrity_result
+            ));
+        }
+
+        let count_row = sqlx::query(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='holdings'",
+        )
+        .fetch_one(&verify_pool)
+        .await
+        .map_err(|e| format!("Could not verify holdings table: {e}"))?;
+        let has_holdings: bool = count_row.get::<i64, _>(0) > 0;
+        verify_pool.close().await;
+
         if !has_holdings {
             return Err(
                 "Backup file does not appear to be a portfolio database (no holdings table)"
@@ -1407,15 +1428,10 @@ pub async fn get_rebalance_suggestions(
 ) -> Result<Vec<RebalanceSuggestion>, String> {
     let base_currency = get_base_currency(&db);
 
-    let holdings = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
-    };
-
-    let (cached_prices, cached_fx) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
-    };
+    let pool = &db.0;
+    let holdings = db::get_all_holdings(pool).await?;
+    let cached_prices = db::get_cached_prices(pool).await?;
+    let cached_fx = db::get_fx_rates(pool).await?;
 
     let snapshot = build_portfolio_snapshot(
         &holdings,
@@ -1786,15 +1802,10 @@ pub async fn get_portfolio_analytics(
 ) -> Result<PortfolioAnalytics, String> {
     let base_currency = get_base_currency(&db);
 
-    let holdings = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        db::get_all_holdings(&conn)?
-    };
-
-    let (cached_prices, cached_fx) = {
-        let conn = db.0.lock().map_err(|e| e.to_string())?;
-        (db::get_cached_prices(&conn)?, db::get_fx_rates(&conn)?)
-    };
+    let pool = &db.0;
+    let holdings = db::get_all_holdings(pool).await?;
+    let cached_prices = db::get_cached_prices(pool).await?;
+    let cached_fx = db::get_fx_rates(pool).await?;
 
     let snapshot = build_portfolio_snapshot(
         &holdings,
@@ -1830,13 +1841,14 @@ pub async fn get_realized_gains(
     db: State<'_, DbState>,
     holding_id: Option<String>,
 ) -> Result<RealizedGainsSummary, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    let cost_basis_method =
-        db::get_config(&conn, "cost_basis_method")?.unwrap_or_else(|| "avco".to_string());
+    let pool = &db.0;
+    let cost_basis_method = db::get_config(pool, "cost_basis_method")
+        .await?
+        .unwrap_or_else(|| "avco".to_string());
 
     let transactions = match holding_id {
-        Some(ref id) => db::get_transactions_for_holding(&conn, id).map_err(|e| e.to_string())?,
-        None => db::get_all_transactions(&conn).map_err(|e| e.to_string())?,
+        Some(ref id) => db::get_transactions_for_holding(pool, id).await?,
+        None => db::get_all_transactions(pool).await?,
     };
 
     compute_realized_gains_grouped(&transactions, &cost_basis_method)
@@ -2395,8 +2407,8 @@ pub async fn add_transaction(
     if input.price < 0.0 {
         return Err("Transaction price must be non-negative".to_string());
     }
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::insert_transaction(&conn, input)
+    let pool = &db.0;
+    db::insert_transaction(pool, input).await
 }
 
 #[tauri::command]
@@ -2404,17 +2416,17 @@ pub async fn get_transactions(
     db: State<'_, DbState>,
     holding_id: Option<String>,
 ) -> Result<Vec<Transaction>, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
+    let pool = &db.0;
     match holding_id {
-        Some(id) => db::get_transactions_for_holding(&conn, &id),
-        None => db::get_all_transactions(&conn),
+        Some(id) => db::get_transactions_for_holding(pool, &id).await,
+        None => db::get_all_transactions(pool).await,
     }
 }
 
 #[tauri::command]
 pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bool, String> {
-    let conn = db.0.lock().map_err(|e| e.to_string())?;
-    db::delete_transaction(&conn, &id)
+    let pool = &db.0;
+    db::delete_transaction(pool, &id).await
 }
 
 // ── Account Commands ──────────────────────────────────────────────────────────
@@ -2423,8 +2435,8 @@ const VALID_ACCOUNT_TYPES: &[&str] = &["tfsa", "rrsp", "fhsa", "taxable", "crypt
 
 #[tauri::command]
 pub async fn get_accounts(state: tauri::State<'_, DbState>) -> Result<Vec<Account>, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::get_accounts(&conn).map_err(|e| e.to_string())
+    let pool = &state.0;
+    db::get_accounts(pool).await
 }
 
 #[tauri::command]
@@ -2445,9 +2457,8 @@ pub async fn add_account(
     let institution = account.institution.clone();
     let account_type = account.account_type.clone();
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::insert_account(&conn, &id, &name, &account_type, institution.as_deref())
-        .map_err(|e| e.to_string())?;
+    let pool = &state.0;
+    db::insert_account(pool, &id, &name, &account_type, institution.as_deref()).await?;
 
     Ok(Account {
         id,
@@ -2475,17 +2486,16 @@ pub async fn update_account(
     let institution = account.institution.clone();
     let account_type = account.account_type.clone();
 
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let pool = &state.0;
     // Fetch created_at for the returned struct
-    let existing: Vec<Account> = db::get_accounts(&conn).map_err(|e| e.to_string())?;
+    let existing: Vec<Account> = db::get_accounts(pool).await?;
     let created_at = existing
         .iter()
         .find(|a| a.id == id)
         .map(|a| a.created_at.clone())
         .ok_or_else(|| format!("Account {} not found", id))?;
 
-    db::update_account(&conn, &id, &name, &account_type, institution.as_deref())
-        .map_err(|e| e.to_string())?;
+    db::update_account(pool, &id, &name, &account_type, institution.as_deref()).await?;
 
     Ok(Account {
         id,
@@ -2498,7 +2508,7 @@ pub async fn update_account(
 
 #[tauri::command]
 pub async fn delete_account(state: tauri::State<'_, DbState>, id: String) -> Result<bool, String> {
-    let conn = state.0.lock().map_err(|e| e.to_string())?;
-    db::delete_account(&conn, &id).map_err(|e| e.to_string())?;
+    let pool = &state.0;
+    db::delete_account(pool, &id).await?;
     Ok(true)
 }

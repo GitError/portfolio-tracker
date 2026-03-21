@@ -1,5 +1,5 @@
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use sqlx::SqlitePool;
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -9,350 +9,126 @@ use crate::types::{
     Transaction, TransactionInput, TransactionType,
 };
 
-const ALLOWED_TABLES: &[&str] = &[
-    "holdings",
-    "price_cache",
-    "fx_rates",
-    "symbol_cache",
-    "app_config",
-    "portfolio_snapshots",
-    "price_alerts",
-    "transactions",
-    "dividends",
-    "accounts",
-];
+// ── Config ────────────────────────────────────────────────────────────────────
 
-fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
-    if !ALLOWED_TABLES.contains(&table) {
-        return Ok(false);
-    }
-
-    let mut stmt = conn
-        .prepare(&format!("PRAGMA table_info({})", table))
-        .map_err(|e| e.to_string())?;
-    let columns = stmt
-        .query_map([], |row| row.get::<_, String>(1))
+pub async fn get_config(pool: &SqlitePool, key: &str) -> Result<Option<String>, String> {
+    let row = sqlx::query("SELECT value FROM app_config WHERE key = $1")
+        .bind(key)
+        .fetch_optional(pool)
+        .await
         .map_err(|e| e.to_string())?;
 
-    for name in columns {
-        if name.map_err(|e| e.to_string())? == column {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
-}
-
-pub fn init_db(conn: &Connection) -> Result<(), String> {
-    // Enable FK enforcement for this connection. SQLite disables it by default;
-    // every connection must opt in. This must run before any DML.
-    conn.execute_batch("PRAGMA foreign_keys = ON;")
-        .map_err(|e| e.to_string())?;
-
-    conn.execute_batch(
-        "
-        CREATE TABLE IF NOT EXISTS holdings (
-            id          TEXT PRIMARY KEY,
-            symbol      TEXT NOT NULL,
-            name        TEXT NOT NULL,
-            asset_type  TEXT NOT NULL,
-            account     TEXT NOT NULL DEFAULT 'taxable',
-            account_id  TEXT,
-            quantity    REAL NOT NULL,
-            cost_basis  REAL NOT NULL,
-            currency    TEXT NOT NULL,
-            exchange    TEXT NOT NULL DEFAULT '',
-            target_weight REAL NOT NULL DEFAULT 0,
-            created_at  TEXT NOT NULL,
-            updated_at  TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS price_cache (
-            symbol          TEXT PRIMARY KEY,
-            price           REAL NOT NULL,
-            currency        TEXT NOT NULL,
-            change          REAL NOT NULL DEFAULT 0,
-            change_percent  REAL NOT NULL DEFAULT 0,
-            updated_at      TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS fx_rates (
-            pair        TEXT PRIMARY KEY,
-            rate        REAL NOT NULL,
-            updated_at  TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS symbol_cache (
-            symbol      TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            asset_type  TEXT NOT NULL,
-            exchange    TEXT NOT NULL DEFAULT '',
-            currency    TEXT NOT NULL DEFAULT 'USD',
-            updated_at  TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS app_config (
-            key     TEXT PRIMARY KEY,
-            value   TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS portfolio_snapshots (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            total_value REAL    NOT NULL,
-            total_cost  REAL    NOT NULL,
-            gain_loss   REAL    NOT NULL,
-            recorded_at TEXT    NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_snapshots_recorded_at
-            ON portfolio_snapshots(recorded_at);
-
-        CREATE TABLE IF NOT EXISTS price_alerts (
-            id          TEXT PRIMARY KEY,
-            symbol      TEXT NOT NULL,
-            direction   TEXT NOT NULL,
-            threshold   REAL NOT NULL,
-            note        TEXT NOT NULL DEFAULT '',
-            triggered   INTEGER NOT NULL DEFAULT 0,
-            created_at  TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS transactions (
-            id               TEXT PRIMARY KEY,
-            holding_id       TEXT NOT NULL,
-            transaction_type TEXT NOT NULL,
-            quantity         REAL NOT NULL,
-            price            REAL NOT NULL,
-            transacted_at    TEXT NOT NULL,
-            created_at       TEXT NOT NULL,
-            FOREIGN KEY (holding_id) REFERENCES holdings(id) ON DELETE CASCADE
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_transactions_holding_id
-            ON transactions(holding_id);
-
-        CREATE INDEX IF NOT EXISTS idx_transactions_transacted_at
-            ON transactions(transacted_at);
-
-        CREATE TABLE IF NOT EXISTS dividends (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            holding_id      TEXT    NOT NULL REFERENCES holdings(id) ON DELETE CASCADE,
-            amount_per_unit REAL    NOT NULL,
-            currency        TEXT    NOT NULL,
-            ex_date         TEXT    NOT NULL,
-            pay_date        TEXT    NOT NULL,
-            created_at      TEXT    NOT NULL
-        );
-
-        CREATE INDEX IF NOT EXISTS idx_dividends_holding_id
-            ON dividends(holding_id);
-
-        CREATE TABLE IF NOT EXISTS accounts (
-            id          TEXT PRIMARY KEY,
-            name        TEXT NOT NULL,
-            type        TEXT NOT NULL DEFAULT 'other'
-                        CHECK(type IN ('tfsa','rrsp','fhsa','taxable','crypto','other')),
-            institution TEXT,
-            created_at  TEXT NOT NULL
-        );
-        ",
-    )
-    .map_err(|e| e.to_string())?;
-
-    if !table_has_column(conn, "holdings", "account")? {
-        conn.execute(
-            "ALTER TABLE holdings ADD COLUMN account TEXT NOT NULL DEFAULT 'taxable'",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    if !table_has_column(conn, "holdings", "target_weight")? {
-        conn.execute(
-            "ALTER TABLE holdings ADD COLUMN target_weight REAL NOT NULL DEFAULT 0",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    if !table_has_column(conn, "holdings", "exchange")? {
-        conn.execute(
-            "ALTER TABLE holdings ADD COLUMN exchange TEXT NOT NULL DEFAULT ''",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    // One-time migration: backfill cash-asset holdings that still have the default
-    // 'taxable' account type. Guarded by a migration flag so it runs exactly once
-    // and never overwrites a value the user has intentionally set afterwards.
-    let migration_done: bool = conn
-        .query_row(
-            "SELECT 1 FROM app_config WHERE key='migration_cash_account_backfill'",
-            [],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-
-    if !migration_done {
-        conn.execute(
-            "UPDATE holdings SET account='cash' WHERE asset_type='cash' AND account='taxable'",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-
-        conn.execute(
-            "INSERT OR IGNORE INTO app_config (key, value) VALUES ('migration_cash_account_backfill', '1')",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    // One-time migration: backfill holdings.account_id from legacy holdings.account (account type).
-    if !table_has_column(conn, "holdings", "account_id")? {
-        conn.execute("ALTER TABLE holdings ADD COLUMN account_id TEXT", [])
-            .map_err(|e| e.to_string())?;
-    }
-
-    let holdings_account_id_migration_done: bool = conn
-        .query_row(
-            "SELECT 1 FROM app_config WHERE key='migration_holdings_account_id_backfill'",
-            [],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-
-    if !holdings_account_id_migration_done {
-        // Map the first account (by created_at) matching each holding's legacy account type.
-        conn.execute(
-            "UPDATE holdings
-             SET account_id = (
-                 SELECT id FROM accounts
-                 WHERE type = holdings.account
-                 ORDER BY created_at ASC
-                 LIMIT 1
-             )
-             WHERE account_id IS NULL OR account_id = ''",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-
-        conn.execute(
-            "INSERT OR IGNORE INTO app_config (key, value)
-             VALUES ('migration_holdings_account_id_backfill', '1')",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    }
-
-    Ok(())
-}
-
-pub fn get_config(conn: &Connection, key: &str) -> Result<Option<String>, String> {
-    let mut stmt = conn
-        .prepare("SELECT value FROM app_config WHERE key=?1")
-        .map_err(|e| e.to_string())?;
-    let mut rows = stmt.query(params![key]).map_err(|e| e.to_string())?;
-    match rows.next().map_err(|e| e.to_string())? {
-        Some(row) => Ok(Some(row.get(0).map_err(|e| e.to_string())?)),
-        None => Ok(None),
-    }
+    Ok(row.map(|r| {
+        use sqlx::Row;
+        r.get::<String, _>(0)
+    }))
 }
 
 #[allow(dead_code)]
-pub fn set_config(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
-    conn.execute(
-        "INSERT INTO app_config (key, value) VALUES (?1, ?2)
+pub async fn set_config(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO app_config (key, value) VALUES ($1, $2)
          ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        params![key, value],
     )
+    .bind(key)
+    .bind(value)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn get_all_config(conn: &Connection) -> Result<Vec<(String, String)>, String> {
-    let mut stmt = conn
-        .prepare("SELECT key, value FROM app_config ORDER BY key")
+pub async fn get_all_config(pool: &SqlitePool) -> Result<Vec<(String, String)>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query("SELECT key, value FROM app_config ORDER BY key")
+        .fetch_all(pool)
+        .await
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
+
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.get::<String, _>(0), r.get::<String, _>(1)))
+        .collect())
 }
 
-pub fn delete_all_alerts(conn: &Connection) -> Result<(), String> {
-    conn.execute("DELETE FROM price_alerts", [])
+pub async fn delete_all_alerts(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("DELETE FROM price_alerts")
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn delete_all_config(conn: &Connection) -> Result<(), String> {
-    conn.execute("DELETE FROM app_config", [])
+pub async fn delete_all_config(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("DELETE FROM app_config")
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+// ── Alerts (restore) ──────────────────────────────────────────────────────────
 
 /// Insert a price alert preserving its original ID and triggered state (for restore).
-pub fn insert_alert_with_id(conn: &Connection, alert: PriceAlert) -> Result<(), String> {
-    conn.execute(
+pub async fn insert_alert_with_id(pool: &SqlitePool, alert: PriceAlert) -> Result<(), String> {
+    sqlx::query(
         "INSERT OR REPLACE INTO price_alerts
          (id, symbol, direction, threshold, note, triggered, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            alert.id,
-            alert.symbol,
-            alert.direction.as_str(),
-            alert.threshold,
-            alert.note,
-            alert.triggered,
-            alert.created_at,
-        ],
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
+    .bind(&alert.id)
+    .bind(&alert.symbol)
+    .bind(alert.direction.as_str())
+    .bind(alert.threshold)
+    .bind(&alert.note)
+    .bind(alert.triggered)
+    .bind(&alert.created_at)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding, String> {
+// ── Holdings ──────────────────────────────────────────────────────────────────
+
+pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Holding, String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    let asset_type_str = input.asset_type.as_str();
+    let asset_type_str = input.asset_type.as_str().to_string();
 
-    let effective_account_id = if let Some(account_id) = input.account_id {
+    let effective_account_id: Option<String> = if let Some(account_id) = input.account_id.clone() {
         Some(account_id)
     } else {
-        // Best-effort fallback for legacy inserts / mocks:
-        // map the legacy holdings.account (account type) to the first matching account record.
-        conn.query_row(
-            "SELECT id FROM accounts WHERE type=?1 ORDER BY created_at ASC LIMIT 1",
-            params![input.account.as_str()],
-            |r| r.get(0),
-        )
-        .ok()
+        use sqlx::Row;
+        sqlx::query("SELECT id FROM accounts WHERE type = $1 ORDER BY created_at ASC LIMIT 1")
+            .bind(input.account.as_str())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.get::<String, _>(0))
     };
 
-    conn.execute(
-        "INSERT INTO holdings (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-        params![
-            id,
-            input.symbol,
-            input.name,
-            asset_type_str,
-            input.account.as_str(),
-            effective_account_id.as_deref(),
-            input.quantity,
-            input.cost_basis,
-            input.currency,
-            input.exchange,
-            input.target_weight,
-            now,
-            now
-        ],
+    sqlx::query(
+        "INSERT INTO holdings
+         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
     )
+    .bind(&id)
+    .bind(&input.symbol)
+    .bind(&input.name)
+    .bind(&asset_type_str)
+    .bind(input.account.as_str())
+    .bind(&effective_account_id)
+    .bind(input.quantity)
+    .bind(input.cost_basis)
+    .bind(&input.currency)
+    .bind(&input.exchange)
+    .bind(input.target_weight)
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
 
     Ok(Holding {
@@ -373,458 +149,455 @@ pub fn insert_holding(conn: &Connection, input: HoldingInput) -> Result<Holding,
     })
 }
 
-pub fn update_holding(conn: &Connection, holding: Holding) -> Result<Holding, String> {
+pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holding, String> {
     let now = Utc::now().to_rfc3339();
-    let asset_type_str = holding.asset_type.as_str();
+    let asset_type_str = holding.asset_type.as_str().to_string();
 
-    let effective_account_id = if let Some(account_id) = holding.account_id.clone() {
+    let effective_account_id: Option<String> = if let Some(account_id) = holding.account_id.clone()
+    {
         Some(account_id)
     } else {
-        conn.query_row(
-            "SELECT id FROM accounts WHERE type=?1 ORDER BY created_at ASC LIMIT 1",
-            params![holding.account.as_str()],
-            |r| r.get(0),
-        )
-        .ok()
+        use sqlx::Row;
+        sqlx::query("SELECT id FROM accounts WHERE type = $1 ORDER BY created_at ASC LIMIT 1")
+            .bind(holding.account.as_str())
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.get::<String, _>(0))
     };
 
-    let rows = conn
-        .execute(
-            "UPDATE holdings SET
-                 symbol=?1,
-                 name=?2,
-                 asset_type=?3,
-                 account=?4,
-                 account_id=?5,
-                 quantity=?6,
-                 cost_basis=?7,
-                 currency=?8,
-                 exchange=?9,
-                 target_weight=?10,
-                 updated_at=?11
-             WHERE id=?12",
-            params![
-                holding.symbol,
-                holding.name,
-                asset_type_str,
-                holding.account.as_str(),
-                effective_account_id.as_deref(),
-                holding.quantity,
-                holding.cost_basis,
-                holding.currency,
-                holding.exchange,
-                holding.target_weight,
-                now,
-                holding.id
-            ],
-        )
-        .map_err(|e| e.to_string())?;
+    let result = sqlx::query(
+        "UPDATE holdings SET
+             symbol=$1,
+             name=$2,
+             asset_type=$3,
+             account=$4,
+             account_id=$5,
+             quantity=$6,
+             cost_basis=$7,
+             currency=$8,
+             exchange=$9,
+             target_weight=$10,
+             updated_at=$11
+         WHERE id=$12",
+    )
+    .bind(&holding.symbol)
+    .bind(&holding.name)
+    .bind(&asset_type_str)
+    .bind(holding.account.as_str())
+    .bind(&effective_account_id)
+    .bind(holding.quantity)
+    .bind(holding.cost_basis)
+    .bind(&holding.currency)
+    .bind(&holding.exchange)
+    .bind(holding.target_weight)
+    .bind(&now)
+    .bind(&holding.id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    if rows == 0 {
+    if result.rows_affected() == 0 {
         return Err(format!("Holding {} not found", holding.id));
     }
 
     Ok(Holding {
         updated_at: now,
+        account_id: effective_account_id,
         ..holding
     })
 }
 
-pub fn delete_holding(conn: &Connection, id: &str) -> Result<bool, String> {
-    let rows = conn
-        .execute("DELETE FROM holdings WHERE id=?1", params![id])
+pub async fn delete_holding(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+    let result = sqlx::query("DELETE FROM holdings WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
-    Ok(rows > 0)
+    Ok(result.rows_affected() > 0)
 }
 
-pub fn delete_all_holdings(conn: &Connection) -> Result<(), rusqlite::Error> {
-    conn.execute("DELETE FROM holdings", [])?;
+pub async fn delete_all_holdings(pool: &SqlitePool) -> Result<(), String> {
+    sqlx::query("DELETE FROM holdings")
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn insert_holding_with_id(conn: &Connection, holding: Holding) -> Result<(), rusqlite::Error> {
-    conn.execute(
+pub async fn insert_holding_with_id(pool: &SqlitePool, holding: Holding) -> Result<(), String> {
+    sqlx::query(
         "INSERT OR REPLACE INTO holdings
          (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-        params![
-            holding.id,
-            holding.symbol,
-            holding.name,
-            holding.asset_type.as_str(),
-            holding.account.as_str(),
-            holding.account_id.as_deref(),
-            holding.quantity,
-            holding.cost_basis,
-            holding.currency,
-            holding.exchange,
-            holding.target_weight,
-            holding.created_at,
-            holding.updated_at,
-        ],
-    )?;
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+    )
+    .bind(&holding.id)
+    .bind(&holding.symbol)
+    .bind(&holding.name)
+    .bind(holding.asset_type.as_str())
+    .bind(holding.account.as_str())
+    .bind(&holding.account_id)
+    .bind(holding.quantity)
+    .bind(holding.cost_basis)
+    .bind(&holding.currency)
+    .bind(&holding.exchange)
+    .bind(holding.target_weight)
+    .bind(&holding.created_at)
+    .bind(&holding.updated_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn get_all_holdings(conn: &Connection) -> Result<Vec<Holding>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT
-                h.id,
-                h.symbol,
-                h.name,
-                h.asset_type,
-                h.account,
-                h.account_id,
-                a.name AS account_name,
-                h.quantity,
-                h.cost_basis,
-                h.currency,
-                h.exchange,
-                h.target_weight,
-                h.created_at,
-                h.updated_at
-             FROM holdings h
-             LEFT JOIN accounts a ON a.id = h.account_id
-             ORDER BY h.created_at ASC",
-        )
-        .map_err(|e| e.to_string())?;
+pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT
+            h.id,
+            h.symbol,
+            h.name,
+            h.asset_type,
+            h.account,
+            h.account_id,
+            a.name AS account_name,
+            h.quantity,
+            h.cost_basis,
+            h.currency,
+            h.exchange,
+            h.target_weight,
+            h.created_at,
+            h.updated_at
+         FROM holdings h
+         LEFT JOIN accounts a ON a.id = h.account_id
+         ORDER BY h.created_at ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let holdings = stmt
-        .query_map([], |row| {
-            let asset_type_str: String = row.get(3)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                asset_type_str,
-                row.get::<_, String>(4)?,
-                row.get::<_, Option<String>>(5)?,
-                row.get::<_, Option<String>>(6)?,
-                row.get::<_, f64>(7)?,
-                row.get::<_, f64>(8)?,
-                row.get::<_, String>(9)?,
-                row.get::<_, String>(10)?,
-                row.get::<_, f64>(11)?,
-                row.get::<_, String>(12)?,
-                row.get::<_, String>(13)?,
-            ))
+    let holdings = rows
+        .into_iter()
+        .map(|r| {
+            let asset_type_str: String = r.get(3);
+            let account_str: String = r.get(4);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
+            Holding {
+                id: r.get(0),
+                symbol: r.get(1),
+                name: r.get(2),
+                asset_type,
+                account,
+                account_id: r.get(5),
+                account_name: r.get(6),
+                quantity: r.get(7),
+                cost_basis: r.get(8),
+                currency: r.get(9),
+                exchange: r.get(10),
+                target_weight: r.get(11),
+                created_at: r.get(12),
+                updated_at: r.get(13),
+            }
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .map(
-            |(
-                id,
-                symbol,
-                name,
-                asset_type_str,
-                account_str,
-                account_id,
-                account_name,
-                quantity,
-                cost_basis,
-                currency,
-                exchange,
-                target_weight,
-                created_at,
-                updated_at,
-            )| {
-                let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-                let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
-                Holding {
-                    id,
-                    symbol,
-                    name,
-                    asset_type,
-                    account,
-                    account_id,
-                    account_name,
-                    quantity,
-                    cost_basis,
-                    currency,
-                    exchange,
-                    target_weight,
-                    created_at,
-                    updated_at,
-                }
-            },
-        )
         .collect();
 
     Ok(holdings)
 }
 
-pub fn upsert_price(conn: &Connection, price: &PriceData) -> Result<(), String> {
-    conn.execute(
+// ── Price cache ───────────────────────────────────────────────────────────────
+
+pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), String> {
+    sqlx::query(
         "INSERT INTO price_cache (symbol, price, currency, change, change_percent, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT(symbol) DO UPDATE SET price=excluded.price, currency=excluded.currency,
-         change=excluded.change, change_percent=excluded.change_percent, updated_at=excluded.updated_at",
-        params![
-            price.symbol,
-            price.price,
-            price.currency,
-            price.change,
-            price.change_percent,
-            price.updated_at
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn get_cached_prices(conn: &Connection) -> Result<Vec<PriceData>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT symbol, price, currency, change, change_percent, updated_at FROM price_cache",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let prices = stmt
-        .query_map([], |row| {
-            Ok(PriceData {
-                symbol: row.get(0)?,
-                price: row.get(1)?,
-                currency: row.get(2)?,
-                change: row.get(3)?,
-                change_percent: row.get(4)?,
-                updated_at: row.get(5)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(prices)
-}
-
-pub fn upsert_fx_rate(conn: &Connection, rate: &FxRate) -> Result<(), String> {
-    conn.execute(
-        "INSERT INTO fx_rates (pair, rate, updated_at) VALUES (?1, ?2, ?3)
-         ON CONFLICT(pair) DO UPDATE SET rate=excluded.rate, updated_at=excluded.updated_at",
-        params![rate.pair, rate.rate, rate.updated_at],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-pub fn get_fx_rates(conn: &Connection) -> Result<Vec<FxRate>, String> {
-    let mut stmt = conn
-        .prepare("SELECT pair, rate, updated_at FROM fx_rates")
-        .map_err(|e| e.to_string())?;
-
-    let rates = stmt
-        .query_map([], |row| {
-            Ok(FxRate {
-                pair: row.get(0)?,
-                rate: row.get(1)?,
-                updated_at: row.get(2)?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(rates)
-}
-
-pub fn upsert_symbol(conn: &Connection, result: &SymbolResult) -> Result<(), String> {
-    let now = Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+         VALUES ($1, $2, $3, $4, $5, $6)
          ON CONFLICT(symbol) DO UPDATE SET
-           name=excluded.name, asset_type=excluded.asset_type,
-           exchange=excluded.exchange, currency=excluded.currency,
+           price=excluded.price,
+           currency=excluded.currency,
+           change=excluded.change,
+           change_percent=excluded.change_percent,
            updated_at=excluded.updated_at",
-        params![
-            result.symbol,
-            result.name,
-            result.asset_type.as_str(),
-            result.exchange,
-            result.currency,
-            now
-        ],
     )
+    .bind(&price.symbol)
+    .bind(price.price)
+    .bind(&price.currency)
+    .bind(price.change)
+    .bind(price.change_percent)
+    .bind(&price.updated_at)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn search_symbol_cache(conn: &Connection, query: &str) -> Result<Vec<SymbolResult>, String> {
+pub async fn get_cached_prices(pool: &SqlitePool) -> Result<Vec<PriceData>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT symbol, price, currency, change, change_percent, updated_at FROM price_cache",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| PriceData {
+            symbol: r.get(0),
+            price: r.get(1),
+            currency: r.get(2),
+            change: r.get(3),
+            change_percent: r.get(4),
+            updated_at: r.get(5),
+        })
+        .collect())
+}
+
+// ── FX rates ──────────────────────────────────────────────────────────────────
+
+pub async fn upsert_fx_rate(pool: &SqlitePool, rate: &FxRate) -> Result<(), String> {
+    sqlx::query(
+        "INSERT INTO fx_rates (pair, rate, updated_at) VALUES ($1, $2, $3)
+         ON CONFLICT(pair) DO UPDATE SET rate=excluded.rate, updated_at=excluded.updated_at",
+    )
+    .bind(&rate.pair)
+    .bind(rate.rate)
+    .bind(&rate.updated_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn get_fx_rates(pool: &SqlitePool) -> Result<Vec<FxRate>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query("SELECT pair, rate, updated_at FROM fx_rates")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| FxRate {
+            pair: r.get(0),
+            rate: r.get(1),
+            updated_at: r.get(2),
+        })
+        .collect())
+}
+
+// ── Symbol cache ──────────────────────────────────────────────────────────────
+
+pub async fn upsert_symbol(pool: &SqlitePool, result: &SymbolResult) -> Result<(), String> {
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT(symbol) DO UPDATE SET
+           name=excluded.name,
+           asset_type=excluded.asset_type,
+           exchange=excluded.exchange,
+           currency=excluded.currency,
+           updated_at=excluded.updated_at",
+    )
+    .bind(&result.symbol)
+    .bind(&result.name)
+    .bind(result.asset_type.as_str())
+    .bind(&result.exchange)
+    .bind(&result.currency)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+pub async fn search_symbol_cache(
+    pool: &SqlitePool,
+    query: &str,
+) -> Result<Vec<SymbolResult>, String> {
+    use sqlx::Row;
     let pattern = format!("%{}%", query.to_lowercase());
     let sym_prefix = format!("{}%", query.to_uppercase());
-    let mut stmt = conn
-        .prepare(
-            "SELECT symbol, name, asset_type, exchange, currency FROM symbol_cache
-             WHERE symbol LIKE ?1 OR LOWER(name) LIKE ?2
-             ORDER BY CASE WHEN symbol LIKE ?1 THEN 0 ELSE 1 END
-             LIMIT 8",
-        )
-        .map_err(|e| e.to_string())?;
 
-    let results = stmt
-        .query_map(params![sym_prefix, pattern], |row| {
-            let asset_type_str: String = row.get(2)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                asset_type_str,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .map(|(symbol, name, asset_type_str, exchange, currency)| {
+    let rows = sqlx::query(
+        "SELECT symbol, name, asset_type, exchange, currency FROM symbol_cache
+         WHERE symbol LIKE $1 OR LOWER(name) LIKE $2
+         ORDER BY CASE WHEN symbol LIKE $1 THEN 0 ELSE 1 END
+         LIMIT 8",
+    )
+    .bind(&sym_prefix)
+    .bind(&pattern)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let asset_type_str: String = r.get(2);
             let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
             SymbolResult {
-                symbol,
-                name,
+                symbol: r.get(0),
+                name: r.get(1),
                 asset_type,
-                exchange,
-                currency,
+                exchange: r.get(3),
+                currency: r.get(4),
             }
         })
-        .collect();
-
-    Ok(results)
+        .collect())
 }
 
-pub fn get_symbol_cache_exact(
-    conn: &Connection,
+pub async fn get_symbol_cache_exact(
+    pool: &SqlitePool,
     symbol: &str,
 ) -> Result<Option<SymbolResult>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT symbol, name, asset_type, exchange, currency
-             FROM symbol_cache
-             WHERE UPPER(symbol) = UPPER(?1)
-             LIMIT 1",
-        )
-        .map_err(|e| e.to_string())?;
+    use sqlx::Row;
+    let row = sqlx::query(
+        "SELECT symbol, name, asset_type, exchange, currency
+         FROM symbol_cache
+         WHERE UPPER(symbol) = UPPER($1)
+         LIMIT 1",
+    )
+    .bind(symbol)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let mut rows = stmt.query(params![symbol]).map_err(|e| e.to_string())?;
-    let Some(row) = rows.next().map_err(|e| e.to_string())? else {
-        return Ok(None);
-    };
-
-    let asset_type_str: String = row.get(2).map_err(|e| e.to_string())?;
-    let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-
-    Ok(Some(SymbolResult {
-        symbol: row.get(0).map_err(|e| e.to_string())?,
-        name: row.get(1).map_err(|e| e.to_string())?,
-        asset_type,
-        exchange: row.get(3).map_err(|e| e.to_string())?,
-        currency: row.get(4).map_err(|e| e.to_string())?,
+    Ok(row.map(|r| {
+        let asset_type_str: String = r.get(2);
+        let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+        SymbolResult {
+            symbol: r.get(0),
+            name: r.get(1),
+            asset_type,
+            exchange: r.get(3),
+            currency: r.get(4),
+        }
     }))
 }
 
-pub fn insert_snapshot(
-    conn: &Connection,
+// ── Portfolio snapshots ───────────────────────────────────────────────────────
+
+pub async fn insert_snapshot(
+    pool: &SqlitePool,
     total_value: f64,
     total_cost: f64,
     gain_loss: f64,
-) -> Result<(), rusqlite::Error> {
+) -> Result<(), String> {
     let recorded_at = Utc::now().to_rfc3339();
-    conn.execute(
+    sqlx::query(
         "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
-         VALUES (?1, ?2, ?3, ?4)",
-        params![total_value, total_cost, gain_loss, recorded_at],
-    )?;
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(total_value)
+    .bind(total_cost)
+    .bind(gain_loss)
+    .bind(&recorded_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn get_snapshots_in_range(
-    conn: &Connection,
+pub async fn get_snapshots_in_range(
+    pool: &SqlitePool,
     start: &str,
     end: &str,
-) -> Result<Vec<PerformancePoint>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
+) -> Result<Vec<PerformancePoint>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
         "SELECT recorded_at, total_value
          FROM portfolio_snapshots
-         WHERE recorded_at >= ?1 AND recorded_at <= ?2
+         WHERE recorded_at >= $1 AND recorded_at <= $2
          ORDER BY recorded_at ASC",
-    )?;
+    )
+    .bind(start)
+    .bind(end)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let points = stmt
-        .query_map(params![start, end], |row| {
-            let recorded_at: String = row.get(0)?;
-            let total_value: f64 = row.get(1)?;
-            // Truncate ISO timestamp to date portion for the chart
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let recorded_at: String = r.get(0);
+            let total_value: f64 = r.get(1);
             let date = recorded_at.get(..10).unwrap_or(&recorded_at).to_string();
-            Ok(PerformancePoint {
+            PerformancePoint {
                 date,
                 value: total_value,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(points)
+            }
+        })
+        .collect())
 }
 
-pub fn prune_snapshots(conn: &Connection) -> Result<(), rusqlite::Error> {
-    // Keep all snapshots from the last 30 days; beyond that, keep only the latest per day.
+pub async fn prune_snapshots(pool: &SqlitePool) -> Result<(), String> {
     let cutoff = (Utc::now() - chrono::Duration::days(30))
         .format("%Y-%m-%dT%H:%M:%S")
         .to_string();
 
-    // Delete older rows that are not the latest snapshot for their day.
-    conn.execute(
+    sqlx::query(
         "DELETE FROM portfolio_snapshots
-         WHERE recorded_at < ?1
+         WHERE recorded_at < $1
            AND id NOT IN (
                SELECT MAX(id)
                FROM portfolio_snapshots
-               WHERE recorded_at < ?1
+               WHERE recorded_at < $1
                GROUP BY DATE(recorded_at)
            )",
-        params![cutoff],
-    )?;
+    )
+    .bind(&cutoff)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(())
 }
 
 /// Returns the sum of all `target_weight` values in the holdings table,
 /// optionally excluding a specific holding by id (used during updates).
-pub fn sum_target_weights(conn: &Connection, exclude_id: Option<&str>) -> Result<f64, String> {
+pub async fn sum_target_weights(
+    pool: &SqlitePool,
+    exclude_id: Option<&str>,
+) -> Result<f64, String> {
+    use sqlx::Row;
     let sum: f64 = match exclude_id {
-        Some(id) => conn
-            .query_row(
-                "SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE id != ?1",
-                params![id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?,
-        None => conn
-            .query_row(
-                "SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?,
+        Some(id) => {
+            sqlx::query("SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE id != $1")
+                .bind(id)
+                .fetch_one(pool)
+                .await
+                .map_err(|e| e.to_string())
+                .map(|r| r.get::<f64, _>(0))?
+        }
+
+        None => sqlx::query("SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())
+            .map(|r| r.get::<f64, _>(0))?,
     };
     Ok(sum)
 }
 
 // ── Price Alerts ──────────────────────────────────────────────────────────────
 
-pub fn insert_alert(conn: &Connection, input: PriceAlertInput) -> Result<PriceAlert, String> {
+pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<PriceAlert, String> {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
-    conn.execute(
+    sqlx::query(
         "INSERT INTO price_alerts (id, symbol, direction, threshold, note, triggered, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6)",
-        params![
-            id,
-            input.symbol,
-            input.direction.as_str(),
-            input.threshold,
-            input.note,
-            created_at
-        ],
+         VALUES ($1, $2, $3, $4, $5, 0, $6)",
     )
+    .bind(&id)
+    .bind(&input.symbol)
+    .bind(input.direction.as_str())
+    .bind(input.threshold)
+    .bind(&input.note)
+    .bind(&created_at)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
 
     Ok(PriceAlert {
@@ -838,75 +611,66 @@ pub fn insert_alert(conn: &Connection, input: PriceAlertInput) -> Result<PriceAl
     })
 }
 
-pub fn get_alerts(conn: &Connection) -> Result<Vec<PriceAlert>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, symbol, direction, threshold, note, triggered, created_at
-             FROM price_alerts ORDER BY created_at DESC",
-        )
-        .map_err(|e| e.to_string())?;
+pub async fn get_alerts(pool: &SqlitePool) -> Result<Vec<PriceAlert>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT id, symbol, direction, threshold, note, triggered, created_at
+         FROM price_alerts ORDER BY created_at DESC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let alerts = stmt
-        .query_map([], |row| {
-            let direction_str: String = row.get(2)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                direction_str,
-                row.get::<_, f64>(3)?,
-                row.get::<_, String>(4)?,
-                row.get::<_, bool>(5)?,
-                row.get::<_, String>(6)?,
-            ))
+    let alerts = rows
+        .into_iter()
+        .filter_map(|r| {
+            let dir_str: String = r.get(2);
+            let direction = dir_str.parse::<AlertDirection>().ok()?;
+            let triggered: bool = r.get(5);
+            Some(PriceAlert {
+                id: r.get(0),
+                symbol: r.get(1),
+                direction,
+                threshold: r.get(3),
+                note: r.get(4),
+                triggered,
+                created_at: r.get(6),
+            })
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .filter_map(
-            |(id, symbol, dir_str, threshold, note, triggered, created_at)| {
-                let direction = dir_str.parse::<AlertDirection>().ok()?;
-                Some(PriceAlert {
-                    id,
-                    symbol,
-                    direction,
-                    threshold,
-                    note,
-                    triggered,
-                    created_at,
-                })
-            },
-        )
         .collect();
 
     Ok(alerts)
 }
 
-pub fn delete_alert(conn: &Connection, id: &str) -> Result<bool, String> {
-    let n = conn
-        .execute("DELETE FROM price_alerts WHERE id = ?1", params![id])
+pub async fn delete_alert(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+    let result = sqlx::query("DELETE FROM price_alerts WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
-    Ok(n > 0)
+    Ok(result.rows_affected() > 0)
 }
 
 /// Mark alerts as triggered for a symbol when threshold is crossed.
 /// Returns the IDs of newly-triggered alerts.
-pub fn check_and_trigger_alerts(
-    conn: &Connection,
+pub async fn check_and_trigger_alerts(
+    pool: &SqlitePool,
     symbol: &str,
     price: f64,
 ) -> Result<Vec<String>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, direction, threshold FROM price_alerts
-             WHERE symbol = ?1 AND triggered = 0",
-        )
-        .map_err(|e| e.to_string())?;
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT id, direction, threshold FROM price_alerts
+         WHERE symbol = $1 AND triggered = 0",
+    )
+    .bind(symbol)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let candidates: Vec<(String, String, f64)> = stmt
-        .query_map(params![symbol], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
+    let candidates: Vec<(String, String, f64)> = rows
+        .into_iter()
+        .map(|r| (r.get(0), r.get(1), r.get(2)))
         .collect();
 
     let mut triggered = Vec::new();
@@ -917,11 +681,11 @@ pub fn check_and_trigger_alerts(
             _ => false,
         };
         if crossed {
-            conn.execute(
-                "UPDATE price_alerts SET triggered = 1 WHERE id = ?1",
-                params![id],
-            )
-            .map_err(|e| e.to_string())?;
+            sqlx::query("UPDATE price_alerts SET triggered = 1 WHERE id = $1")
+                .bind(&id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
             triggered.push(id);
         }
     }
@@ -929,37 +693,37 @@ pub fn check_and_trigger_alerts(
     Ok(triggered)
 }
 
-pub fn reset_alert(conn: &Connection, id: &str) -> Result<bool, String> {
-    let n = conn
-        .execute(
-            "UPDATE price_alerts SET triggered = 0 WHERE id = ?1",
-            params![id],
-        )
+pub async fn reset_alert(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+    let result = sqlx::query("UPDATE price_alerts SET triggered = 0 WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
-    Ok(n > 0)
+    Ok(result.rows_affected() > 0)
 }
 
 // ── Transactions ──────────────────────────────────────────────────────────────
 
-pub fn insert_transaction(
-    conn: &Connection,
+pub async fn insert_transaction(
+    pool: &SqlitePool,
     input: TransactionInput,
 ) -> Result<Transaction, String> {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO transactions (id, holding_id, transaction_type, quantity, price, transacted_at, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            id,
-            input.holding_id,
-            input.transaction_type.as_str(),
-            input.quantity,
-            input.price,
-            input.transacted_at,
-            created_at,
-        ],
+    sqlx::query(
+        "INSERT INTO transactions
+         (id, holding_id, transaction_type, quantity, price, transacted_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
+    .bind(&id)
+    .bind(&input.holding_id)
+    .bind(input.transaction_type.as_str())
+    .bind(input.quantity)
+    .bind(input.price)
+    .bind(&input.transacted_at)
+    .bind(&created_at)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
 
     Ok(Transaction {
@@ -973,85 +737,81 @@ pub fn insert_transaction(
     })
 }
 
-pub fn get_transactions_for_holding(
-    conn: &Connection,
+pub async fn get_transactions_for_holding(
+    pool: &SqlitePool,
     holding_id: &str,
 ) -> Result<Vec<Transaction>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-             FROM transactions WHERE holding_id = ?1 ORDER BY transacted_at ASC",
-        )
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
+         FROM transactions WHERE holding_id = $1 ORDER BY transacted_at ASC",
+    )
+    .bind(holding_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let mut rows = stmt.query(params![holding_id]).map_err(|e| e.to_string())?;
-    let mut result = Vec::new();
-    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        result.push(row_to_transaction(row)?);
-    }
-    Ok(result)
+    rows.into_iter().map(|r| row_to_transaction(&r)).collect()
 }
 
-pub fn get_all_transactions(conn: &Connection) -> Result<Vec<Transaction>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-             FROM transactions ORDER BY transacted_at ASC",
-        )
-        .map_err(|e| e.to_string())?;
+pub async fn get_all_transactions(pool: &SqlitePool) -> Result<Vec<Transaction>, String> {
+    let rows = sqlx::query(
+        "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
+         FROM transactions ORDER BY transacted_at ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
-    let mut result = Vec::new();
-    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        result.push(row_to_transaction(row)?);
-    }
-    Ok(result)
+    rows.into_iter().map(|r| row_to_transaction(&r)).collect()
 }
 
-fn row_to_transaction(row: &rusqlite::Row<'_>) -> Result<Transaction, String> {
-    let type_str: String = row.get(2).map_err(|e| e.to_string())?;
+fn row_to_transaction(row: &sqlx::sqlite::SqliteRow) -> Result<Transaction, String> {
+    use sqlx::Row;
+    let type_str: String = row.get(2);
     let transaction_type = type_str.parse::<TransactionType>()?;
     Ok(Transaction {
-        id: row.get(0).map_err(|e| e.to_string())?,
-        holding_id: row.get(1).map_err(|e| e.to_string())?,
+        id: row.get(0),
+        holding_id: row.get(1),
         transaction_type,
-        quantity: row.get(3).map_err(|e| e.to_string())?,
-        price: row.get(4).map_err(|e| e.to_string())?,
-        transacted_at: row.get(5).map_err(|e| e.to_string())?,
-        created_at: row.get(6).map_err(|e| e.to_string())?,
+        quantity: row.get(3),
+        price: row.get(4),
+        transacted_at: row.get(5),
+        created_at: row.get(6),
     })
 }
 
-pub fn delete_transaction(conn: &Connection, id: &str) -> Result<bool, String> {
-    let n = conn
-        .execute("DELETE FROM transactions WHERE id = ?1", params![id])
+pub async fn delete_transaction(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+    let result = sqlx::query("DELETE FROM transactions WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
-    Ok(n > 0)
+    Ok(result.rows_affected() > 0)
 }
 
 // ── Dividends ─────────────────────────────────────────────────────────────────
 
-pub fn insert_dividend(
-    conn: &Connection,
+pub async fn insert_dividend(
+    pool: &SqlitePool,
     input: DividendInput,
     symbol: &str,
 ) -> Result<Dividend, String> {
     let created_at = Utc::now().to_rfc3339();
-    conn.execute(
+    let result = sqlx::query(
         "INSERT INTO dividends (holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![
-            input.holding_id,
-            input.amount_per_unit,
-            input.currency,
-            input.ex_date,
-            input.pay_date,
-            created_at
-        ],
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
+    .bind(&input.holding_id)
+    .bind(input.amount_per_unit)
+    .bind(&input.currency)
+    .bind(&input.ex_date)
+    .bind(&input.pay_date)
+    .bind(&created_at)
+    .execute(pool)
+    .await
     .map_err(|e| e.to_string())?;
 
-    let id = conn.last_insert_rowid();
+    let id = result.last_insert_rowid();
     Ok(Dividend {
         id,
         holding_id: input.holding_id,
@@ -1064,87 +824,77 @@ pub fn insert_dividend(
     })
 }
 
-pub fn get_dividends(conn: &Connection) -> Result<Vec<Dividend>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT d.id, d.holding_id, h.symbol, d.amount_per_unit, d.currency,
-                    d.ex_date, d.pay_date, d.created_at
-             FROM dividends d
-             JOIN holdings h ON h.id = d.holding_id
-             ORDER BY d.ex_date DESC",
-        )
-        .map_err(|e| e.to_string())?;
+pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT d.id, d.holding_id, h.symbol, d.amount_per_unit, d.currency,
+                d.ex_date, d.pay_date, d.created_at
+         FROM dividends d
+         JOIN holdings h ON h.id = d.holding_id
+         ORDER BY d.ex_date DESC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let dividends = stmt
-        .query_map([], |row| {
-            Ok(Dividend {
-                id: row.get(0)?,
-                holding_id: row.get(1)?,
-                symbol: row.get(2)?,
-                amount_per_unit: row.get(3)?,
-                currency: row.get(4)?,
-                ex_date: row.get(5)?,
-                pay_date: row.get(6)?,
-                created_at: row.get(7)?,
-            })
+    Ok(rows
+        .into_iter()
+        .map(|r| Dividend {
+            id: r.get(0),
+            holding_id: r.get(1),
+            symbol: r.get(2),
+            amount_per_unit: r.get(3),
+            currency: r.get(4),
+            ex_date: r.get(5),
+            pay_date: r.get(6),
+            created_at: r.get(7),
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(dividends)
+        .collect())
 }
 
-pub fn delete_dividend(conn: &Connection, id: i64) -> Result<bool, String> {
-    let n = conn
-        .execute("DELETE FROM dividends WHERE id = ?1", params![id])
+pub async fn delete_dividend(pool: &SqlitePool, id: i64) -> Result<bool, String> {
+    let result = sqlx::query("DELETE FROM dividends WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
         .map_err(|e| e.to_string())?;
-    Ok(n > 0)
+    Ok(result.rows_affected() > 0)
 }
 
 /// Returns the sum of `amount_per_unit * quantity` (converted to `base_currency`)
-/// for all dividends whose `pay_date` falls within the last 365 days. Only dividends
-/// belonging to holdings that still exist in the portfolio are included (via the JOIN).
-///
-/// Each dividend row is multiplied by the FX rate for its currency → `base_currency`.
-/// If no rate is available for a given currency, a rate of 1.0 is used as a fallback
-/// (i.e., the amount is treated as already in the base currency).
-pub fn get_annual_dividend_income(
-    conn: &Connection,
+/// for all dividends whose `pay_date` falls within the last 365 days.
+pub async fn get_annual_dividend_income(
+    pool: &SqlitePool,
     base_currency: &str,
     fx_rates: &[FxRate],
 ) -> Result<f64, String> {
+    use sqlx::Row;
     let cutoff = (Utc::now() - chrono::Duration::days(365))
         .format("%Y-%m-%d")
         .to_string();
 
-    // Fetch per-row amounts with their dividend currency so we can apply FX conversion.
-    let mut stmt = conn
-        .prepare(
-            "SELECT d.amount_per_unit * h.quantity, d.currency
-             FROM dividends d
-             JOIN holdings h ON h.id = d.holding_id
-             WHERE d.pay_date >= ?1",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(params![cutoff], |row| {
-            Ok((row.get::<_, f64>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT d.amount_per_unit * h.quantity, d.currency
+         FROM dividends d
+         JOIN holdings h ON h.id = d.holding_id
+         WHERE d.pay_date >= $1",
+    )
+    .bind(&cutoff)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     let base_upper = base_currency.to_uppercase();
-
     let mut total = 0.0_f64;
+
     for row in rows {
-        let (raw_amount, currency) = row.map_err(|e| e.to_string())?;
+        let raw_amount: f64 = row.get(0);
+        let currency: String = row.get(1);
         let currency_upper = currency.to_uppercase();
 
         let fx_rate = if currency_upper == base_upper {
             1.0
         } else {
-            // Try direct pair first (e.g. USDCAD), then inverted (e.g. CADUSD → 1/rate).
             let direct = format!("{}{}", currency_upper, base_upper);
             let inverted = format!("{}{}", base_upper, currency_upper);
             if let Some(r) = fx_rates.iter().find(|r| r.pair == direct) {
@@ -1156,7 +906,7 @@ pub fn get_annual_dividend_income(
                     1.0
                 }
             } else {
-                1.0 // fallback: no rate available, treat as base currency
+                1.0
             }
         };
 
@@ -1167,114 +917,137 @@ pub fn get_annual_dividend_income(
 }
 
 #[allow(dead_code)]
-pub fn holding_exists(conn: &Connection, symbol: &str) -> Result<bool, String> {
-    let mut stmt = conn
-        .prepare("SELECT 1 FROM holdings WHERE UPPER(symbol) = UPPER(?1) LIMIT 1")
+pub async fn holding_exists(pool: &SqlitePool, symbol: &str) -> Result<bool, String> {
+    let row = sqlx::query("SELECT 1 FROM holdings WHERE UPPER(symbol) = UPPER($1) LIMIT 1")
+        .bind(symbol)
+        .fetch_optional(pool)
+        .await
         .map_err(|e| e.to_string())?;
-
-    let mut rows = stmt.query(params![symbol]).map_err(|e| e.to_string())?;
-    Ok(rows.next().map_err(|e| e.to_string())?.is_some())
+    Ok(row.is_some())
 }
 
 // ── Accounts ──────────────────────────────────────────────────────────────────
 
-pub fn insert_account(
-    conn: &Connection,
+pub async fn insert_account(
+    pool: &SqlitePool,
     id: &str,
     name: &str,
     account_type: &str,
     institution: Option<&str>,
-) -> Result<(), rusqlite::Error> {
+) -> Result<(), String> {
     let created_at = Utc::now().to_rfc3339();
-    conn.execute(
+    sqlx::query(
         "INSERT INTO accounts (id, name, type, institution, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![id, name, account_type, institution, created_at],
-    )?;
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(id)
+    .bind(name)
+    .bind(account_type)
+    .bind(institution)
+    .bind(&created_at)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-pub fn get_accounts(conn: &Connection) -> Result<Vec<Account>, rusqlite::Error> {
-    let mut stmt = conn.prepare(
+pub async fn get_accounts(pool: &SqlitePool) -> Result<Vec<Account>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
         "SELECT id, name, type, institution, created_at FROM accounts ORDER BY created_at ASC",
-    )?;
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
-    let accounts = stmt
-        .query_map([], |row| {
-            Ok(Account {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                account_type: row.get(2)?,
-                institution: row.get(3)?,
-                created_at: row.get(4)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(accounts)
+    Ok(rows
+        .into_iter()
+        .map(|r| Account {
+            id: r.get(0),
+            name: r.get(1),
+            account_type: r.get(2),
+            institution: r.get(3),
+            created_at: r.get(4),
+        })
+        .collect())
 }
 
-pub fn update_account(
-    conn: &Connection,
+pub async fn update_account(
+    pool: &SqlitePool,
     id: &str,
     name: &str,
     account_type: &str,
     institution: Option<&str>,
-) -> Result<(), rusqlite::Error> {
-    let rows = conn.execute(
-        "UPDATE accounts SET name=?1, type=?2, institution=?3 WHERE id=?4",
-        params![name, account_type, institution, id],
-    )?;
-    if rows == 0 {
-        return Err(rusqlite::Error::QueryReturnedNoRows);
+) -> Result<(), String> {
+    let result = sqlx::query("UPDATE accounts SET name=$1, type=$2, institution=$3 WHERE id=$4")
+        .bind(name)
+        .bind(account_type)
+        .bind(institution)
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if result.rows_affected() == 0 {
+        return Err(format!("Account {} not found", id));
     }
     Ok(())
 }
 
 /// Delete an account by id. Returns an error if any holding references this account's type.
-pub fn delete_account(conn: &Connection, id: &str) -> Result<(), rusqlite::Error> {
+pub async fn delete_account(pool: &SqlitePool, id: &str) -> Result<(), String> {
+    use sqlx::Row;
+
     // Look up the account name and type
-    let (name, account_type): (String, String) = conn.query_row(
-        "SELECT name, type FROM accounts WHERE id=?1",
-        params![id],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
+    let row = sqlx::query("SELECT name, type FROM accounts WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Account {} not found", id))?;
+
+    let name: String = row.get(0);
+    let account_type: String = row.get(1);
 
     // Guard: refuse deletion when holdings reference this account type.
-    // holdings.account stores the AccountType string (e.g. "tfsa", "taxable"),
-    // not the account's human-readable name.
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM holdings WHERE account=?1",
-        params![account_type],
-        |row| row.get(0),
-    )?;
+    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings WHERE account = $1")
+        .bind(&account_type)
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
+    let count: i64 = count_row.get(0);
     if count > 0 {
-        return Err(rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error {
-                code: rusqlite::ffi::ErrorCode::ConstraintViolation,
-                extended_code: 0,
-            },
-            Some(format!(
-                "Cannot delete account '{}': {} holding(s) still reference it",
-                name, count
-            )),
+        return Err(format!(
+            "Cannot delete account '{}': {} holding(s) still reference it",
+            name, count
         ));
     }
 
-    conn.execute("DELETE FROM accounts WHERE id=?1", params![id])?;
+    sqlx::query("DELETE FROM accounts WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
     Ok(())
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn open_test_db() -> Connection {
-        let conn = Connection::open_in_memory().expect("in-memory db");
-        init_db(&conn).expect("init_db");
-        conn
+    async fn open_test_db() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory db");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("migrations");
+        pool
     }
 
     fn make_input(symbol: &str) -> HoldingInput {
@@ -1292,85 +1065,86 @@ mod tests {
         }
     }
 
-    #[test]
-    fn init_db_creates_tables() {
-        let conn = open_test_db();
-        // Should be able to query all three tables without error
-        conn.execute_batch(
-            "SELECT 1 FROM holdings; SELECT 1 FROM price_cache; SELECT 1 FROM fx_rates;",
-        )
-        .expect("tables should exist");
-    }
-
-    #[test]
-    fn insert_and_get_holdings() {
-        let conn = open_test_db();
-        insert_holding(&conn, make_input("AAPL")).expect("insert");
-        insert_holding(&conn, make_input("MSFT")).expect("insert");
-        let holdings = get_all_holdings(&conn).expect("get all");
+    #[tokio::test]
+    async fn insert_and_get_holdings() {
+        let pool = open_test_db().await;
+        insert_holding(&pool, make_input("AAPL"))
+            .await
+            .expect("insert");
+        insert_holding(&pool, make_input("MSFT"))
+            .await
+            .expect("insert");
+        let holdings = get_all_holdings(&pool).await.expect("get all");
         assert_eq!(holdings.len(), 2);
         let symbols: Vec<&str> = holdings.iter().map(|h| h.symbol.as_str()).collect();
         assert!(symbols.contains(&"AAPL"));
         assert!(symbols.contains(&"MSFT"));
     }
 
-    #[test]
-    fn update_holding_changes_fields() {
-        let conn = open_test_db();
-        let inserted = insert_holding(&conn, make_input("GOOG")).expect("insert");
+    #[tokio::test]
+    async fn update_holding_changes_fields() {
+        let pool = open_test_db().await;
+        let inserted = insert_holding(&pool, make_input("GOOG"))
+            .await
+            .expect("insert");
         let updated_holding = Holding {
             quantity: 20.0,
             cost_basis: 150.0,
             target_weight: 12.5,
             ..inserted
         };
-        let updated = update_holding(&conn, updated_holding).expect("update");
+        let updated = update_holding(&pool, updated_holding)
+            .await
+            .expect("update");
         assert!((updated.quantity - 20.0).abs() < 0.001);
         assert!((updated.cost_basis - 150.0).abs() < 0.001);
         assert!((updated.target_weight - 12.5).abs() < 0.001);
     }
 
-    #[test]
-    fn delete_holding_removes_row() {
-        let conn = open_test_db();
-        let holding = insert_holding(&conn, make_input("TSLA")).expect("insert");
-        let deleted = delete_holding(&conn, &holding.id).expect("delete");
+    #[tokio::test]
+    async fn delete_holding_removes_row() {
+        let pool = open_test_db().await;
+        let holding = insert_holding(&pool, make_input("TSLA"))
+            .await
+            .expect("insert");
+        let deleted = delete_holding(&pool, &holding.id).await.expect("delete");
         assert!(deleted);
-        let holdings = get_all_holdings(&conn).expect("get all");
+        let holdings = get_all_holdings(&pool).await.expect("get all");
         assert_eq!(holdings.len(), 0);
     }
 
-    #[test]
-    fn delete_nonexistent_holding_returns_false() {
-        let conn = open_test_db();
-        let deleted = delete_holding(&conn, "nonexistent-id").expect("delete");
+    #[tokio::test]
+    async fn delete_nonexistent_holding_returns_false() {
+        let pool = open_test_db().await;
+        let deleted = delete_holding(&pool, "nonexistent-id")
+            .await
+            .expect("delete");
         assert!(!deleted);
     }
 
-    #[test]
-    fn upsert_fx_rate_and_get() {
-        let conn = open_test_db();
+    #[tokio::test]
+    async fn upsert_fx_rate_and_get() {
+        let pool = open_test_db().await;
         let rate = FxRate {
             pair: "USDCAD".to_string(),
             rate: 1.36,
             updated_at: "2024-01-01T00:00:00Z".to_string(),
         };
-        upsert_fx_rate(&conn, &rate).expect("upsert fx");
-        // Upsert again with updated rate
+        upsert_fx_rate(&pool, &rate).await.expect("upsert fx");
         let rate2 = FxRate {
             pair: "USDCAD".to_string(),
             rate: 1.37,
             updated_at: "2024-01-02T00:00:00Z".to_string(),
         };
-        upsert_fx_rate(&conn, &rate2).expect("upsert fx 2");
-        let rates = get_fx_rates(&conn).expect("get fx rates");
+        upsert_fx_rate(&pool, &rate2).await.expect("upsert fx 2");
+        let rates = get_fx_rates(&pool).await.expect("get fx rates");
         assert_eq!(rates.len(), 1);
         assert!((rates[0].rate - 1.37).abs() < 0.001);
     }
 
-    #[test]
-    fn get_symbol_cache_exact_finds_symbol_case_insensitively() {
-        let conn = open_test_db();
+    #[tokio::test]
+    async fn get_symbol_cache_exact_finds_symbol_case_insensitively() {
+        let pool = open_test_db().await;
         let symbol = SymbolResult {
             symbol: "AAPL".to_string(),
             name: "Apple Inc.".to_string(),
@@ -1378,224 +1152,230 @@ mod tests {
             exchange: "NMS".to_string(),
             currency: "USD".to_string(),
         };
-
-        upsert_symbol(&conn, &symbol).expect("upsert symbol");
-
-        let cached = get_symbol_cache_exact(&conn, "aapl").expect("query exact");
+        upsert_symbol(&pool, &symbol).await.expect("upsert symbol");
+        let cached = get_symbol_cache_exact(&pool, "aapl")
+            .await
+            .expect("query exact");
         assert!(cached.is_some());
         assert_eq!(cached.expect("cached").name, "Apple Inc.");
     }
 
-    #[test]
-    fn holding_exists_matches_case_insensitively() {
-        let conn = open_test_db();
-        insert_holding(&conn, make_input("MSFT")).expect("insert");
-
-        assert!(holding_exists(&conn, "msft").expect("holding exists"));
-        assert!(!holding_exists(&conn, "nvda").expect("holding exists"));
+    #[tokio::test]
+    async fn holding_exists_matches_case_insensitively() {
+        let pool = open_test_db().await;
+        insert_holding(&pool, make_input("MSFT"))
+            .await
+            .expect("insert");
+        assert!(holding_exists(&pool, "msft").await.expect("holding exists"));
+        assert!(!holding_exists(&pool, "nvda").await.expect("holding exists"));
     }
 
-    #[test]
-    fn insert_snapshot_and_retrieve_in_range() {
-        let conn = open_test_db();
-
-        // Insert two snapshots
-        insert_snapshot(&conn, 100_000.0, 90_000.0, 10_000.0).expect("insert snapshot 1");
-        insert_snapshot(&conn, 110_000.0, 90_000.0, 20_000.0).expect("insert snapshot 2");
-
+    #[tokio::test]
+    async fn insert_snapshot_and_retrieve_in_range() {
+        let pool = open_test_db().await;
+        insert_snapshot(&pool, 100_000.0, 90_000.0, 10_000.0)
+            .await
+            .expect("insert snapshot 1");
+        insert_snapshot(&pool, 110_000.0, 90_000.0, 20_000.0)
+            .await
+            .expect("insert snapshot 2");
         let start = "1970-01-01T00:00:00+00:00";
         let end = "2099-12-31T23:59:59+00:00";
-        let points = get_snapshots_in_range(&conn, start, end).expect("get snapshots");
-
+        let points = get_snapshots_in_range(&pool, start, end)
+            .await
+            .expect("get snapshots");
         assert_eq!(points.len(), 2);
         assert!((points[0].value - 100_000.0).abs() < 0.001);
         assert!((points[1].value - 110_000.0).abs() < 0.001);
     }
 
-    #[test]
-    fn get_snapshots_in_range_respects_date_bounds() {
-        let conn = open_test_db();
-
-        // Insert a snapshot with a known timestamp in the past
-        conn.execute(
+    #[tokio::test]
+    async fn get_snapshots_in_range_respects_date_bounds() {
+        let pool = open_test_db().await;
+        sqlx::query(
             "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
              VALUES (50000.0, 45000.0, 5000.0, '2020-01-15T12:00:00+00:00')",
-            [],
         )
+        .execute(&pool)
+        .await
         .expect("manual insert");
 
-        // Query a range that excludes that date
         let points = get_snapshots_in_range(
-            &conn,
+            &pool,
             "2021-01-01T00:00:00+00:00",
             "2099-12-31T23:59:59+00:00",
         )
+        .await
         .expect("get snapshots");
-
         assert_eq!(points.len(), 0);
 
-        // Query a range that includes it
         let points = get_snapshots_in_range(
-            &conn,
+            &pool,
             "2020-01-01T00:00:00+00:00",
             "2020-12-31T23:59:59+00:00",
         )
+        .await
         .expect("get snapshots");
-
         assert_eq!(points.len(), 1);
         assert!((points[0].value - 50_000.0).abs() < 0.001);
         assert_eq!(points[0].date, "2020-01-15");
     }
 
-    #[test]
-    fn prune_snapshots_keeps_recent_and_daily_max_for_old() {
-        let conn = open_test_db();
-
-        // Insert 3 snapshots on the same old date (> 30 days ago) — only the highest id should survive
-        conn.execute(
-            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
-             VALUES (1000.0, 900.0, 100.0, '2020-06-01T08:00:00+00:00')",
-            [],
-        )
-        .expect("insert old 1");
-        conn.execute(
-            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
-             VALUES (1050.0, 900.0, 150.0, '2020-06-01T12:00:00+00:00')",
-            [],
-        )
-        .expect("insert old 2");
-        conn.execute(
-            "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
-             VALUES (1100.0, 900.0, 200.0, '2020-06-01T18:00:00+00:00')",
-            [],
-        )
-        .expect("insert old 3");
-
-        // Insert a recent snapshot (today) — must NOT be pruned
-        insert_snapshot(&conn, 200_000.0, 180_000.0, 20_000.0).expect("insert recent");
-
-        prune_snapshots(&conn).expect("prune");
-
+    #[tokio::test]
+    async fn prune_snapshots_keeps_recent_and_daily_max_for_old() {
+        let pool = open_test_db().await;
+        for (value, ts) in &[
+            (1000.0_f64, "2020-06-01T08:00:00+00:00"),
+            (1050.0_f64, "2020-06-01T12:00:00+00:00"),
+            (1100.0_f64, "2020-06-01T18:00:00+00:00"),
+        ] {
+            sqlx::query(
+                "INSERT INTO portfolio_snapshots (total_value, total_cost, gain_loss, recorded_at)
+                 VALUES ($1, 900.0, $2, $3)",
+            )
+            .bind(value)
+            .bind(value - 900.0)
+            .bind(ts)
+            .execute(&pool)
+            .await
+            .expect("insert old");
+        }
+        insert_snapshot(&pool, 200_000.0, 180_000.0, 20_000.0)
+            .await
+            .expect("insert recent");
+        prune_snapshots(&pool).await.expect("prune");
         let all = get_snapshots_in_range(
-            &conn,
+            &pool,
             "1970-01-01T00:00:00+00:00",
             "2099-12-31T23:59:59+00:00",
         )
+        .await
         .expect("get all");
-
-        // 1 old (latest of that day) + 1 recent = 2
         assert_eq!(all.len(), 2);
-
-        // The surviving old snapshot should be the last inserted (1100.0)
         let old_point = all.iter().find(|p| p.date == "2020-06-01");
         assert!(old_point.is_some());
         assert!((old_point.unwrap().value - 1100.0).abs() < 0.001);
     }
 
-    #[test]
-    fn sum_target_weights_returns_zero_for_empty_table() {
-        let conn = open_test_db();
-        let sum = sum_target_weights(&conn, None).expect("sum");
+    #[tokio::test]
+    async fn sum_target_weights_returns_zero_for_empty_table() {
+        let pool = open_test_db().await;
+        let sum = sum_target_weights(&pool, None).await.expect("sum");
         assert!((sum - 0.0).abs() < 0.001);
     }
 
-    #[test]
-    fn sum_target_weights_sums_all_holdings() {
-        let conn = open_test_db();
+    #[tokio::test]
+    async fn sum_target_weights_sums_all_holdings() {
+        let pool = open_test_db().await;
         let mut input_a = make_input("AAPL");
         input_a.target_weight = 40.0;
         let mut input_b = make_input("MSFT");
         input_b.target_weight = 35.0;
-        insert_holding(&conn, input_a).expect("insert a");
-        insert_holding(&conn, input_b).expect("insert b");
-        let sum = sum_target_weights(&conn, None).expect("sum");
+        insert_holding(&pool, input_a).await.expect("insert a");
+        insert_holding(&pool, input_b).await.expect("insert b");
+        let sum = sum_target_weights(&pool, None).await.expect("sum");
         assert!((sum - 75.0).abs() < 0.001);
     }
 
-    #[test]
-    fn sum_target_weights_excludes_specified_id() {
-        let conn = open_test_db();
+    #[tokio::test]
+    async fn sum_target_weights_excludes_specified_id() {
+        let pool = open_test_db().await;
         let mut input_a = make_input("AAPL");
         input_a.target_weight = 40.0;
         let mut input_b = make_input("MSFT");
         input_b.target_weight = 35.0;
-        let holding_a = insert_holding(&conn, input_a).expect("insert a");
-        insert_holding(&conn, input_b).expect("insert b");
-        let sum = sum_target_weights(&conn, Some(&holding_a.id)).expect("sum excluding a");
+        let holding_a = insert_holding(&pool, input_a).await.expect("insert a");
+        insert_holding(&pool, input_b).await.expect("insert b");
+        let sum = sum_target_weights(&pool, Some(&holding_a.id))
+            .await
+            .expect("sum excluding a");
         assert!((sum - 35.0).abs() < 0.001);
     }
 
-    #[test]
-    fn exchange_field_round_trips_through_insert_and_get() {
-        let conn = open_test_db();
+    #[tokio::test]
+    async fn exchange_field_round_trips_through_insert_and_get() {
+        let pool = open_test_db().await;
         let input = HoldingInput {
             exchange: "NYSE".to_string(),
             ..make_input("AAPL")
         };
-        insert_holding(&conn, input).expect("insert");
-        let holdings = get_all_holdings(&conn).expect("get all");
+        insert_holding(&pool, input).await.expect("insert");
+        let holdings = get_all_holdings(&pool).await.expect("get all");
         assert_eq!(holdings.len(), 1);
         assert_eq!(holdings[0].exchange, "NYSE");
     }
 
     // ── Config persistence ────────────────────────────────────────────────────
 
-    #[test]
-    fn set_and_get_config_round_trips_value() {
-        let conn = open_test_db();
-        set_config(&conn, "base_currency", "USD").expect("set config");
-        let val = get_config(&conn, "base_currency").expect("get config");
+    #[tokio::test]
+    async fn set_and_get_config_round_trips_value() {
+        let pool = open_test_db().await;
+        set_config(&pool, "base_currency", "USD")
+            .await
+            .expect("set config");
+        let val = get_config(&pool, "base_currency")
+            .await
+            .expect("get config");
         assert_eq!(val, Some("USD".to_string()));
     }
 
-    #[test]
-    fn get_config_returns_none_for_missing_key() {
-        let conn = open_test_db();
-        let val = get_config(&conn, "nonexistent_key").expect("get config");
+    #[tokio::test]
+    async fn get_config_returns_none_for_missing_key() {
+        let pool = open_test_db().await;
+        let val = get_config(&pool, "nonexistent_key")
+            .await
+            .expect("get config");
         assert_eq!(val, None);
     }
 
-    #[test]
-    fn set_config_upserts_existing_key() {
-        let conn = open_test_db();
-        set_config(&conn, "theme", "dark").expect("initial set");
-        set_config(&conn, "theme", "light").expect("update set");
-        let val = get_config(&conn, "theme").expect("get config");
+    #[tokio::test]
+    async fn set_config_upserts_existing_key() {
+        let pool = open_test_db().await;
+        set_config(&pool, "theme", "dark")
+            .await
+            .expect("initial set");
+        set_config(&pool, "theme", "light")
+            .await
+            .expect("update set");
+        let val = get_config(&pool, "theme").await.expect("get config");
         assert_eq!(val, Some("light".to_string()));
     }
 
-    #[test]
-    fn set_config_stores_multiple_independent_keys() {
-        let conn = open_test_db();
-        set_config(&conn, "base_currency", "CAD").expect("set base_currency");
-        set_config(&conn, "theme", "dark").expect("set theme");
+    #[tokio::test]
+    async fn set_config_stores_multiple_independent_keys() {
+        let pool = open_test_db().await;
+        set_config(&pool, "base_currency", "CAD")
+            .await
+            .expect("set base_currency");
+        set_config(&pool, "theme", "dark").await.expect("set theme");
         assert_eq!(
-            get_config(&conn, "base_currency").expect("get"),
+            get_config(&pool, "base_currency").await.expect("get"),
             Some("CAD".to_string())
         );
         assert_eq!(
-            get_config(&conn, "theme").expect("get"),
+            get_config(&pool, "theme").await.expect("get"),
             Some("dark".to_string())
         );
     }
 
-    #[test]
-    fn set_config_persists_empty_string_value() {
-        let conn = open_test_db();
-        set_config(&conn, "greeting", "").expect("set empty");
-        let val = get_config(&conn, "greeting").expect("get config");
+    #[tokio::test]
+    async fn set_config_persists_empty_string_value() {
+        let pool = open_test_db().await;
+        set_config(&pool, "greeting", "").await.expect("set empty");
+        let val = get_config(&pool, "greeting").await.expect("get config");
         assert_eq!(val, Some(String::new()));
     }
 
-    // ── Transaction tests ────────────────────────────────────────────────────
+    // ── Transaction tests ─────────────────────────────────────────────────────
 
-    #[test]
-    fn insert_and_get_transactions_for_holding() {
-        let conn = open_test_db();
-        let holding = insert_holding(&conn, make_input("AAPL")).expect("insert holding");
-
+    #[tokio::test]
+    async fn insert_and_get_transactions_for_holding() {
+        let pool = open_test_db().await;
+        let holding = insert_holding(&pool, make_input("AAPL"))
+            .await
+            .expect("insert holding");
         let tx = insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: holding.id.clone(),
                 transaction_type: TransactionType::Buy,
@@ -1604,23 +1384,26 @@ mod tests {
                 transacted_at: "2024-01-10T10:00:00Z".to_string(),
             },
         )
+        .await
         .expect("insert tx");
         assert!(!tx.id.is_empty());
-
-        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        let txs = get_transactions_for_holding(&pool, &holding.id)
+            .await
+            .expect("get txs");
         assert_eq!(txs.len(), 1);
         assert_eq!(txs[0].transaction_type, TransactionType::Buy);
         assert!((txs[0].quantity - 10.0).abs() < 0.001);
         assert!((txs[0].price - 150.0).abs() < 0.001);
     }
 
-    #[test]
-    fn get_transactions_ordered_by_transacted_at_desc() {
-        let conn = open_test_db();
-        let holding = insert_holding(&conn, make_input("MSFT")).expect("insert holding");
-
+    #[tokio::test]
+    async fn get_transactions_ordered_by_transacted_at_asc() {
+        let pool = open_test_db().await;
+        let holding = insert_holding(&pool, make_input("MSFT"))
+            .await
+            .expect("insert holding");
         insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: holding.id.clone(),
                 transaction_type: TransactionType::Buy,
@@ -1629,9 +1412,10 @@ mod tests {
                 transacted_at: "2024-01-01T09:00:00Z".to_string(),
             },
         )
+        .await
         .expect("insert tx1");
         insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: holding.id.clone(),
                 transaction_type: TransactionType::Sell,
@@ -1640,23 +1424,27 @@ mod tests {
                 transacted_at: "2024-03-01T09:00:00Z".to_string(),
             },
         )
+        .await
         .expect("insert tx2");
-
-        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        let txs = get_transactions_for_holding(&pool, &holding.id)
+            .await
+            .expect("get txs");
         assert_eq!(txs.len(), 2);
-        // Oldest first (ASC order, needed for FIFO/AVCO calculations)
         assert_eq!(txs[0].transaction_type, TransactionType::Buy);
         assert_eq!(txs[1].transaction_type, TransactionType::Sell);
     }
 
-    #[test]
-    fn get_all_transactions_returns_all() {
-        let conn = open_test_db();
-        let h1 = insert_holding(&conn, make_input("AAPL")).expect("insert h1");
-        let h2 = insert_holding(&conn, make_input("GOOG")).expect("insert h2");
-
+    #[tokio::test]
+    async fn get_all_transactions_returns_all() {
+        let pool = open_test_db().await;
+        let h1 = insert_holding(&pool, make_input("AAPL"))
+            .await
+            .expect("insert h1");
+        let h2 = insert_holding(&pool, make_input("GOOG"))
+            .await
+            .expect("insert h2");
         insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: h1.id.clone(),
                 transaction_type: TransactionType::Buy,
@@ -1665,9 +1453,10 @@ mod tests {
                 transacted_at: "2024-01-01T00:00:00Z".to_string(),
             },
         )
+        .await
         .expect("tx1");
         insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: h2.id.clone(),
                 transaction_type: TransactionType::Buy,
@@ -1676,19 +1465,20 @@ mod tests {
                 transacted_at: "2024-02-01T00:00:00Z".to_string(),
             },
         )
+        .await
         .expect("tx2");
-
-        let all = get_all_transactions(&conn).expect("get all txs");
+        let all = get_all_transactions(&pool).await.expect("get all txs");
         assert_eq!(all.len(), 2);
     }
 
-    #[test]
-    fn delete_transaction_removes_row() {
-        let conn = open_test_db();
-        let holding = insert_holding(&conn, make_input("TSLA")).expect("insert");
-
+    #[tokio::test]
+    async fn delete_transaction_removes_row() {
+        let pool = open_test_db().await;
+        let holding = insert_holding(&pool, make_input("TSLA"))
+            .await
+            .expect("insert");
         let tx = insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: holding.id.clone(),
                 transaction_type: TransactionType::Buy,
@@ -1697,23 +1487,23 @@ mod tests {
                 transacted_at: "2024-01-01T00:00:00Z".to_string(),
             },
         )
+        .await
         .expect("insert tx");
-
-        delete_transaction(&conn, &tx.id).expect("delete tx");
-        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        delete_transaction(&pool, &tx.id).await.expect("delete tx");
+        let txs = get_transactions_for_holding(&pool, &holding.id)
+            .await
+            .expect("get txs");
         assert_eq!(txs.len(), 0);
     }
 
-    #[test]
-    fn transactions_cascade_on_holding_delete() {
-        let conn = open_test_db();
-        // Enable cascading FK constraints (required in SQLite)
-        conn.execute_batch("PRAGMA foreign_keys = ON")
-            .expect("pragma");
-        let holding = insert_holding(&conn, make_input("NVDA")).expect("insert");
-
+    #[tokio::test]
+    async fn transactions_cascade_on_holding_delete() {
+        let pool = open_test_db().await;
+        let holding = insert_holding(&pool, make_input("NVDA"))
+            .await
+            .expect("insert");
         insert_transaction(
-            &conn,
+            &pool,
             TransactionInput {
                 holding_id: holding.id.clone(),
                 transaction_type: TransactionType::Buy,
@@ -1722,21 +1512,29 @@ mod tests {
                 transacted_at: "2024-01-01T00:00:00Z".to_string(),
             },
         )
+        .await
         .expect("insert tx");
-
-        delete_holding(&conn, &holding.id).expect("delete holding");
-        let txs = get_transactions_for_holding(&conn, &holding.id).expect("get txs");
+        delete_holding(&pool, &holding.id)
+            .await
+            .expect("delete holding");
+        let txs = get_transactions_for_holding(&pool, &holding.id)
+            .await
+            .expect("get txs");
         assert_eq!(txs.len(), 0);
     }
 
-    // ── Account CRUD ─────────────────────────────────────────────────────────
+    // ── Account CRUD ──────────────────────────────────────────────────────────
 
-    #[test]
-    fn insert_and_get_accounts() {
-        let conn = open_test_db();
-        insert_account(&conn, "acc-1", "My TFSA", "tfsa", Some("Questrade")).expect("insert");
-        insert_account(&conn, "acc-2", "RRSP", "rrsp", None).expect("insert");
-        let accounts = get_accounts(&conn).expect("get accounts");
+    #[tokio::test]
+    async fn insert_and_get_accounts() {
+        let pool = open_test_db().await;
+        insert_account(&pool, "acc-1", "My TFSA", "tfsa", Some("Questrade"))
+            .await
+            .expect("insert");
+        insert_account(&pool, "acc-2", "RRSP", "rrsp", None)
+            .await
+            .expect("insert");
+        let accounts = get_accounts(&pool).await.expect("get accounts");
         assert_eq!(accounts.len(), 2);
         let names: Vec<&str> = accounts.iter().map(|a| a.name.as_str()).collect();
         assert!(names.contains(&"My TFSA"));
@@ -1746,47 +1544,54 @@ mod tests {
         assert_eq!(tfsa.account_type, "tfsa");
     }
 
-    #[test]
-    fn update_account_changes_fields() {
-        let conn = open_test_db();
-        insert_account(&conn, "acc-1", "Old Name", "taxable", None).expect("insert");
-        update_account(&conn, "acc-1", "New Name", "rrsp", Some("TD")).expect("update");
-        let accounts = get_accounts(&conn).expect("get accounts");
+    #[tokio::test]
+    async fn update_account_changes_fields() {
+        let pool = open_test_db().await;
+        insert_account(&pool, "acc-1", "Old Name", "taxable", None)
+            .await
+            .expect("insert");
+        update_account(&pool, "acc-1", "New Name", "rrsp", Some("TD"))
+            .await
+            .expect("update");
+        let accounts = get_accounts(&pool).await.expect("get accounts");
         let acct = accounts.iter().find(|a| a.id == "acc-1").unwrap();
         assert_eq!(acct.name, "New Name");
         assert_eq!(acct.account_type, "rrsp");
         assert_eq!(acct.institution, Some("TD".to_string()));
     }
 
-    #[test]
-    fn delete_account_succeeds_when_no_holdings() {
-        let conn = open_test_db();
-        insert_account(&conn, "acc-1", "Empty Account", "tfsa", None).expect("insert");
-        delete_account(&conn, "acc-1").expect("delete should succeed");
-        let accounts = get_accounts(&conn).expect("get accounts");
+    #[tokio::test]
+    async fn delete_account_succeeds_when_no_holdings() {
+        let pool = open_test_db().await;
+        insert_account(&pool, "acc-1", "Empty Account", "tfsa", None)
+            .await
+            .expect("insert");
+        delete_account(&pool, "acc-1")
+            .await
+            .expect("delete should succeed");
+        let accounts = get_accounts(&pool).await.expect("get accounts");
         assert_eq!(accounts.len(), 0);
     }
 
-    #[test]
-    fn delete_account_fails_when_holdings_reference_it() {
-        let conn = open_test_db();
-        // Insert an account named "taxable" — this matches make_input's AccountType::Taxable
-        insert_account(&conn, "acc-1", "taxable", "taxable", None).expect("insert account");
-        // Insert a holding that references account "taxable" (the default in make_input)
+    #[tokio::test]
+    async fn delete_account_fails_when_holdings_reference_it() {
+        let pool = open_test_db().await;
+        insert_account(&pool, "acc-1", "taxable", "taxable", None)
+            .await
+            .expect("insert account");
         let input = make_input("AAPL");
-        insert_holding(&conn, input).expect("insert holding");
-        // Attempt deletion should fail
-        let result = delete_account(&conn, "acc-1");
+        insert_holding(&pool, input).await.expect("insert holding");
+        let result = delete_account(&pool, "acc-1").await;
         assert!(
             result.is_err(),
             "delete should fail with referenced holdings"
         );
     }
 
-    #[test]
-    fn update_account_returns_error_for_nonexistent_id() {
-        let conn = open_test_db();
-        let result = update_account(&conn, "nonexistent", "Name", "tfsa", None);
+    #[tokio::test]
+    async fn update_account_returns_error_for_nonexistent_id() {
+        let pool = open_test_db().await;
+        let result = update_account(&pool, "nonexistent", "Name", "tfsa", None).await;
         assert!(result.is_err());
     }
 }
