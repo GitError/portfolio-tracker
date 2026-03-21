@@ -533,21 +533,28 @@ pub async fn get_snapshots_in_range(
 }
 
 pub async fn prune_snapshots(pool: &SqlitePool) -> Result<(), String> {
-    let cutoff = (Utc::now() - chrono::Duration::days(30))
-        .format("%Y-%m-%dT%H:%M:%S")
-        .to_string();
-
+    // Keep at least 730 daily snapshots (2 years) so ALL / 1Y chart ranges
+    // always have data. Delete only rows beyond that minimum, keeping the
+    // single MAX(id) representative per calendar day for older entries.
     sqlx::query(
         "DELETE FROM portfolio_snapshots
-         WHERE recorded_at < $1
-           AND id NOT IN (
-               SELECT MAX(id)
-               FROM portfolio_snapshots
-               WHERE recorded_at < $1
-               GROUP BY DATE(recorded_at)
-           )",
+         WHERE id NOT IN (
+             SELECT MAX(id)
+             FROM portfolio_snapshots
+             GROUP BY DATE(recorded_at)
+         )
+         AND DATE(recorded_at) < (
+             SELECT DATE(recorded_at)
+             FROM (
+                 SELECT DISTINCT DATE(recorded_at) AS recorded_at
+                 FROM portfolio_snapshots
+                 ORDER BY recorded_at DESC
+                 LIMIT 730
+             )
+             ORDER BY recorded_at ASC
+             LIMIT 1
+         )",
     )
-    .bind(&cutoff)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -906,6 +913,7 @@ pub async fn get_annual_dividend_income(
                     1.0
                 }
             } else {
+                eprintln!("Warning: no FX rate found for {currency_upper}/{base_upper}, using 1:1 fallback for dividend income calculation");
                 1.0
             }
         };
@@ -1007,11 +1015,11 @@ pub async fn delete_account(pool: &SqlitePool, id: &str) -> Result<(), String> {
         .ok_or_else(|| format!("Account {} not found", id))?;
 
     let name: String = row.get(0);
-    let account_type: String = row.get(1);
+    let _account_type: String = row.get(1);
 
-    // Guard: refuse deletion when holdings reference this account type.
-    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings WHERE account = $1")
-        .bind(&account_type)
+    // Guard: refuse deletion when holdings reference this account by id.
+    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings WHERE account_id = $1")
+        .bind(id)
         .fetch_one(pool)
         .await
         .map_err(|e| e.to_string())?;
