@@ -1565,7 +1565,6 @@ async fn fetch_asset_profile(
 ///
 /// Both requests are issued concurrently. A failure on either is treated as a soft
 /// error so that partial data is still returned.
-
 /// Internal helper that optionally checks symbol_cache before hitting Yahoo Finance.
 /// When `pool` is provided, fundamentals cached within 24 hours are returned directly.
 pub(crate) async fn get_symbol_metadata_with_cache(
