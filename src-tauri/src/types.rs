@@ -466,6 +466,10 @@ pub struct ExportPayload {
     pub holdings: Vec<Holding>,
     pub alerts: Vec<PriceAlert>,
     pub config: Vec<(String, String)>,
+    #[serde(default)]
+    pub transactions: Vec<Transaction>,
+    #[serde(default)]
+    pub dividends: Vec<Dividend>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
