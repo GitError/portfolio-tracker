@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Download, Upload } from 'lucide-react';
 import { useConfig } from '../hooks/useConfig';
 import { useAutoRefresh } from '../hooks/useAutoRefresh';
+import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { AccountsModal } from './AccountsModal';
 import { Select } from './ui/Select';
 
@@ -142,6 +143,48 @@ function ActionButton({
       {icon}
       {label}
     </button>
+  );
+}
+
+const THEME_OPTIONS: { label: string; value: ThemeMode }[] = [
+  { label: 'Dark', value: 'dark' },
+  { label: 'Light', value: 'light' },
+  { label: 'System', value: 'system' },
+];
+
+function ThemePicker({
+  theme,
+  onSelect,
+}: {
+  theme: ThemeMode;
+  onSelect: (mode: ThemeMode) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 1 }}>
+      {THEME_OPTIONS.map((opt) => {
+        const isActive = theme === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onSelect(opt.value)}
+            style={{
+              padding: '5px 16px',
+              fontSize: 12,
+              fontWeight: 500,
+              fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
+              background: isActive ? 'var(--color-accent)' : 'var(--bg-surface-alt)',
+              color: isActive ? '#fff' : 'var(--text-secondary)',
+              border: `1px solid ${isActive ? 'var(--color-accent)' : 'var(--border-primary)'}`,
+              borderRadius: 2,
+              transition: 'background 150ms, border-color 150ms, color 150ms',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -423,6 +466,7 @@ export function Settings() {
     'cost_basis_method',
     'AVCO'
   );
+  const { theme, setTheme } = useTheme();
   const [accountsOpen, setAccountsOpen] = useState(false);
 
   // Auto-refresh controls — reads/writes the same config keys as useAutoRefresh
@@ -516,6 +560,24 @@ export function Settings() {
             options={CURRENCIES.map((c) => ({ label: c, value: c }))}
             style={{ minWidth: 160 }}
           />
+        </SettingRow>
+      </div>
+
+      {/* Appearance */}
+      <SectionHeader title="Appearance" />
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-primary)',
+          borderRadius: 2,
+          padding: '0 16px',
+        }}
+      >
+        <SettingRow
+          label="Theme"
+          description="Choose between dark, light, or match your system preference."
+        >
+          <ThemePicker theme={theme} onSelect={setTheme} />
         </SettingRow>
       </div>
 

@@ -18,11 +18,15 @@ import { KeyboardShortcutsOverlay } from './components/ui/KeyboardShortcutsOverl
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { PortfolioProvider, usePortfolio } from './hooks/usePortfolio';
 import { useConfig } from './hooks/useConfig';
+import { useTheme } from './hooks/useTheme';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
 
 function AppRoutes() {
+  // Initialize theme on mount — applies data-theme to <html> and reacts to OS changes
+  useTheme();
+
   const { portfolio, loading, error, failedSymbols, triggeredAlertIds, refreshPrices } =
     usePortfolio();
   const navigate = useNavigate();
