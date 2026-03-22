@@ -27,6 +27,8 @@ export interface UsePortfolioReturn {
   failedSymbols: string[];
   /** IDs of price alerts triggered during the last price refresh. */
   triggeredAlertIds: string[];
+  /** Non-fatal errors encountered while evaluating price alerts during the last refresh. */
+  alertRefreshErrors: string[];
   refreshPrices: () => Promise<void>;
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
@@ -129,6 +131,7 @@ function usePortfolioState(): UsePortfolioReturn {
   const [error, setError] = useState<string | null>(null);
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [triggeredAlertIds, setTriggeredAlertIds] = useState<string[]>([]);
+  const [alertRefreshErrors, setAlertRefreshErrors] = useState<string[]>([]);
 
   const loadPortfolio = useCallback(async () => {
     setLoading(true);
@@ -161,11 +164,15 @@ function usePortfolioState(): UsePortfolioReturn {
     setLoading(true);
     setError(null);
     setFailedSymbols([]);
+    setAlertRefreshErrors([]);
     try {
       if (isTauri()) {
         const result = await tauriInvoke<RefreshResult>('refresh_prices');
         setFailedSymbols(result.failedSymbols);
         setTriggeredAlertIds(result.triggeredAlerts ?? []);
+        const alertErrors = result.alertErrors ?? [];
+        setAlertRefreshErrors(alertErrors);
+        // alertErrors surfaced in UI via alertRefreshErrors state
         await loadPortfolio();
       } else {
         await new Promise((r) => setTimeout(r, 800));
@@ -325,6 +332,7 @@ function usePortfolioState(): UsePortfolioReturn {
     error,
     failedSymbols,
     triggeredAlertIds,
+    alertRefreshErrors,
     refreshPrices,
     addHolding,
     updateHolding,

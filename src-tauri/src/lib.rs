@@ -1,8 +1,10 @@
 mod analytics;
 mod commands;
 mod config;
+mod csv;
 mod db;
 mod fx;
+mod portfolio;
 mod price;
 mod search;
 mod stress;
@@ -15,6 +17,13 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .try_init();
+
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
@@ -99,7 +108,7 @@ pub fn run() {
         .run(tauri::generate_context!());
 
     if let Err(e) = result {
-        eprintln!("error while running tauri application: {e}");
+        tracing::error!("error while running tauri application: {e}");
         std::process::exit(1);
     }
 }

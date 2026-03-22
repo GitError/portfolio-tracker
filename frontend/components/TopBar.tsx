@@ -3,7 +3,7 @@ import { RefreshCw, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { formatCurrency, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
-import { SUPPORTED_CURRENCIES } from '../lib/currencyContext';
+import { SUPPORTED_CURRENCIES } from '../lib/constants';
 import type { PortfolioSnapshot } from '../types/portfolio';
 
 interface TopBarProps {

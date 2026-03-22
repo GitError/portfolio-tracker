@@ -8,8 +8,7 @@ import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import { AccountsModal } from './AccountsModal';
 import { Select } from './ui/Select';
-
-const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
+import { SUPPORTED_CURRENCIES } from '../lib/constants';
 
 const REFRESH_OPTION_KEYS: { key: string; value: string }[] = [
   { key: 'refresh.disabled', value: '0' },
@@ -592,7 +591,7 @@ export function Settings() {
           <Select
             value={baseCurrency}
             onChange={setBaseCurrency}
-            options={CURRENCIES.map((c) => ({ label: c, value: c }))}
+            options={SUPPORTED_CURRENCIES.map((c) => ({ label: c, value: c }))}
             style={{ minWidth: 160 }}
           />
         </SettingRow>

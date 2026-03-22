@@ -4,6 +4,7 @@ import { Pencil, Trash2, X, Plus } from 'lucide-react';
 import { ACCOUNT_TYPE_CONFIG } from '../lib/constants';
 import type {
   Account,
+  AccountType,
   CreateAccountRequest,
   HoldingWithPrice,
   PortfolioSnapshot,
@@ -16,8 +17,15 @@ interface AccountsModalProps {
   portfolio?: PortfolioSnapshot | null;
 }
 
-const VALID_ACCOUNT_TYPES = ['tfsa', 'rrsp', 'fhsa', 'taxable', 'crypto', 'other'] as const;
-type ValidAccountType = (typeof VALID_ACCOUNT_TYPES)[number];
+const VALID_ACCOUNT_TYPES: AccountType[] = [
+  'tfsa',
+  'rrsp',
+  'fhsa',
+  'taxable',
+  'crypto',
+  'cash',
+  'other',
+];
 
 function accountTypeLabel(type: string): string {
   return ACCOUNT_TYPE_CONFIG[type]?.label ?? type.toUpperCase();
@@ -114,7 +122,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
       setError('Account name is required.');
       return;
     }
-    if (!VALID_ACCOUNT_TYPES.includes(form.accountType as ValidAccountType)) {
+    if (!VALID_ACCOUNT_TYPES.includes(form.accountType)) {
       setError('Invalid account type.');
       return;
     }
@@ -429,7 +437,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
               <Select
                 value={form.accountType}
                 onChange={(value) =>
-                  setForm((prev) => ({ ...prev, accountType: value as ValidAccountType }))
+                  setForm((prev) => ({ ...prev, accountType: value as AccountType }))
                 }
                 options={accountTypeOptions}
               />

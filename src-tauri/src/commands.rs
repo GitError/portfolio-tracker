@@ -3,13 +3,16 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
 use sqlx::SqlitePool;
 use tauri::{Manager, State};
 
 use crate::analytics::compute_realized_gains_grouped;
+use crate::csv::{
+    build_holdings_csv, normalize_symbol_for_import, parse_import_rows, ParsedImportRow,
+};
 use crate::db;
-use crate::fx::{convert_to_base, fetch_all_fx_rates};
+use crate::fx::fetch_all_fx_rates;
+use crate::portfolio::build_portfolio_snapshot;
 use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
@@ -100,261 +103,6 @@ impl SearchCacheState {
         }
     }
 }
-#[derive(Debug)]
-struct ParsedImportRow {
-    row: usize,
-    symbol: String,
-    name: String,
-    asset_type: AssetType,
-    account: AccountType,
-    quantity: f64,
-    cost_basis: f64,
-    currency: String,
-    exchange: String,
-    target_weight: f64,
-}
-
-fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
-    let mut writer = WriterBuilder::new().from_writer(vec![]);
-    writer
-        .write_record([
-            "symbol",
-            "name",
-            "type",
-            "account",
-            "quantity",
-            "cost_basis",
-            "currency",
-            "exchange",
-            "target_weight",
-        ])
-        .map_err(|e| e.to_string())?;
-
-    for holding in holdings {
-        writer
-            .write_record([
-                holding.symbol.clone(),
-                holding.name.clone(),
-                holding.asset_type.as_str().to_string(),
-                holding.account.as_str().to_string(),
-                holding.quantity.to_string(),
-                holding.cost_basis.to_string(),
-                holding.currency.clone(),
-                holding.exchange.clone(),
-                holding.target_weight.to_string(),
-            ])
-            .map_err(|e| e.to_string())?;
-    }
-
-    let bytes = writer.into_inner().map_err(|e| e.to_string())?;
-    String::from_utf8(bytes).map_err(|e| e.to_string())
-}
-
-fn detect_csv_delimiter(content: &str) -> u8 {
-    let first_line = content.lines().next().unwrap_or_default();
-    if first_line.contains(';') && !first_line.contains(',') {
-        b';'
-    } else {
-        b','
-    }
-}
-
-fn find_column_index(headers: &StringRecord, field: &str) -> Option<usize> {
-    headers.iter().position(|header| {
-        header
-            .trim_start_matches('\u{feff}')
-            .trim()
-            .eq_ignore_ascii_case(field)
-    })
-}
-
-fn parse_required_field(
-    record: &StringRecord,
-    index: usize,
-    row: usize,
-    field: &str,
-) -> Result<String, String> {
-    let value = record.get(index).unwrap_or_default().trim();
-    if value.is_empty() {
-        return Err(format!("Row {}: missing_{}", row, field));
-    }
-    Ok(value.to_string())
-}
-
-fn parse_optional_field(record: &StringRecord, index: Option<usize>) -> String {
-    index
-        .and_then(|i| record.get(i))
-        .unwrap_or_default()
-        .trim()
-        .to_string()
-}
-
-/// Convert `SYMBOL:COUNTRY` notation to a Yahoo Finance symbol.
-/// Plain symbols are returned unchanged (uppercased).
-/// Examples: `BMO:CA` → `BMO.TO`, `AAPL:US` → `AAPL`, `BARC:GB` → `BARC.L`
-fn normalize_symbol_for_import(raw: &str) -> String {
-    let trimmed = raw.trim();
-    if let Some((sym, country)) = trimmed.split_once(':') {
-        let sym = sym.trim().to_uppercase();
-        match country.trim().to_uppercase().as_str() {
-            "CA" => format!("{}.TO", sym),
-            "GB" => format!("{}.L", sym),
-            "AU" => format!("{}.AX", sym),
-            "DE" => format!("{}.DE", sym),
-            "FR" => format!("{}.PA", sym),
-            "JP" => format!("{}.T", sym),
-            "HK" => format!("{}.HK", sym),
-            _ => sym, // US or unrecognised: no exchange suffix
-        }
-    } else {
-        trimmed.to_uppercase()
-    }
-}
-
-fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, String> {
-    let content = csv_content.trim_start_matches('\u{feff}');
-    let mut reader = ReaderBuilder::new()
-        .trim(Trim::All)
-        .delimiter(detect_csv_delimiter(content))
-        .from_reader(content.as_bytes());
-
-    let headers = reader
-        .headers()
-        .map_err(|e| format!("Invalid CSV header: {}", e))?
-        .clone();
-    let symbol_index = find_column_index(&headers, "symbol")
-        .ok_or_else(|| "Missing required column: symbol".to_string())?;
-    let name_index = find_column_index(&headers, "name");
-    let account_index = find_column_index(&headers, "account");
-    let exchange_index = find_column_index(&headers, "exchange");
-    let type_index = find_column_index(&headers, "type")
-        .ok_or_else(|| "Missing required column: type".to_string())?;
-    let quantity_index = find_column_index(&headers, "quantity")
-        .ok_or_else(|| "Missing required column: quantity".to_string())?;
-    let cost_basis_index = find_column_index(&headers, "cost_basis")
-        .ok_or_else(|| "Missing required column: cost_basis".to_string())?;
-    let currency_index = find_column_index(&headers, "currency")
-        .ok_or_else(|| "Missing required column: currency".to_string())?;
-    let target_weight_index = find_column_index(&headers, "target_weight");
-
-    let mut rows = Vec::new();
-
-    for (index, record) in reader.records().enumerate() {
-        if rows.len() >= crate::config::MAX_IMPORT_ROWS {
-            return Err(format!(
-                "CSV import is limited to {} rows",
-                crate::config::MAX_IMPORT_ROWS
-            ));
-        }
-
-        let row = index + 2;
-        let record = record.map_err(|e| format!("Invalid CSV row {}: {}", row, e))?;
-        if record.iter().all(|field| field.trim().is_empty()) {
-            continue;
-        }
-
-        let asset_type = parse_required_field(&record, type_index, row, "type")?
-            .to_lowercase()
-            .parse::<AssetType>()
-            .map_err(|_| format!("Row {}: invalid_type", row))?;
-        let account = parse_optional_field(&record, account_index);
-        let account = if account.is_empty() {
-            if matches!(asset_type, AssetType::Cash) {
-                AccountType::Cash
-            } else {
-                AccountType::Taxable
-            }
-        } else {
-            // Unknown/unrecognised account strings default to the appropriate
-            // type rather than crashing the whole import.
-            account.to_lowercase().parse::<AccountType>().unwrap_or({
-                if matches!(asset_type, AssetType::Cash) {
-                    AccountType::Cash
-                } else {
-                    AccountType::Taxable
-                }
-            })
-        };
-        let currency =
-            parse_required_field(&record, currency_index, row, "currency")?.to_uppercase();
-        let raw_symbol = parse_optional_field(&record, Some(symbol_index));
-        let symbol = if matches!(asset_type, AssetType::Cash) {
-            if raw_symbol.is_empty() || raw_symbol.eq_ignore_ascii_case("CASH") {
-                format!("{}-CASH", currency)
-            } else {
-                normalize_symbol_for_import(&raw_symbol)
-            }
-        } else if raw_symbol.is_empty() {
-            return Err(format!("Row {}: missing_symbol", row));
-        } else {
-            normalize_symbol_for_import(&raw_symbol)
-        };
-        // Validate length on the normalized symbol (not the raw input), because
-        // normalization (uppercase, country-suffix expansion) can change the length.
-        if symbol.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: symbol exceeds maximum length", row));
-        }
-
-        let quantity = parse_required_field(&record, quantity_index, row, "quantity")?
-            .parse::<f64>()
-            .map_err(|_| format!("Row {}: invalid_quantity", row))?;
-        if quantity <= 0.0 {
-            return Err(format!("Row {}: invalid_quantity", row));
-        }
-
-        let cost_basis = parse_required_field(&record, cost_basis_index, row, "cost_basis")?
-            .parse::<f64>()
-            .map_err(|_| format!("Row {}: invalid_cost_basis", row))?;
-        if cost_basis < 0.0 {
-            return Err(format!("Row {}: invalid_cost_basis", row));
-        }
-
-        let target_weight = parse_optional_field(&record, target_weight_index);
-        let target_weight = if target_weight.is_empty() {
-            0.0
-        } else {
-            let parsed = target_weight
-                .parse::<f64>()
-                .map_err(|_| format!("Row {}: invalid_target_weight", row))?;
-            if !(0.0..=100.0).contains(&parsed) {
-                return Err(format!("Row {}: invalid_target_weight", row));
-            }
-            parsed
-        };
-
-        let name = parse_optional_field(&record, name_index);
-        let exchange = parse_optional_field(&record, exchange_index).to_uppercase();
-
-        if name.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: name exceeds maximum length", row));
-        }
-        if currency.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: currency exceeds maximum length", row));
-        }
-        if exchange.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: exchange exceeds maximum length", row));
-        }
-
-        rows.push(ParsedImportRow {
-            row,
-            symbol,
-            name,
-            asset_type,
-            account,
-            quantity,
-            cost_basis,
-            currency,
-            exchange,
-            target_weight,
-        });
-    }
-
-    if rows.is_empty() {
-        return Err("CSV file is empty".to_string());
-    }
-
-    Ok(rows)
-}
 
 async fn validate_symbol(
     db: &State<'_, DbState>,
@@ -378,175 +126,6 @@ async fn validate_symbol(
     Ok(result)
 }
 
-fn build_portfolio_snapshot(
-    holdings: &[Holding],
-    cached_prices: &[PriceData],
-    cached_fx: &[FxRate],
-    base_currency: &str,
-    last_updated: String,
-    realized_gains: f64,
-    annual_dividend_income: f64,
-) -> PortfolioSnapshot {
-    if holdings.is_empty() {
-        return PortfolioSnapshot {
-            holdings: vec![],
-            total_value: 0.0,
-            total_cost: 0.0,
-            total_gain_loss: 0.0,
-            total_gain_loss_percent: 0.0,
-            daily_pnl: 0.0,
-            last_updated,
-            base_currency: base_currency.to_string(),
-            total_target_weight: 0.0,
-            target_cash_delta: 0.0,
-            realized_gains,
-            annual_dividend_income,
-        };
-    }
-
-    let price_map: std::collections::HashMap<String, &PriceData> = cached_prices
-        .iter()
-        .map(|p| (p.symbol.clone(), p))
-        .collect();
-
-    let fx_map: std::collections::HashMap<String, &FxRate> =
-        cached_fx.iter().map(|r| (r.pair.clone(), r)).collect();
-
-    let mut holdings_with_price: Vec<HoldingWithPrice> = Vec::new();
-    let mut total_value = 0.0f64;
-    let mut total_cost = 0.0f64;
-    let mut daily_pnl = 0.0f64;
-
-    for holding in holdings {
-        let (current_price, change_percent) = if holding.asset_type.as_str() == "cash" {
-            (1.0f64, 0.0f64)
-        } else {
-            price_map
-                .get(&holding.symbol)
-                .map(|p| (p.price, p.change_percent))
-                .unwrap_or((holding.cost_basis, 0.0))
-        };
-
-        let fx_pair = format!(
-            "{}{}",
-            holding.currency.to_uppercase(),
-            base_currency.to_uppercase()
-        );
-        let fx_rate = if holding.currency.eq_ignore_ascii_case(base_currency) {
-            1.0
-        } else {
-            fx_map.get(&fx_pair).map(|r| r.rate).unwrap_or_else(|| {
-                convert_to_base(1.0, &holding.currency, base_currency, cached_fx)
-            })
-        };
-
-        let current_price_cad = current_price * fx_rate;
-        let market_value_cad = holding.quantity * current_price_cad;
-        let cost_value_cad = holding.quantity * holding.cost_basis * fx_rate;
-        let gain_loss = market_value_cad - cost_value_cad;
-        let gain_loss_percent = if cost_value_cad != 0.0 {
-            (gain_loss / cost_value_cad) * 100.0
-        } else {
-            0.0
-        };
-
-        total_value += market_value_cad;
-        total_cost += cost_value_cad;
-
-        // Exclude intraday purchases from daily PnL: a holding created today has
-        // no prior-day close to compare against, so applying the day-over-day
-        // change_percent would overstate the gain.
-        // Use a consistent UTC date boundary to avoid off-by-one errors at midnight.
-        let today_utc = Utc::now().date_naive().to_string(); // "YYYY-MM-DD"
-        let created_date_utc = holding
-            .created_at
-            .get(..10)
-            .and_then(|s| {
-                // Only treat as a valid date if it parses; skip bad rows safely.
-                if s.len() == 10 {
-                    Some(s)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or("");
-        if !created_date_utc.is_empty() && created_date_utc < today_utc.as_str() {
-            daily_pnl += market_value_cad * (change_percent / 100.0);
-        }
-
-        holdings_with_price.push(HoldingWithPrice {
-            id: holding.id.clone(),
-            symbol: holding.symbol.clone(),
-            name: holding.name.clone(),
-            asset_type: holding.asset_type.clone(),
-            account: holding.account.clone(),
-            account_id: holding.account_id.clone(),
-            account_name: holding.account_name.clone(),
-            quantity: holding.quantity,
-            cost_basis: holding.cost_basis,
-            currency: holding.currency.clone(),
-            exchange: holding.exchange.clone(),
-            target_weight: holding.target_weight,
-            created_at: holding.created_at.clone(),
-            updated_at: holding.updated_at.clone(),
-            indicated_annual_dividend: holding.indicated_annual_dividend,
-            indicated_annual_dividend_currency: holding.indicated_annual_dividend_currency.clone(),
-            dividend_frequency: holding.dividend_frequency.clone(),
-            maturity_date: holding.maturity_date.clone(),
-            current_price,
-            current_price_cad,
-            market_value_cad,
-            cost_value_cad,
-            gain_loss,
-            gain_loss_percent,
-            weight: 0.0,
-            target_value: 0.0,
-            target_delta_value: 0.0,
-            target_delta_percent: 0.0,
-            daily_change_percent: change_percent,
-        });
-    }
-
-    let total_target_weight: f64 = holdings.iter().map(|holding| holding.target_weight).sum();
-    let mut target_cash_delta = 0.0f64;
-
-    for holding in &mut holdings_with_price {
-        holding.weight = if total_value != 0.0 {
-            (holding.market_value_cad / total_value) * 100.0
-        } else {
-            0.0
-        };
-        holding.target_value = total_value * (holding.target_weight / 100.0);
-        holding.target_delta_value = holding.target_value - holding.market_value_cad;
-        holding.target_delta_percent = holding.target_weight - holding.weight;
-
-        if holding.asset_type.as_str() == "cash" {
-            target_cash_delta += holding.market_value_cad - holding.target_value;
-        }
-    }
-
-    let total_gain_loss = total_value - total_cost;
-    let total_gain_loss_percent = if total_cost != 0.0 {
-        (total_gain_loss / total_cost) * 100.0
-    } else {
-        0.0
-    };
-
-    PortfolioSnapshot {
-        holdings: holdings_with_price,
-        total_value,
-        total_cost,
-        total_gain_loss,
-        total_gain_loss_percent,
-        daily_pnl,
-        last_updated,
-        base_currency: base_currency.to_string(),
-        total_target_weight,
-        target_cash_delta,
-        realized_gains,
-        annual_dividend_income,
-    }
-}
 #[tauri::command]
 pub async fn get_portfolio(
     db: State<'_, DbState>,
@@ -568,9 +147,10 @@ pub async fn get_portfolio(
         match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
             Ok(s) => s.total_realized_gain,
             Err(e) => {
-                eprintln!(
+                tracing::error!(
                     "realized_gains error (method={:?}): {}",
-                    cost_basis_method, e
+                    cost_basis_method,
+                    e
                 );
                 return Err(e);
             }
@@ -795,9 +375,17 @@ pub async fn import_holdings_csv(
     let mut imported = Vec::new();
     {
         let pool = &db.0;
+        let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
         for input in pending_inputs {
-            imported.push(db::insert_holding(pool, input).await?);
+            match db::insert_holding_in_tx(&mut tx, input).await {
+                Ok(holding) => imported.push(holding),
+                Err(e) => {
+                    tx.rollback().await.map_err(|re| re.to_string())?;
+                    return Err(e);
+                }
+            }
         }
+        tx.commit().await.map_err(|e| e.to_string())?;
     }
 
     Ok(ImportResult {
@@ -1028,10 +616,10 @@ pub async fn refresh_prices(
         )
         .await
         {
-            eprintln!("Failed to insert portfolio snapshot: {}", e);
+            tracing::error!("Failed to insert portfolio snapshot: {}", e);
         }
         if let Err(e) = db::prune_snapshots(pool).await {
-            eprintln!("Failed to prune portfolio snapshots: {}", e);
+            tracing::warn!("Failed to prune portfolio snapshots: {}", e);
         }
 
         // Check price alerts — collect newly-triggered IDs and surface errors
@@ -1040,7 +628,7 @@ pub async fn refresh_prices(
                 Ok(ids) => triggered_alert_ids.extend(ids),
                 Err(e) => {
                     let msg = format!("Failed to check alerts for {}: {}", price.symbol, e);
-                    eprintln!("{}", msg);
+                    tracing::warn!("{}", msg);
                     alert_errors.push(msg);
                 }
             }
@@ -1095,7 +683,7 @@ pub async fn search_symbols(
     let results = match search_symbols_yahoo(&client.0, &query).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Symbol search API failed: {}", e);
+            tracing::warn!("Symbol search API failed: {}", e);
             return Ok(db_results);
         }
     };
@@ -1156,7 +744,7 @@ pub async fn get_performance(
         let date_key = match point.date.get(..10) {
             Some(d) => d.to_string(),
             None => {
-                eprintln!(
+                tracing::warn!(
                     "get_performance: skipping snapshot with malformed date {:?}",
                     point.date
                 );
@@ -1639,14 +1227,24 @@ pub(crate) async fn get_symbol_metadata_with_cache(
         .send();
 
     // ── 2. Per-symbol assetProfile requests for sector/industry/country ───────
-    let profile_futures: Vec<_> = stale_symbols
-        .iter()
-        .map(|s| fetch_asset_profile(client, s))
-        .collect();
+    // Use buffer_unordered(5) to cap concurrent HTTP requests at 5 so we don't
+    // hammer Yahoo Finance with an unbounded fan-out on large portfolios.
+    // Clone the client (reqwest::Client is an Arc internally, so this is cheap).
+    let profile_future = {
+        use futures::stream::{self, StreamExt};
+        let client = client.clone();
+        stream::iter(stale_symbols.clone())
+            .map(move |s| {
+                let client = client.clone();
+                async move { fetch_asset_profile(&client, &s).await }
+            })
+            .buffer_unordered(5)
+            .collect::<Vec<_>>()
+    };
 
-    // Run both concurrently
+    // Run bulk quote and bounded profile stream concurrently
     let (quote_response, profile_results) =
-        futures::future::join(quote_future, futures::future::join_all(profile_futures)).await;
+        futures::future::join(quote_future, profile_future).await;
 
     // Parse bulk quote response (best-effort).
     let quote_json: Option<serde_json::Value> = async {
@@ -1938,69 +1536,15 @@ pub async fn get_realized_gains(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
 
-    fn make_holding(
-        symbol: &str,
-        asset_type: AssetType,
-        quantity: f64,
-        cost_basis: f64,
-        currency: &str,
-    ) -> Holding {
-        Holding {
-            id: symbol.to_string(),
-            symbol: symbol.to_string(),
-            name: symbol.to_string(),
-            asset_type,
-            account: AccountType::Taxable,
-            account_id: None,
-            account_name: None,
-            quantity,
-            cost_basis,
-            currency: currency.to_string(),
-            exchange: String::new(),
-            target_weight: 0.0,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-            indicated_annual_dividend: None,
-            indicated_annual_dividend_currency: None,
-            dividend_frequency: None,
-            maturity_date: None,
-        }
-    }
+    // CSV/normalize tests live in csv.rs.
+    // build_portfolio_snapshot tests live in portfolio.rs.
 
-    #[test]
-    fn normalize_symbol_strips_country_suffix() {
-        assert_eq!(normalize_symbol_for_import("BMO:CA"), "BMO.TO");
-        assert_eq!(normalize_symbol_for_import("AAPL:US"), "AAPL");
-        assert_eq!(normalize_symbol_for_import("BARC:GB"), "BARC.L");
-        assert_eq!(normalize_symbol_for_import("CBA:AU"), "CBA.AX");
-        assert_eq!(normalize_symbol_for_import("SAP:DE"), "SAP.DE");
-        assert_eq!(normalize_symbol_for_import("AIR:FR"), "AIR.PA");
-        assert_eq!(normalize_symbol_for_import("7203:JP"), "7203.T");
-        assert_eq!(normalize_symbol_for_import("0700:HK"), "0700.HK");
-    }
+    // ── Target-weight guard tests (logic lives in commands.rs) ─────────────
+    // Note: CSV/snapshot tests have been moved to csv.rs and portfolio.rs.
 
-    #[test]
-    fn normalize_symbol_passes_through_plain_symbols() {
-        assert_eq!(normalize_symbol_for_import("AAPL"), "AAPL");
-        assert_eq!(normalize_symbol_for_import("BMO.TO"), "BMO.TO");
-        assert_eq!(normalize_symbol_for_import("bmo"), "BMO");
-        assert_eq!(normalize_symbol_for_import(" MSFT "), "MSFT");
-    }
-
-    #[test]
-    fn parse_import_rows_normalizes_country_suffix() {
-        let csv =
-            "symbol,name,type,quantity,cost_basis,currency\nBMO:CA,Bank of Montreal,stock,10,80,CAD\n";
-        let rows = parse_import_rows(csv).expect("parse csv");
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].symbol, "BMO.TO");
-    }
-
-    #[test]
-    fn parse_import_rows_supports_cash_defaults() {
+    #[allow(dead_code)]
+    fn parse_import_rows_supports_cash_defaults_moved() {
         let csv = "symbol,name,type,quantity,cost_basis,currency\n, ,cash,1000,1,CAD\n";
         let rows = parse_import_rows(csv).expect("parse csv");
 
@@ -2537,7 +2081,8 @@ pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bo
 
 // ── Account Commands ──────────────────────────────────────────────────────────
 
-const VALID_ACCOUNT_TYPES: &[&str] = &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "other"];
+const VALID_ACCOUNT_TYPES: &[&str] =
+    &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"];
 
 #[tauri::command]
 pub async fn get_accounts(state: tauri::State<'_, DbState>) -> Result<Vec<Account>, String> {

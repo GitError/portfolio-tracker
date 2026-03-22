@@ -20,7 +20,9 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   validation_failed: { label: 'Check failed', color: 'var(--color-loss)' },
 };
 
-function statusCell(status: string) {
+function statusCell(
+  status: 'ready' | 'cash' | 'duplicate' | 'invalid_symbol' | 'validation_failed'
+) {
   const s = STATUS_LABEL[status] ?? { label: status, color: 'var(--text-muted)' };
   return <span style={{ ...MONO, fontSize: 11, color: s.color, fontWeight: 600 }}>{s.label}</span>;
 }
@@ -101,7 +103,7 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
                 background: r.status === 'ready' ? 'transparent' : 'rgba(255,71,87,0.04)',
                 opacity:
                   r.status === 'duplicate' ||
-                  r.status.startsWith('invalid') ||
+                  r.status === 'invalid_symbol' ||
                   r.status === 'validation_failed'
                     ? 0.65
                     : 1,

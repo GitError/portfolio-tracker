@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Bell, BellOff, Plus, Trash2, RefreshCw } from 'lucide-react';
 import type { AlertDirection, Holding, PriceAlert, PriceAlertInput } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
+import { SUPPORTED_CURRENCIES } from '../lib/constants';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
@@ -15,6 +16,7 @@ const MOCK_ALERTS: PriceAlert[] = [
     symbol: 'AAPL',
     direction: 'above',
     threshold: 200,
+    currency: 'USD',
     note: 'Take profit',
     triggered: false,
     createdAt: '2026-01-01T00:00:00Z',
@@ -24,6 +26,7 @@ const MOCK_ALERTS: PriceAlert[] = [
     symbol: 'BTC-USD',
     direction: 'below',
     threshold: 80000,
+    currency: 'USD',
     note: 'Buy the dip',
     triggered: true,
     createdAt: '2026-01-02T00:00:00Z',
@@ -37,9 +40,11 @@ interface AddAlertFormProps {
 }
 
 function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
+  const defaultCurrency = holdings[0]?.currency ?? 'USD';
   const [symbol, setSymbol] = useState(holdings[0]?.symbol ?? '');
   const [direction, setDirection] = useState<AlertDirection>('above');
   const [threshold, setThreshold] = useState('');
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [note, setNote] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,6 +55,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
       symbol: symbol.trim().toUpperCase(),
       direction,
       threshold: t,
+      currency,
       note: note.trim(),
     });
   };
@@ -58,7 +64,10 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
     const selected = holdings.find((h) => h.symbol === value);
     setSymbol(value);
     // Auto-clear threshold when symbol changes so user doesn't carry over stale price
-    if (selected) setThreshold('');
+    if (selected) {
+      setThreshold('');
+      setCurrency(selected.currency);
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -91,7 +100,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
         New Price Alert
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>SYMBOL</div>
           {holdings.length > 0 ? (
@@ -132,6 +141,14 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
             onChange={(e) => setThreshold(e.target.value)}
             placeholder="0.00"
             required
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CURRENCY</div>
+          <Select
+            value={currency}
+            onChange={setCurrency}
+            options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
           />
         </div>
       </div>
@@ -217,7 +234,11 @@ export function Alerts() {
         } else {
           const mock: PriceAlert = {
             id: Date.now().toString(),
-            ...input,
+            symbol: input.symbol,
+            direction: input.direction,
+            threshold: input.threshold,
+            currency: input.currency,
+            note: input.note,
             triggered: false,
             createdAt: new Date().toISOString(),
           };
@@ -465,7 +486,7 @@ function AlertRow({
               color: alert.direction === 'above' ? 'var(--color-gain)' : 'var(--color-loss)',
             }}
           >
-            {alert.direction} {formatCurrency(alert.threshold, 'USD')}
+            {alert.direction} {formatCurrency(alert.threshold, alert.currency)}
           </span>
           {alert.triggered && (
             <span
