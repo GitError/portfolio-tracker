@@ -97,7 +97,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>EX-DATE</div>
           <input
-            style={{ ...inputStyle, colorScheme: 'dark' }}
+            style={inputStyle}
             type="date"
             value={exDate}
             onChange={(e) => setExDate(e.target.value)}
@@ -110,7 +110,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PAY DATE</div>
           <input
-            style={{ ...inputStyle, colorScheme: 'dark' }}
+            style={inputStyle}
             type="date"
             value={payDate}
             onChange={(e) => setPayDate(e.target.value)}
@@ -528,10 +528,19 @@ export function Dividends() {
                     textAlign: 'right',
                   }}
                 >
-                  {formatCurrency(
-                    forwardIncomeRows.reduce((s, r) => s + r.estimatedAnnualIncome, 0),
-                    forwardIncomeRows[0]?.currency ?? 'CAD'
-                  )}
+                  {(() => {
+                    const byCurrency = forwardIncomeRows.reduce<Record<string, number>>(
+                      (acc, r) => {
+                        const cur = r.currency;
+                        acc[cur] = (acc[cur] ?? 0) + r.estimatedAnnualIncome;
+                        return acc;
+                      },
+                      {}
+                    );
+                    return Object.entries(byCurrency).map(([cur, total]) => (
+                      <div key={cur}>{formatCurrency(total, cur)}</div>
+                    ));
+                  })()}
                 </div>
               </div>
             )}

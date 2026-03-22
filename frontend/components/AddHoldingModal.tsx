@@ -639,7 +639,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                   type="date"
                   value={form.maturityDate}
                   onChange={set('maturityDate')}
-                  style={{ ...INPUT_STYLE, colorScheme: 'dark' }}
+                  style={INPUT_STYLE}
                   onFocus={(e) => (e.target.style.borderColor = 'var(--color-accent)')}
                   onBlur={(e) => (e.target.style.borderColor = 'var(--border-primary)')}
                 />
