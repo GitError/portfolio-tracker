@@ -21,6 +21,12 @@ const ROUTE_TITLES: Record<string, string> = {
   '/holdings': 'Holdings',
   '/performance': 'Performance',
   '/stress': 'Stress Test',
+  '/rebalance': 'Rebalance',
+  '/alerts': 'Alerts',
+  '/transactions': 'Transactions',
+  '/analytics': 'Analytics',
+  '/dividends': 'Dividends',
+  '/help': 'Keyboard Shortcuts',
   '/settings': 'Settings',
 };
 
