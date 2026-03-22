@@ -33,6 +33,10 @@ Thumbs.db
 coverage/
 *.lcov
 
+# Playwright
+playwright-report/
+test-results/
+
 # One-time scaffolding scripts (never committed)
 create_issues.sh
 create_ci_issues.sh

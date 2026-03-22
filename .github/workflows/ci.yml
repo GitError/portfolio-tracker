@@ -137,16 +137,46 @@ jobs:
       - name: Build
         run: cargo build
 
+  # ── E2E: Playwright against Vite dev server (browser/mock mode) ──
+  e2e:
+    name: E2E (Playwright)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   # ── Roll-up: single required status check for branch protection ──
   ci-status:
     name: CI Status
     if: always()
-    needs: [frontend, backend]
+    needs: [frontend, backend, e2e]
     runs-on: ubuntu-latest
     steps:
       - name: Check job results
         run: |
-          if [[ "${{ needs.frontend.result }}" == "failure" || "${{ needs.backend.result }}" == "failure" ]]; then
+          if [[ "${{ needs.frontend.result }}" == "failure" || "${{ needs.backend.result }}" == "failure" || "${{ needs.e2e.result }}" == "failure" ]]; then
             echo "One or more CI jobs failed."
             exit 1
           fi
