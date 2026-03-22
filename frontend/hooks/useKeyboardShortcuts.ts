@@ -23,10 +23,6 @@ export interface KeyboardShortcutsOptions {
   onOpenAddHolding?: () => void;
   onExportCsv?: () => void;
   onToggleHelp?: () => void;
-  /** @deprecated use onOpenAddHolding */
-  onAddHolding?: () => void;
-  /** @deprecated use individual navigate shortcuts */
-  onNavigate?: (path: string) => void;
 }
 
 export function useKeyboardShortcuts({
@@ -73,9 +69,10 @@ export function useKeyboardShortcuts({
       }
 
       // ⌘1–4 / Ctrl+1–4 — navigate between views
-      if (isMeta && ROUTE_KEYS[e.key]) {
+      const metaRoute = ROUTE_KEYS[e.key];
+      if (isMeta && metaRoute) {
         e.preventDefault();
-        navigate(ROUTE_KEYS[e.key]);
+        navigate(metaRoute);
         return;
       }
 
@@ -87,8 +84,9 @@ export function useKeyboardShortcuts({
       }
 
       // 1–4 — navigate views without modifier
-      if (!isMeta && ROUTE_KEYS[e.key]) {
-        navigate(ROUTE_KEYS[e.key]);
+      const plainRoute = ROUTE_KEYS[e.key];
+      if (!isMeta && plainRoute) {
+        navigate(plainRoute);
         return;
       }
     }

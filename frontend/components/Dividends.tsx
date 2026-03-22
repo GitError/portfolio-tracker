@@ -253,8 +253,9 @@ export function Dividends() {
       if (!bySymbol[div.symbol]) {
         bySymbol[div.symbol] = { total: 0, currency: div.currency, count: 0 };
       }
-      bySymbol[div.symbol].total += div.amountPerUnit;
-      bySymbol[div.symbol].count += 1;
+      const entry = bySymbol[div.symbol]!;
+      entry.total += div.amountPerUnit;
+      entry.count += 1;
     }
     return bySymbol;
   }, [dividends]);

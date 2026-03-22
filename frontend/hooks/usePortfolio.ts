@@ -67,7 +67,7 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
 
   if (lines.length < 2) return [];
 
-  const rawHeader = lines[0];
+  const rawHeader = lines[0] ?? '';
   const delimiter = rawHeader.includes(';') && !rawHeader.includes(',') ? ';' : ',';
   const header = parseCSVLine(rawHeader, delimiter).map((field) => field.toLowerCase());
   const columnIndex = (field: string) => header.indexOf(field);
@@ -75,13 +75,14 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
   return lines.slice(1).map((line) => {
     const cells = parseCSVLine(line, delimiter);
     const assetType = cells[columnIndex('type')] as HoldingInput['assetType'];
-    const currency = cells[columnIndex('currency')].toUpperCase();
-    const rawSymbol = cells[columnIndex('symbol')];
+    const currency = (cells[columnIndex('currency')] ?? '').toUpperCase();
+    const rawSymbol = cells[columnIndex('symbol')] ?? '';
     const rawAccount = cells[columnIndex('account')]?.toLowerCase() as AccountType | undefined;
 
     return {
       symbol: assetType === 'cash' ? rawSymbol || `${currency}-CASH` : rawSymbol.toUpperCase(),
-      name: cells[columnIndex('name')] || (assetType === 'cash' ? `${currency} Cash` : rawSymbol),
+      name:
+        cells[columnIndex('name')] || (assetType === 'cash' ? `${currency} Cash` : rawSymbol) || '',
       assetType,
       account: rawAccount || (assetType === 'cash' ? 'cash' : 'taxable'),
       quantity: Number(cells[columnIndex('quantity')]),

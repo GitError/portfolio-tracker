@@ -27,7 +27,9 @@ export function isWithinMarketHours(): boolean {
     minute: '2-digit',
   });
   const isWeekday = !['Saturday', 'Sunday'].includes(dayOfWeek);
-  const [h, m] = timeStr.split(':').map(Number);
+  const parts = timeStr.split(':').map(Number);
+  const h = parts[0] ?? 0;
+  const m = parts[1] ?? 0;
   const minutes = h * 60 + m;
   return isWeekday && minutes >= 9 * 60 + 30 && minutes < 16 * 60;
 }

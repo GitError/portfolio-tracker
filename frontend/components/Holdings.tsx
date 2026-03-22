@@ -1649,9 +1649,12 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           >
                             {h.assetType === 'cash'
                               ? '—'
-                              : priceMap[h.symbol]?.previousClose != null
-                                ? `${formatNumber(priceMap[h.symbol].previousClose!, 2)} ${h.currency}`
-                                : '—'}
+                              : (() => {
+                                  const pd = priceMap[h.symbol];
+                                  return pd?.previousClose != null
+                                    ? `${formatNumber(pd.previousClose, 2)} ${h.currency}`
+                                    : '—';
+                                })()}
                           </td>
                         )}
                         {showOpen && (
@@ -1665,9 +1668,12 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           >
                             {h.assetType === 'cash'
                               ? '—'
-                              : priceMap[h.symbol]?.open != null
-                                ? `${formatNumber(priceMap[h.symbol].open!, 2)} ${h.currency}`
-                                : '—'}
+                              : (() => {
+                                  const pd = priceMap[h.symbol];
+                                  return pd?.open != null
+                                    ? `${formatNumber(pd.open, 2)} ${h.currency}`
+                                    : '—';
+                                })()}
                           </td>
                         )}
                         {showMaturity &&
