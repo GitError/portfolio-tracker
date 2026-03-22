@@ -1379,16 +1379,17 @@ mod tests {
     #[tokio::test]
     async fn upsert_fx_rate_and_get() {
         let pool = open_test_db().await;
+        let now = chrono::Utc::now().to_rfc3339();
         let rate = FxRate {
             pair: "USDCAD".to_string(),
             rate: 1.36,
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: now.clone(),
         };
         upsert_fx_rate(&pool, &rate).await.expect("upsert fx");
         let rate2 = FxRate {
             pair: "USDCAD".to_string(),
             rate: 1.37,
-            updated_at: "2024-01-02T00:00:00Z".to_string(),
+            updated_at: now,
         };
         upsert_fx_rate(&pool, &rate2).await.expect("upsert fx 2");
         let rates = get_fx_rates(&pool).await.expect("get fx rates");
