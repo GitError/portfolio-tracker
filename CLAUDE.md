@@ -12,16 +12,20 @@ portfolio-tracker/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   └── frontend/
+│   ├── migrations/              ← SQLx migrations (0001–0006)
+│   └── src/
 │       ├── main.rs              ← Tauri entry point
 │       ├── lib.rs               ← App bootstrap, state init, command registration
 │       ├── config.rs            ← App-level constants (DB name, user-agent, TTLs)
 │       ├── types.rs             ← Shared Rust types (Serialize/Deserialize, camelCase)
-│       ├── db.rs                ← SQLite schema, migrations, CRUD (8 tables)
-│       ├── commands.rs          ← #[tauri::command] functions (thin wrappers)
+│       ├── db.rs                ← SQLite schema, migrations, CRUD (async SQLx)
+│       ├── commands.rs          ← #[tauri::command] thin wrappers
+│       ├── portfolio.rs         ← build_portfolio_snapshot + helpers
+│       ├── csv.rs               ← CSV import/export helpers
 │       ├── price.rs             ← Yahoo Finance price fetching
 │       ├── fx.rs                ← FX rate fetching + conversion helpers
 │       ├── search.rs            ← Symbol search via Yahoo Finance
+│       ├── analytics.rs         ← Realized gains + portfolio analytics
 │       └── stress.rs            ← Stress test engine
 ├── frontend/
 │   ├── App.tsx                  ← Router, providers, keyboard shortcut wiring
@@ -75,7 +79,7 @@ portfolio-tracker/
 | Layer     | Technology                        |
 |-----------|-----------------------------------|
 | Shell     | Tauri v2                          |
-| Backend   | Rust (tokio, reqwest, rusqlite)   |
+| Backend   | Rust (tokio, reqwest, sqlx, tracing) |
 | Frontend  | React 18 + TypeScript + Vite      |
 | Styling   | Tailwind CSS v4                   |
 | Charts    | Recharts                          |
@@ -86,18 +90,22 @@ portfolio-tracker/
 
 ### Rust
 - All types in `types.rs`, re-exported from other modules as needed
-- Commands in `commands.rs` are thin: validate input → call domain logic → return result
+- Commands in `commands.rs` are thin wrappers: validate input → call domain fn → return result
+- Domain logic lives in `portfolio.rs` (snapshot), `csv.rs` (import/export), `analytics.rs`, `stress.rs`
 - Use `Result<T, String>` for command return types (Tauri convention)
-- SQLite connection managed via `Mutex<rusqlite::Connection>` in Tauri state
+- Database accessed via async `SqlitePool` (SQLx + WAL mode, 5 connections); migrations in `src-tauri/migrations/`
 - All DB operations go through `db.rs` — no raw SQL anywhere else
 - Use `serde(rename_all = "camelCase")` on all structs exposed to frontend
 - reqwest calls must include header `User-Agent: Mozilla/5.0` (Yahoo Finance blocks bare requests)
+- Use `tracing::error!/warn!/info!` for logging — never `eprintln!`
 
 ### TypeScript
 - Types in `frontend/types/portfolio.ts` must mirror Rust types exactly (camelCase)
-- Hooks in `frontend/hooks/` wrap `invoke()` calls with loading/error states
+- **Always use `tauriInvoke()` from `frontend/lib/tauri.ts`** — never raw `invoke()` from `@tauri-apps/api/core`; this includes an `isTauri()` guard for browser dev mode
+- Hooks in `frontend/hooks/` wrap `tauriInvoke()` calls with loading/error states
 - All currency values are `number` (f64 from Rust), formatted at render time only
 - Use `frontend/lib/format.ts` for ALL number display — never inline `toFixed()` etc.
+- `SUPPORTED_CURRENCIES` is defined and exported from `frontend/lib/constants.ts` — import from there
 
 ### Styling
 - Tailwind utility classes only — no CSS modules, no styled-components
@@ -110,95 +118,94 @@ portfolio-tracker/
 
 ## Shared TypeScript Types
 
-All agents MUST use these exact types. This is the contract.
+All agents MUST use these exact types. The authoritative source is `frontend/types/portfolio.ts`.
+
+Key types (abbreviated — read the source file for full definitions):
 
 ```typescript
-// frontend/types/portfolio.ts
-
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash';
+export type AccountType = 'tfsa' | 'rrsp' | 'fhsa' | 'taxable' | 'crypto' | 'cash' | 'other';
 
 export interface Holding {
-  id: string;
-  symbol: string;
-  name: string;
-  assetType: AssetType;
-  quantity: number;
-  costBasis: number;       // per unit, in original currency
-  currency: string;        // ISO currency code
-  createdAt: string;       // ISO 8601
-  updatedAt: string;       // ISO 8601
+  id: string; symbol: string; name: string; assetType: AssetType;
+  account: AccountType; quantity: number; costBasis: number;
+  currency: string; exchange: string; targetWeight: number;
+  createdAt: string; updatedAt: string;
+  indicatedAnnualDividend: number | null;
+  indicatedAnnualDividendCurrency: string | null;
+  dividendFrequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'irregular' | null;
+  maturityDate: string | null;
 }
 
 export interface HoldingWithPrice extends Holding {
-  currentPrice: number;    // in original currency
-  currentPriceCad: number; // converted to CAD
-  marketValueCad: number;  // quantity × currentPriceCad
-  costValueCad: number;    // quantity × costBasis × fxRate
-  gainLoss: number;        // marketValueCad - costValueCad
-  gainLossPercent: number; // gainLoss / costValueCad
-  weight: number;          // marketValueCad / totalPortfolioValue
-  dailyChangePercent: number;
+  currentPrice: number; currentPriceCad: number; marketValueCad: number;
+  costValueCad: number; gainLoss: number; gainLossPercent: number;
+  weight: number; targetValue: number; targetDeltaValue: number;
+  targetDeltaPercent: number; dailyChangePercent: number;
 }
 
 export interface PortfolioSnapshot {
   holdings: HoldingWithPrice[];
-  totalValue: number;      // sum of all marketValueCad
-  totalCost: number;       // sum of all costValueCad
-  totalGainLoss: number;
-  totalGainLossPercent: number;
-  dailyPnl: number;
-  lastUpdated: string;     // ISO 8601
+  totalValue: number; totalCost: number; totalGainLoss: number;
+  totalGainLossPercent: number; dailyPnl: number;
+  lastUpdated: string; baseCurrency: string;
+  totalTargetWeight: number; targetCashDelta: number;
+  realizedGains: number; annualDividendIncome: number;
 }
 
-export interface PriceData {
-  symbol: string;
-  price: number;
-  currency: string;
-  change: number;
-  changePercent: number;
-  updatedAt: string;
+export interface RefreshResult {
+  prices: PriceData[];
+  failedSymbols: string[];
+  triggeredAlerts: string[];
+  alertErrors?: string[];
 }
 
-export interface FxRate {
-  pair: string;            // e.g. "USDCAD"
-  rate: number;
-  updatedAt: string;
+export interface PriceAlert {
+  id: string; symbol: string; direction: 'above' | 'below';
+  threshold: number; currency: string; note: string;
+  triggered: boolean; createdAt: string;
 }
 
-export interface StressScenario {
-  name: string;
-  shocks: Record<string, number>;  // keys: "stock"|"etf"|"crypto"|"fx_usd_cad" etc, values: decimal (-0.10 = -10%)
+export interface PreviewRow {
+  // ... other fields ...
+  status: 'ready' | 'cash' | 'duplicate' | 'invalid_symbol' | 'validation_failed';
 }
+```
 
-export interface StressHoldingResult {
-  holdingId: string;
-  symbol: string;
-  name: string;
-  currentValue: number;
-  stressedValue: number;
-  impact: number;
-  shockApplied: number;
-}
+// ── Tauri Command Signatures ── (use tauriInvoke, not invoke)
 
-export interface StressResult {
-  scenario: string;
-  currentValue: number;
-  stressedValue: number;
-  totalImpact: number;
-  totalImpactPercent: number;
-  holdingBreakdown: StressHoldingResult[];
-}
-
-// ── Tauri Command Signatures ──
-
-// invoke('get_portfolio')           → PortfolioSnapshot
-// invoke('get_holdings')            → Holding[]
-// invoke('add_holding', { holding }) → Holding        (omit id, createdAt, updatedAt)
-// invoke('update_holding', { holding }) → Holding
-// invoke('delete_holding', { id })  → boolean
-// invoke('refresh_prices')          → PriceData[]
-// invoke('get_performance', { range }) → { date: string; value: number }[]
-// invoke('run_stress_test', { scenario }) → StressResult
+```
+tauriInvoke('get_portfolio')                          → PortfolioSnapshot
+tauriInvoke('get_holdings')                           → Holding[]
+tauriInvoke('add_holding', { holding })               → Holding
+tauriInvoke('update_holding', { holding })            → Holding
+tauriInvoke('delete_holding', { id })                 → boolean
+tauriInvoke('refresh_prices')                         → RefreshResult
+tauriInvoke('get_performance', { range })             → PerformancePoint[]
+tauriInvoke('run_stress_test_cmd', { scenario })      → StressResult
+tauriInvoke('get_accounts')                           → Account[]
+tauriInvoke('add_account', { account })               → Account
+tauriInvoke('update_account', { id, account })        → Account
+tauriInvoke('delete_account', { id })                 → boolean
+tauriInvoke('search_symbols', { query })              → SymbolResult[]
+tauriInvoke('get_transactions', { holdingId? })       → Transaction[]
+tauriInvoke('add_transaction', { input })             → Transaction
+tauriInvoke('delete_transaction', { id })             → boolean
+tauriInvoke('get_realized_gains', { holdingId? })     → RealizedGainsSummary
+tauriInvoke('get_dividends')                          → Dividend[]
+tauriInvoke('add_dividend', { dividend })             → Dividend
+tauriInvoke('delete_dividend', { id })                → boolean
+tauriInvoke('get_alerts')                             → PriceAlert[]
+tauriInvoke('add_alert', { alert })                   → PriceAlert
+tauriInvoke('delete_alert', { id })                   → boolean
+tauriInvoke('get_portfolio_analytics')                → PortfolioAnalytics
+tauriInvoke('get_rebalance_suggestions', { ... })     → RebalanceSuggestion[]
+tauriInvoke('import_holdings_csv', { csv })           → ImportResult
+tauriInvoke('export_holdings_csv')                    → string
+tauriInvoke('backup_database')                        → ExportPayload
+tauriInvoke('restore_database', { payload })          → void
+tauriInvoke('get_config_cmd', { key })                → string | null
+tauriInvoke('set_config_cmd', { key, value })         → void
 ```
 
 ---
@@ -294,11 +301,14 @@ export const PRESET_SCENARIOS: StressScenario[] = [
 ---
 
 ## Notes for Agents
-- If you're building a frontend component and need data, mock it with realistic sample data that matches the types above. Use a `useMockData` flag or check if Tauri is available (`window.__TAURI__`).
+- **Always use `tauriInvoke()` from `frontend/lib/tauri.ts`** for Tauri commands, never raw `invoke()` from `@tauri-apps/api/core`. The wrapper includes an `isTauri()` guard so browser dev mode works.
+- Check `isTauri()` to detect browser vs Tauri context — use realistic mock data from `frontend/lib/mockData.ts` in browser mode.
 - All components must handle: loading state, error state, and empty state.
 - Yahoo Finance requests MUST include a User-Agent header or they will 403.
 - The SQLite DB file lives in Tauri's app data directory (`app_data_dir`), NOT in the project folder.
 - All timestamps are ISO 8601 UTC strings.
+- Logging: use `tracing::error!/warn!/info!` macros in Rust — never `eprintln!`.
+- DB access: use `SqlitePool` (async SQLx), not `rusqlite`. All DB functions are `async fn` in `db.rs`.
 
 ## Testing
 - Rust: `cargo test` (unit tests in each module)
