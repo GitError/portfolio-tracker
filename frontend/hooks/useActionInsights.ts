@@ -27,14 +27,16 @@ export function buildInsights(
   for (const holding of holdings) {
     if (!holding.targetWeight || holding.targetWeight <= 0) continue;
 
-    const drift = Math.abs(holding.weight - holding.targetWeight);
+    // targetWeight is stored as 0–100 in DB; weight is 0–1 from Rust. Normalise to fractions.
+    const targetFraction = holding.targetWeight / 100;
+    const drift = Math.abs(holding.weight - targetFraction);
     if (drift <= 0.05) continue;
 
     const severity: InsightSeverity = drift > 0.1 ? 'critical' : 'warning';
     const driftPct = (drift * 100).toFixed(1);
     const actualPct = (holding.weight * 100).toFixed(1);
-    const targetPct = (holding.targetWeight * 100).toFixed(1);
-    const direction = holding.weight > holding.targetWeight ? 'overweight' : 'underweight';
+    const targetPct = holding.targetWeight.toFixed(1);
+    const direction = holding.weight > targetFraction ? 'overweight' : 'underweight';
 
     insights.push({
       id: `target_drift_${holding.id}`,
