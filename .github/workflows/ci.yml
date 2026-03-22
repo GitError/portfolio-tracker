@@ -38,7 +38,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -67,9 +67,9 @@ jobs:
         working-directory: .
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -103,7 +103,7 @@ jobs:
         working-directory: src-tauri
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -132,10 +132,10 @@ jobs:
         run: cargo clippy -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: cargo test --locked
 
       - name: Build
-        run: cargo build
+        run: cargo build --locked
 
   # ── E2E: Playwright against Vite dev server (browser/mock mode) ──
   e2e:
@@ -144,9 +144,9 @@ jobs:
     if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
@@ -176,8 +176,10 @@ jobs:
     steps:
       - name: Check job results
         run: |
-          if [[ "${{ needs.frontend.result }}" == "failure" || "${{ needs.backend.result }}" == "failure" || "${{ needs.e2e.result }}" == "failure" ]]; then
-            echo "One or more CI jobs failed."
+          if [[ "${{ needs.frontend.result }}" == "failure" || "${{ needs.frontend.result }}" == "cancelled" || \
+                "${{ needs.backend.result }}" == "failure" || "${{ needs.backend.result }}" == "cancelled" || \
+                "${{ needs.e2e.result }}" == "failure" || "${{ needs.e2e.result }}" == "cancelled" ]]; then
+            echo "One or more CI jobs failed or was cancelled."
             exit 1
           fi
           echo "CI passed (skipped jobs count as success)."

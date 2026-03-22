@@ -23,6 +23,12 @@ export default defineConfig({
         'frontend/lib/mockData.ts',
         'frontend/lib/perfMockData.ts',
       ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+      },
     },
   },
 });
