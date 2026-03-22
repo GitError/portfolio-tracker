@@ -1,5 +1,5 @@
 use chrono::Utc;
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 use std::str::FromStr;
 use uuid::Uuid;
 
@@ -57,13 +57,14 @@ pub async fn get_all_config(pool: &SqlitePool) -> Result<Vec<(String, String)>, 
 pub async fn insert_alert_with_id(pool: &SqlitePool, alert: PriceAlert) -> Result<(), String> {
     sqlx::query(
         "INSERT OR REPLACE INTO price_alerts
-         (id, symbol, direction, threshold, note, triggered, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+         (id, symbol, direction, threshold, currency, note, triggered, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
     )
     .bind(&alert.id)
     .bind(&alert.symbol)
     .bind(alert.direction.as_str())
     .bind(alert.threshold)
+    .bind(&alert.currency)
     .bind(&alert.note)
     .bind(alert.triggered)
     .bind(&alert.created_at)
@@ -116,6 +117,78 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
     .bind(&input.dividend_frequency)
     .bind(&input.maturity_date)
     .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(Holding {
+        id,
+        symbol: input.symbol,
+        name: input.name,
+        asset_type: input.asset_type,
+        account: input.account,
+        account_id: effective_account_id,
+        account_name: None,
+        quantity: input.quantity,
+        cost_basis: input.cost_basis,
+        currency: input.currency,
+        exchange: input.exchange,
+        target_weight: input.target_weight,
+        created_at: now.clone(),
+        updated_at: now,
+        indicated_annual_dividend: input.indicated_annual_dividend,
+        indicated_annual_dividend_currency: input.indicated_annual_dividend_currency,
+        dividend_frequency: input.dividend_frequency,
+        maturity_date: input.maturity_date,
+    })
+}
+
+/// Same as `insert_holding` but operates on an existing transaction connection,
+/// enabling atomic bulk inserts (e.g. CSV import).
+pub async fn insert_holding_in_tx(
+    conn: &mut SqliteConnection,
+    input: HoldingInput,
+) -> Result<Holding, String> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    let asset_type_str = input.asset_type.as_str().to_string();
+
+    // Account ID lookup runs on the same connection so it participates in the tx.
+    let effective_account_id: Option<String> = if let Some(account_id) = input.account_id.clone() {
+        Some(account_id)
+    } else {
+        use sqlx::Row;
+        sqlx::query("SELECT id FROM accounts WHERE type = $1 ORDER BY created_at ASC LIMIT 1")
+            .bind(input.account.as_str())
+            .fetch_optional(&mut *conn)
+            .await
+            .ok()
+            .flatten()
+            .map(|r| r.get::<String, _>(0))
+    };
+
+    sqlx::query(
+        "INSERT INTO holdings
+         (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
+    )
+    .bind(&id)
+    .bind(&input.symbol)
+    .bind(&input.name)
+    .bind(&asset_type_str)
+    .bind(input.account.as_str())
+    .bind(&effective_account_id)
+    .bind(input.quantity)
+    .bind(input.cost_basis)
+    .bind(&input.currency)
+    .bind(&input.exchange)
+    .bind(input.target_weight)
+    .bind(&now)
+    .bind(&now)
+    .bind(input.indicated_annual_dividend)
+    .bind(&input.indicated_annual_dividend_currency)
+    .bind(&input.dividend_frequency)
+    .bind(&input.maturity_date)
+    .execute(&mut *conn)
     .await
     .map_err(|e| e.to_string())?;
 
@@ -344,7 +417,8 @@ pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), St
 pub async fn get_cached_prices(pool: &SqlitePool) -> Result<Vec<PriceData>, String> {
     use sqlx::Row;
     let rows = sqlx::query(
-        "SELECT symbol, price, currency, change, change_percent, updated_at, open, previous_close, volume FROM price_cache",
+        "SELECT symbol, price, currency, change, change_percent, updated_at, open, previous_close, volume FROM price_cache
+         WHERE updated_at >= datetime('now', '-60 minutes')",
     )
     .fetch_all(pool)
     .await
@@ -384,10 +458,13 @@ pub async fn upsert_fx_rate(pool: &SqlitePool, rate: &FxRate) -> Result<(), Stri
 
 pub async fn get_fx_rates(pool: &SqlitePool) -> Result<Vec<FxRate>, String> {
     use sqlx::Row;
-    let rows = sqlx::query("SELECT pair, rate, updated_at FROM fx_rates")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = sqlx::query(
+        "SELECT pair, rate, updated_at FROM fx_rates
+         WHERE updated_at >= datetime('now', '-60 minutes')",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
 
     Ok(rows
         .into_iter()
@@ -700,13 +777,14 @@ pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<P
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
     sqlx::query(
-        "INSERT INTO price_alerts (id, symbol, direction, threshold, note, triggered, created_at)
-         VALUES ($1, $2, $3, $4, $5, 0, $6)",
+        "INSERT INTO price_alerts (id, symbol, direction, threshold, currency, note, triggered, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, $7)",
     )
     .bind(&id)
     .bind(&input.symbol)
     .bind(input.direction.as_str())
     .bind(input.threshold)
+    .bind(&input.currency)
     .bind(&input.note)
     .bind(&created_at)
     .execute(pool)
@@ -718,6 +796,7 @@ pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<P
         symbol: input.symbol,
         direction: input.direction,
         threshold: input.threshold,
+        currency: input.currency,
         note: input.note,
         triggered: false,
         created_at,
@@ -727,7 +806,7 @@ pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<P
 pub async fn get_alerts(pool: &SqlitePool) -> Result<Vec<PriceAlert>, String> {
     use sqlx::Row;
     let rows = sqlx::query(
-        "SELECT id, symbol, direction, threshold, note, triggered, created_at
+        "SELECT id, symbol, direction, threshold, currency, note, triggered, created_at
          FROM price_alerts ORDER BY created_at DESC",
     )
     .fetch_all(pool)
@@ -739,15 +818,16 @@ pub async fn get_alerts(pool: &SqlitePool) -> Result<Vec<PriceAlert>, String> {
         .filter_map(|r| {
             let dir_str: String = r.get(2);
             let direction = dir_str.parse::<AlertDirection>().ok()?;
-            let triggered: bool = r.get(5);
+            let triggered: bool = r.get(6);
             Some(PriceAlert {
                 id: r.get(0),
                 symbol: r.get(1),
                 direction,
                 threshold: r.get(3),
-                note: r.get(4),
+                currency: r.get(4),
+                note: r.get(5),
                 triggered,
-                created_at: r.get(6),
+                created_at: r.get(7),
             })
         })
         .collect();
@@ -774,7 +854,7 @@ pub async fn check_and_trigger_alerts(
     use sqlx::Row;
     let rows = sqlx::query(
         "SELECT id, direction, threshold FROM price_alerts
-         WHERE symbol = $1 AND triggered = 0",
+         WHERE UPPER(symbol) = UPPER($1) AND triggered = 0",
     )
     .bind(symbol)
     .fetch_all(pool)
@@ -787,20 +867,33 @@ pub async fn check_and_trigger_alerts(
         .collect();
 
     let mut triggered = Vec::new();
-    for (id, dir_str, threshold) in candidates {
+    for (id, dir_str, threshold) in &candidates {
         let crossed = match dir_str.as_str() {
-            "above" => price >= threshold,
-            "below" => price <= threshold,
+            "above" => price >= *threshold,
+            "below" => price <= *threshold,
             _ => false,
         };
         if crossed {
-            sqlx::query("UPDATE price_alerts SET triggered = 1 WHERE id = $1")
-                .bind(&id)
-                .execute(pool)
-                .await
-                .map_err(|e| e.to_string())?;
-            triggered.push(id);
+            triggered.push(id.clone());
         }
+    }
+
+    if !triggered.is_empty() {
+        let placeholders = triggered
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("${}", i + 1))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let sql = format!(
+            "UPDATE price_alerts SET triggered = 1 WHERE id IN ({})",
+            placeholders
+        );
+        let mut query = sqlx::query(&sql);
+        for id in &triggered {
+            query = query.bind(id);
+        }
+        query.execute(pool).await.map_err(|e| e.to_string())?;
     }
 
     Ok(triggered)
@@ -1062,7 +1155,7 @@ pub async fn get_annual_dividend_income(
                     1.0
                 }
             } else {
-                eprintln!("Warning: no FX rate found for {currency_upper}/{base_upper}, using 1:1 fallback for dividend income calculation");
+                tracing::warn!("no FX rate found for {currency_upper}/{base_upper}, using 1:1 fallback for dividend income calculation");
                 1.0
             }
         };
@@ -1286,16 +1379,17 @@ mod tests {
     #[tokio::test]
     async fn upsert_fx_rate_and_get() {
         let pool = open_test_db().await;
+        let now = chrono::Utc::now().to_rfc3339();
         let rate = FxRate {
             pair: "USDCAD".to_string(),
             rate: 1.36,
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: now.clone(),
         };
         upsert_fx_rate(&pool, &rate).await.expect("upsert fx");
         let rate2 = FxRate {
             pair: "USDCAD".to_string(),
             rate: 1.37,
-            updated_at: "2024-01-02T00:00:00Z".to_string(),
+            updated_at: now,
         };
         upsert_fx_rate(&pool, &rate2).await.expect("upsert fx 2");
         let rates = get_fx_rates(&pool).await.expect("get fx rates");

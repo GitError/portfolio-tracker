@@ -39,7 +39,7 @@ pub async fn fetch_all_fx_rates(
         .filter_map(|(result, currency)| match result {
             Ok(rate) => Some(rate),
             Err(e) => {
-                eprintln!("Failed to fetch FX rate for {}{}: {}", currency, base, e);
+                tracing::error!("Failed to fetch FX rate for {}{}: {}", currency, base, e);
                 None
             }
         })
@@ -68,9 +68,10 @@ pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[Fx
         }
     }
 
-    eprintln!(
+    tracing::warn!(
         "FX rate not found for {} → {}, returning unconverted amount",
-        from_currency, base
+        from_currency,
+        base
     );
     amount
 }

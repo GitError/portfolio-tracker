@@ -62,9 +62,10 @@ pub async fn fetch_price_with_fallback_currency(
         Some(c) => c.to_string(),
         None => {
             let used = fallback_currency.unwrap_or("USD");
-            eprintln!(
-                "Warning: Yahoo Finance omitted currency for {}; using {:?} as fallback",
-                symbol, used
+            tracing::warn!(
+                "Yahoo Finance omitted currency for {}; using {:?} as fallback",
+                symbol,
+                used
             );
             used.to_string()
         }
@@ -116,7 +117,7 @@ pub async fn fetch_all_prices(
         match result {
             Ok(price) => prices.push(price),
             Err(e) => {
-                eprintln!("Failed to fetch price for {}: {}", symbol, e);
+                tracing::error!("Failed to fetch price for {}: {}", symbol, e);
                 failed.push(symbol.clone());
             }
         }

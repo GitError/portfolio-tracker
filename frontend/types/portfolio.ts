@@ -4,14 +4,14 @@ export type AccountType = 'tfsa' | 'rrsp' | 'fhsa' | 'taxable' | 'crypto' | 'cas
 export interface Account {
   id: string;
   name: string;
-  accountType: string;
+  accountType: AccountType;
   institution?: string;
   createdAt: string;
 }
 
 export interface CreateAccountRequest {
   name: string;
-  accountType: string;
+  accountType: AccountType;
   institution?: string;
 }
 
@@ -141,6 +141,8 @@ export interface RefreshResult {
   failedSymbols: string[];
   /** IDs of price alerts triggered during this refresh. */
   triggeredAlerts: string[];
+  /** Error messages from alert evaluation that did not prevent the refresh. */
+  alertErrors?: string[];
 }
 
 export interface ExportPayload {
@@ -230,6 +232,7 @@ export interface PriceAlert {
   symbol: string;
   direction: AlertDirection;
   threshold: number;
+  currency: string;
   note: string;
   triggered: boolean;
   createdAt: string;
@@ -239,6 +242,7 @@ export interface PriceAlertInput {
   symbol: string;
   direction: AlertDirection;
   threshold: number;
+  currency: string;
   note: string;
 }
 
@@ -253,8 +257,7 @@ export interface PreviewRow {
   quantity: number;
   costBasis: number;
   targetWeight: number;
-  /** "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed" */
-  status: string;
+  status: 'ready' | 'cash' | 'duplicate' | 'invalid_symbol' | 'validation_failed';
 }
 
 export interface PreviewImportResult {

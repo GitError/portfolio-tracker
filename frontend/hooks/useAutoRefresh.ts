@@ -109,8 +109,9 @@ export function useAutoRefresh({ onRefresh }: UseAutoRefreshOptions): UseAutoRef
         return;
       }
 
-      // Pause outside market hours (don't reset, just skip the tick)
+      // Pause outside market hours — reset countdown so it doesn't freeze
       if (marketHoursOnlyRef.current && !isWithinMarketHours()) {
+        setSecondsUntilRefresh(Math.ceil(intervalMs / 1000));
         return;
       }
 

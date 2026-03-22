@@ -1,0 +1,1 @@
+ALTER TABLE price_alerts ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';

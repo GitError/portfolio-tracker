@@ -445,6 +445,7 @@ pub struct PriceAlert {
     pub symbol: String,
     pub direction: AlertDirection,
     pub threshold: f64,
+    pub currency: String,
     pub note: String,
     pub triggered: bool,
     pub created_at: String,
@@ -456,6 +457,7 @@ pub struct PriceAlertInput {
     pub symbol: String,
     pub direction: AlertDirection,
     pub threshold: f64,
+    pub currency: String,
     pub note: String,
 }
 

@@ -3,13 +3,11 @@ import { Download, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { useConfig } from '../hooks/useConfig';
-import { useAutoRefresh } from '../hooks/useAutoRefresh';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import { AccountsModal } from './AccountsModal';
 import { Select } from './ui/Select';
-
-const CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'AUD', 'CHF', 'JPY'];
+import { SUPPORTED_CURRENCIES } from '../lib/constants';
 
 const REFRESH_OPTION_KEYS: { key: string; value: string }[] = [
   { key: 'refresh.disabled', value: '0' },
@@ -470,8 +468,6 @@ function DataManagementSection() {
 }
 
 // Noop used as onRefresh in settings — Settings does not trigger live refreshes.
-async function noopRefresh(): Promise<void> {}
-
 export function Settings() {
   const { t } = useTranslation();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
@@ -483,17 +479,18 @@ export function Settings() {
   const [accountsOpen, setAccountsOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
 
-  // Auto-refresh controls — reads/writes the same config keys as useAutoRefresh
-  // in AppRoutes, so changes take effect immediately app-wide.
-  const {
-    intervalMinutes,
-    marketHoursOnly,
-    setInterval: setAutoRefreshInterval,
-    setMarketHoursOnly,
-  } = useAutoRefresh({ onRefresh: noopRefresh });
-
-  // Derive the ms string for the select control
-  const autoRefreshMsStr = String(intervalMinutes * 60_000);
+  // Auto-refresh controls — read/write config directly to avoid creating a
+  // second competing interval alongside the one in AppRoutes.
+  const { value: autoRefreshMsStr, setValue: persistIntervalMs } = useConfig(
+    'auto_refresh_interval_ms',
+    '0'
+  );
+  const { value: marketHoursOnlyStr, setValue: persistMarketHoursOnly } = useConfig(
+    'auto_refresh_market_hours_only',
+    'false'
+  );
+  const marketHoursOnly = marketHoursOnlyStr === 'true';
+  const setMarketHoursOnly = (enabled: boolean) => void persistMarketHoursOnly(String(enabled));
 
   const refreshOptions = REFRESH_OPTION_KEYS.map((opt) => ({
     label: t(opt.key),
@@ -592,7 +589,7 @@ export function Settings() {
           <Select
             value={baseCurrency}
             onChange={setBaseCurrency}
-            options={CURRENCIES.map((c) => ({ label: c, value: c }))}
+            options={SUPPORTED_CURRENCIES.map((c) => ({ label: c, value: c }))}
             style={{ minWidth: 160 }}
           />
         </SettingRow>
@@ -632,7 +629,7 @@ export function Settings() {
         >
           <Select
             value={autoRefreshMsStr}
-            onChange={(v) => setAutoRefreshInterval(Math.round(Number(v) / 60_000))}
+            onChange={(v) => void persistIntervalMs(v)}
             options={refreshOptions}
             style={{ minWidth: 160 }}
           />
