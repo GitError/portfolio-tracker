@@ -416,8 +416,7 @@ pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), St
 pub async fn get_cached_prices(pool: &SqlitePool) -> Result<Vec<PriceData>, String> {
     use sqlx::Row;
     let rows = sqlx::query(
-        "SELECT symbol, price, currency, change, change_percent, updated_at, open, previous_close, volume FROM price_cache
-         WHERE updated_at >= datetime('now', '-60 minutes')",
+        "SELECT symbol, price, currency, change, change_percent, updated_at, open, previous_close, volume FROM price_cache",
     )
     .fetch_all(pool)
     .await
@@ -457,13 +456,10 @@ pub async fn upsert_fx_rate(pool: &SqlitePool, rate: &FxRate) -> Result<(), Stri
 
 pub async fn get_fx_rates(pool: &SqlitePool) -> Result<Vec<FxRate>, String> {
     use sqlx::Row;
-    let rows = sqlx::query(
-        "SELECT pair, rate, updated_at FROM fx_rates
-         WHERE updated_at >= datetime('now', '-60 minutes')",
-    )
-    .fetch_all(pool)
-    .await
-    .map_err(|e| e.to_string())?;
+    let rows = sqlx::query("SELECT pair, rate, updated_at FROM fx_rates")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(rows
         .into_iter()

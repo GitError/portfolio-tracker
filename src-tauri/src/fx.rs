@@ -26,12 +26,18 @@ pub async fn fetch_all_fx_rates(
         .filter(|c| c.to_uppercase() != base_upper)
         .collect();
 
+    use futures::StreamExt;
+    // Eagerly construct all futures into a Vec (resolving borrows of `client`
+    // and `base` before the stream runs), then drive them with
+    // buffer_unordered(5) to cap concurrent HTTP connections at 5.
     let futures: Vec<_> = non_base
         .iter()
         .map(|currency| fetch_fx_rate(client, currency, base))
         .collect();
-
-    let results = futures::future::join_all(futures).await;
+    let results: Vec<_> = futures::stream::iter(futures)
+        .buffer_unordered(5)
+        .collect()
+        .await;
 
     results
         .into_iter()

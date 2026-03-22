@@ -2,18 +2,29 @@ use reqwest::Client;
 
 use crate::types::{AssetType, SymbolResult};
 
+/// Percent-encode a Yahoo Finance search query string.
+///
+/// Each UTF-8 **byte** is encoded individually, so multi-byte characters such
+/// as `é` (U+00E9 → bytes 0xC3 0xA9) become `%C3%A9` rather than the
+/// incorrect single-scalar encoding `%E9`.  Spaces are encoded as `+`.
+pub(crate) fn search_symbols_yahoo_encode(query: &str) -> String {
+    query.bytes().fold(String::new(), |mut acc, b| {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                acc.push(b as char);
+            }
+            b' ' => acc.push('+'),
+            _ => acc.push_str(&format!("%{b:02X}")),
+        }
+        acc
+    })
+}
+
 pub async fn search_symbols_yahoo(
     client: &Client,
     query: &str,
 ) -> Result<Vec<SymbolResult>, String> {
-    let encoded_query: String = query
-        .chars()
-        .map(|c| match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
-            ' ' => "+".to_string(),
-            _ => format!("%{:02X}", c as u32),
-        })
-        .collect();
+    let encoded_query = search_symbols_yahoo_encode(query);
     let url = format!(
         "https://query1.finance.yahoo.com/v1/finance/search?q={}&quotesCount=8&newsCount=0&enableFuzzyQuery=false",
         encoded_query
@@ -121,6 +132,22 @@ mod tests {
     fn symbol_filter_rejects_long_symbols() {
         let symbol = "TOOLONGSYMBOLX";
         assert!(symbol.len() > 12);
+    }
+
+    #[test]
+    fn percent_encode_multibyte_unicode() {
+        // é is U+00E9 → UTF-8 bytes 0xC3 0xA9 → must encode as %C3%A9, not %E9
+        let encoded = super::search_symbols_yahoo_encode("café");
+        assert_eq!(
+            encoded, "caf%C3%A9",
+            "multi-byte UTF-8 must be encoded byte-by-byte"
+        );
+    }
+
+    #[test]
+    fn percent_encode_space_becomes_plus() {
+        let encoded = super::search_symbols_yahoo_encode("Apple Inc");
+        assert_eq!(encoded, "Apple+Inc");
     }
 
     #[test]

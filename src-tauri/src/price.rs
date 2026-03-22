@@ -100,6 +100,10 @@ pub async fn fetch_all_prices(
     symbols: Vec<String>,
     symbol_currencies: &std::collections::HashMap<String, String>,
 ) -> FetchAllPricesResult {
+    use futures::StreamExt;
+    // Eagerly construct all futures into a Vec (resolving borrows of `client`,
+    // `symbols`, and `symbol_currencies` before the stream runs), then drive
+    // them with buffer_unordered(5) to cap concurrent HTTP connections at 5.
     let futures: Vec<_> = symbols
         .iter()
         .map(|symbol| {
@@ -107,8 +111,10 @@ pub async fn fetch_all_prices(
             fetch_price_with_fallback_currency(client, symbol, fallback)
         })
         .collect();
-
-    let results = futures::future::join_all(futures).await;
+    let results: Vec<_> = futures::stream::iter(futures)
+        .buffer_unordered(5)
+        .collect()
+        .await;
 
     let mut prices = Vec::new();
     let mut failed = Vec::new();

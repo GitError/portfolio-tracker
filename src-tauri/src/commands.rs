@@ -46,6 +46,17 @@ pub async fn set_config_cmd(
     key: String,
     value: String,
 ) -> Result<(), String> {
+    const ALLOWED_CONFIG_KEYS: &[&str] = &[
+        "base_currency",
+        "ui_language",
+        "theme",
+        "refresh_interval",
+        "cost_basis_method",
+        "notifications_enabled",
+    ];
+    if !ALLOWED_CONFIG_KEYS.contains(&key.as_str()) {
+        return Err(format!("Unknown config key: {key}"));
+    }
     let pool = &db.0;
     let value = if key == "cost_basis_method" {
         value.to_lowercase()
@@ -178,6 +189,16 @@ const WEIGHT_EPSILON: f64 = 0.001;
 
 #[tauri::command]
 pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
+    if holding.quantity <= 0.0 || !holding.quantity.is_finite() {
+        return Err("quantity must be a positive finite number".to_string());
+    }
+    if holding.cost_basis < 0.0 || !holding.cost_basis.is_finite() {
+        return Err("costBasis must be a non-negative finite number".to_string());
+    }
+    let currency = holding.currency.trim().to_uppercase();
+    if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err("currency must be a 3-letter ISO currency code".to_string());
+    }
     let pool = &db.0;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(pool, None).await?;
@@ -194,6 +215,16 @@ pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Resul
 
 #[tauri::command]
 pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, String> {
+    if holding.quantity <= 0.0 || !holding.quantity.is_finite() {
+        return Err("quantity must be a positive finite number".to_string());
+    }
+    if holding.cost_basis < 0.0 || !holding.cost_basis.is_finite() {
+        return Err("costBasis must be a non-negative finite number".to_string());
+    }
+    let currency = holding.currency.trim().to_uppercase();
+    if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
+        return Err("currency must be a 3-letter ISO currency code".to_string());
+    }
     let pool = &db.0;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(pool, Some(&holding.id)).await?;
@@ -766,14 +797,13 @@ pub async fn add_dividend(
     dividend: DividendInput,
 ) -> Result<Dividend, String> {
     let pool = &db.0;
-    // Look up the symbol for the holding
-    let holdings = db::get_all_holdings(pool).await?;
-    let symbol = holdings
-        .iter()
-        .find(|h| h.id == dividend.holding_id)
-        .map(|h| h.symbol.as_str())
-        .unwrap_or("")
-        .to_string();
+    // Look up the symbol for the holding with a targeted query (avoids N+1)
+    let symbol: Option<String> = sqlx::query_scalar("SELECT symbol FROM holdings WHERE id = $1")
+        .bind(&dividend.holding_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let symbol = symbol.unwrap_or_default();
     db::insert_dividend(pool, dividend, &symbol).await
 }
 
@@ -796,6 +826,9 @@ pub async fn add_alert(
     db: State<'_, DbState>,
     alert: PriceAlertInput,
 ) -> Result<PriceAlert, String> {
+    if !alert.threshold.is_finite() || alert.threshold <= 0.0 {
+        return Err("threshold must be a positive finite number".to_string());
+    }
     let pool = &db.0;
     db::insert_alert(pool, alert).await
 }
@@ -1058,9 +1091,10 @@ pub async fn restore_database(
     source_path: String,
 ) -> Result<String, String> {
     // Verify the source file is a valid SQLite database.
-    let src = std::path::PathBuf::from(&source_path);
-    if !src.exists() {
-        return Err(format!("File not found: {source_path}"));
+    let src = std::fs::canonicalize(&source_path)
+        .map_err(|e| format!("Cannot resolve backup path: {e}"))?;
+    if !src.is_file() {
+        return Err("Backup path must point to a regular file".to_string());
     }
 
     // Check SQLite magic bytes.
@@ -2220,13 +2254,14 @@ pub async fn update_account(
     let account_type = account.account_type.clone();
 
     let pool = &state.0;
-    // Fetch created_at for the returned struct
-    let existing: Vec<Account> = db::get_accounts(pool).await?;
-    let created_at = existing
-        .iter()
-        .find(|a| a.id == id)
-        .map(|a| a.created_at.clone())
-        .ok_or_else(|| format!("Account {} not found", id))?;
+    // Fetch created_at for the returned struct with a targeted query (avoids N+1)
+    let created_at: Option<String> =
+        sqlx::query_scalar("SELECT created_at FROM accounts WHERE id = $1")
+            .bind(&id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    let created_at = created_at.ok_or_else(|| format!("Account {} not found", id))?;
 
     db::update_account(pool, &id, &name, &account_type, institution.as_deref()).await?;
 
