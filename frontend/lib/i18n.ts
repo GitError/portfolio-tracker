@@ -6,6 +6,7 @@ import fr from '../locales/fr/translation.json';
 import de from '../locales/de/translation.json';
 import es from '../locales/es/translation.json';
 import pt from '../locales/pt/translation.json';
+import pl from '../locales/pl/translation.json';
 import ja from '../locales/ja/translation.json';
 import zh from '../locales/zh/translation.json';
 
@@ -16,6 +17,7 @@ i18next.use(initReactI18next).init({
     de: { translation: de },
     es: { translation: es },
     pt: { translation: pt },
+    pl: { translation: pl },
     ja: { translation: ja },
     zh: { translation: zh },
   },

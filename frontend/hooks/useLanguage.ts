@@ -8,6 +8,7 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'de', name: 'German', nativeName: 'Deutsch' },
   { code: 'es', name: 'Spanish', nativeName: 'Español' },
   { code: 'pt', name: 'Portuguese', nativeName: 'Português' },
+  { code: 'pl', name: 'Polish', nativeName: 'Polski' },
   { code: 'ja', name: 'Japanese', nativeName: '日本語' },
   { code: 'zh', name: 'Chinese', nativeName: '中文' },
 ];
