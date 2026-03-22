@@ -7,9 +7,7 @@ use sqlx::SqlitePool;
 use tauri::{Manager, State};
 
 use crate::analytics::compute_realized_gains_grouped;
-use crate::csv::{
-    build_holdings_csv, normalize_symbol_for_import, parse_import_rows, ParsedImportRow,
-};
+use crate::csv::{build_holdings_csv, parse_import_rows};
 use crate::db;
 use crate::fx::fetch_all_fx_rates;
 use crate::portfolio::build_portfolio_snapshot;
@@ -17,12 +15,12 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    Account, AccountType, AssetType, CountryWeight, CreateAccountRequest, Dividend, DividendInput,
-    FxRate, Holding, HoldingInput, HoldingWithPrice, ImportError, ImportResult, PerformancePoint,
-    PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow,
-    PriceAlert, PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion,
-    RefreshResult, SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult,
-    Transaction, TransactionInput,
+    Account, AssetType, CountryWeight, CreateAccountRequest, Dividend, DividendInput, Holding,
+    HoldingInput, ImportError, ImportResult, PerformancePoint, PortfolioAnalytics,
+    PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
+    PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion, RefreshResult,
+    SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction,
+    TransactionInput,
 };
 
 pub struct DbState(pub SqlitePool);
@@ -1536,6 +1534,8 @@ pub async fn get_realized_gains(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::csv::{normalize_symbol_for_import, ParsedImportRow};
+    use crate::types::{AccountType, FxRate, HoldingWithPrice};
     use chrono::Utc;
 
     // CSV/normalize tests live in csv.rs.
