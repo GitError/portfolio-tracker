@@ -29,7 +29,7 @@ interface PerformancePoint {
 
 function backendPointsToPerfData(points: PerformancePoint[]): PerfDataPoint[] {
   return points.map((point, index) => {
-    const prev = index > 0 ? points[index - 1].value : point.value;
+    const prev = index > 0 ? (points[index - 1]?.value ?? point.value) : point.value;
     const dailyReturn = prev !== 0 ? ((point.value - prev) / prev) * 100 : 0;
     return { date: point.date, value: point.value, dailyReturn };
   });
@@ -116,8 +116,8 @@ function CustomTooltip({
   currency: string;
 }) {
   if (!active || !payload?.length) return null;
-  const val = payload[0].value;
-  const daily = payload[0].payload.dailyReturn;
+  const val = payload[0]!.value;
+  const daily = payload[0]!.payload.dailyReturn;
   return (
     <div
       style={{
@@ -355,7 +355,7 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
               tick={{ fill: 'var(--text-muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}
               axisLine={{ stroke: 'var(--border-primary)' }}
               tickLine={false}
-              tickCount={xTickCount}
+              {...(xTickCount !== undefined ? { tickCount: xTickCount } : {})}
               interval="preserveStartEnd"
             />
             <YAxis

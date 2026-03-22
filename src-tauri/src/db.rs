@@ -24,7 +24,6 @@ pub async fn get_config(pool: &SqlitePool, key: &str) -> Result<Option<String>, 
     }))
 }
 
-#[allow(dead_code)]
 pub async fn set_config(pool: &SqlitePool, key: &str, value: &str) -> Result<(), String> {
     sqlx::query(
         "INSERT INTO app_config (key, value) VALUES ($1, $2)
@@ -1166,16 +1165,6 @@ pub async fn get_annual_dividend_income(
     Ok(total)
 }
 
-#[allow(dead_code)]
-pub async fn holding_exists(pool: &SqlitePool, symbol: &str) -> Result<bool, String> {
-    let row = sqlx::query("SELECT 1 FROM holdings WHERE UPPER(symbol) = UPPER($1) LIMIT 1")
-        .bind(symbol)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(row.is_some())
-}
-
 // ── Accounts ──────────────────────────────────────────────────────────────────
 
 pub async fn insert_account(
@@ -1413,16 +1402,6 @@ mod tests {
             .expect("query exact");
         assert!(cached.is_some());
         assert_eq!(cached.expect("cached").name, "Apple Inc.");
-    }
-
-    #[tokio::test]
-    async fn holding_exists_matches_case_insensitively() {
-        let pool = open_test_db().await;
-        insert_holding(&pool, make_input("MSFT"))
-            .await
-            .expect("insert");
-        assert!(holding_exists(&pool, "msft").await.expect("holding exists"));
-        assert!(!holding_exists(&pool, "nvda").await.expect("holding exists"));
     }
 
     #[tokio::test]

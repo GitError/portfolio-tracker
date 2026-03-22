@@ -37,7 +37,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSave: (holding: HoldingInput) => void;
-  editingHolding?: Holding;
+  editingHolding?: Holding | undefined;
 }
 
 interface FormState {
@@ -57,11 +57,11 @@ interface FormState {
 }
 
 interface FormErrors {
-  symbol?: string;
-  name?: string;
-  quantity?: string;
-  costBasis?: string;
-  targetWeight?: string;
+  symbol?: string | undefined;
+  name?: string | undefined;
+  quantity?: string | undefined;
+  costBasis?: string | undefined;
+  targetWeight?: string | undefined;
 }
 
 const EMPTY_FORM: FormState = {
@@ -115,7 +115,7 @@ function Field({
   children,
 }: {
   label: string;
-  error?: string;
+  error?: string | undefined;
   children: React.ReactNode;
 }) {
   return (

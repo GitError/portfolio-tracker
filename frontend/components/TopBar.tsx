@@ -12,8 +12,8 @@ interface TopBarProps {
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
-  failedSymbols?: string[];
-  countdown?: number | null;
+  failedSymbols?: string[] | undefined;
+  countdown?: number | null | undefined;
 }
 
 const ROUTE_TITLES: Record<string, string> = {

@@ -179,7 +179,8 @@ export function SymbolSearch({
       setActiveIndex((i) => Math.max(i - 1, -1));
     } else if (e.key === 'Enter' && activeIndex >= 0) {
       e.preventDefault();
-      handleSelect(results[activeIndex]);
+      const selected = results[activeIndex];
+      if (selected) handleSelect(selected);
     } else if (e.key === 'Escape') {
       setOpen(false);
     }

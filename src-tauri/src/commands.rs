@@ -34,14 +34,12 @@ async fn get_base_currency(pool: &SqlitePool) -> String {
         .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
 }
 
-#[allow(dead_code)]
 #[tauri::command]
 pub async fn get_config_cmd(db: State<'_, DbState>, key: String) -> Result<Option<String>, String> {
     let pool = &db.0;
     db::get_config(pool, &key).await
 }
 
-#[allow(dead_code)]
 #[tauri::command]
 pub async fn set_config_cmd(
     db: State<'_, DbState>,
@@ -1575,17 +1573,6 @@ mod tests {
         }
     }
 
-    #[allow(dead_code)]
-    fn _parse_import_rows_supports_cash_defaults_moved() {
-        let csv = "symbol,name,type,quantity,cost_basis,currency\n, ,cash,1000,1,CAD\n";
-        let rows = parse_import_rows(csv).expect("parse csv");
-
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].symbol, "CAD-CASH");
-        assert_eq!(rows[0].currency, "CAD");
-        assert!(matches!(rows[0].asset_type, AssetType::Cash));
-    }
-
     #[test]
     fn parse_import_rows_supports_semicolon_delimiter() {
         let csv =
@@ -1958,46 +1945,6 @@ mod tests {
             "combined should exceed 100, got {:.1}",
             existing_weight_sum + csv_sum
         );
-    }
-
-    // build_portfolio_snapshot tests have been moved to portfolio.rs.
-    #[allow(dead_code)]
-    fn _build_portfolio_snapshot_computes_target_deltas_moved() {
-        let mut holdings = vec![
-            make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD"),
-            make_holding("CAD-CASH", AssetType::Cash, 500.0, 1.0, "CAD"),
-        ];
-        holdings[0].target_weight = 60.0;
-        holdings[1].target_weight = 10.0;
-
-        let prices = vec![PriceData {
-            symbol: "AAPL".to_string(),
-            price: 120.0,
-            currency: "CAD".to_string(),
-            change: 0.0,
-            change_percent: 0.0,
-            updated_at: Utc::now().to_rfc3339(),
-            open: None,
-            previous_close: None,
-            volume: None,
-        }];
-
-        let snapshot = build_portfolio_snapshot(
-            &holdings,
-            &prices,
-            &[],
-            "CAD",
-            "2024-01-01T00:00:00Z".to_string(),
-            0.0,
-            0.0,
-        );
-
-        assert!((snapshot.total_value - 1700.0).abs() < 0.001);
-        assert!((snapshot.total_target_weight - 70.0).abs() < 0.001);
-        assert!((snapshot.holdings[0].target_value - 1020.0).abs() < 0.001);
-        assert!((snapshot.holdings[0].target_delta_value + 180.0).abs() < 0.001);
-        assert!((snapshot.holdings[1].target_delta_value + 330.0).abs() < 0.001);
-        assert!((snapshot.target_cash_delta - 330.0).abs() < 0.001);
     }
 
     #[test]

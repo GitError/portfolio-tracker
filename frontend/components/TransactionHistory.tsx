@@ -15,8 +15,6 @@ type TxType = 'buy' | 'sell' | 'all';
 const TX_TYPE_COLORS: Record<string, string> = {
   buy: 'var(--color-gain)',
   sell: 'var(--color-loss)',
-  deposit: 'var(--color-accent)',
-  withdrawal: 'var(--text-muted)',
 };
 
 function TxBadge({ type }: { type: string }) {
@@ -144,7 +142,7 @@ export function TransactionHistory() {
   // Set default selector holding when holdings are available
   useEffect(() => {
     if (holdings.length > 0 && !selectorHoldingId) {
-      setSelectorHoldingId(holdings[0].id);
+      setSelectorHoldingId(holdings[0]!.id);
     }
   }, [holdings, selectorHoldingId]);
 

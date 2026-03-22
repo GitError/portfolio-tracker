@@ -54,7 +54,7 @@ export function generatePerfData(): PerfDataPoint[] {
 
     value = value * (1 + dailyPct / 100);
 
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = d.toISOString().split('T')[0] ?? '';
     points.push({ date: dateStr, value: Math.round(value * 100) / 100, dailyReturn: dailyPct });
   }
 
@@ -94,7 +94,7 @@ function generateBenchmarkData(
     }
 
     value = value * (1 + dailyPct / 100);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = d.toISOString().split('T')[0] ?? '';
     points.push({ date: dateStr, value: Math.round(value * 100) / 100, dailyReturn: dailyPct });
   }
 
@@ -154,8 +154,8 @@ export interface PerfStats {
 export function calcStats(data: PerfDataPoint[]): PerfStats | null {
   if (data.length < 2) return null;
 
-  const first = data[0].value;
-  const last = data[data.length - 1].value;
+  const first = data[0]!.value;
+  const last = data[data.length - 1]!.value;
   const totalReturn = last - first;
   const totalReturnPct = (totalReturn / first) * 100;
 
@@ -164,7 +164,7 @@ export function calcStats(data: PerfDataPoint[]): PerfStats | null {
 
   // Max drawdown: largest peak-to-trough
   let maxDrawdown = 0;
-  let peak = data[0].value;
+  let peak = data[0]!.value;
   for (const p of data) {
     if (p.value > peak) peak = p.value;
     const dd = (peak - p.value) / peak;

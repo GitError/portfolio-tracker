@@ -172,11 +172,11 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     }
     const best = nonCash.reduce(
       (a, b) => (b.gainLossPercent > a.gainLossPercent ? b : a),
-      nonCash[0]
+      nonCash[0]!
     );
     const worst = nonCash.reduce(
       (a, b) => (b.gainLossPercent < a.gainLossPercent ? b : a),
-      nonCash[0]
+      nonCash[0]!
     );
     const cashTotal = filteredHoldings
       .filter((h) => h.assetType === 'cash')
@@ -217,7 +217,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
 
   const concentrationStats = useMemo(() => {
     if (concentrationData.length === 0) return null;
-    const largest = concentrationData[0].weightPct;
+    const largest = concentrationData[0]!.weightPct;
     const top3 = concentrationData.slice(0, 3).reduce((sum, d) => sum + d.weightPct, 0);
     return { largest, top3, hasRisk: largest > 20 };
   }, [concentrationData]);

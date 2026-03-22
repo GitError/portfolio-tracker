@@ -446,7 +446,7 @@ export function Analytics() {
                       labelLine={false}
                     >
                       {pieData.map((_, index) => (
-                        <Cell key={index} fill={SECTOR_COLORS[index % SECTOR_COLORS.length]} />
+                        <Cell key={index} fill={SECTOR_COLORS[index % SECTOR_COLORS.length]!} />
                       ))}
                     </Pie>
                     <Tooltip

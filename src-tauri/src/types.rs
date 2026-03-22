@@ -551,16 +551,3 @@ pub struct RebalanceSuggestion {
     pub suggested_units: f64,     // positive = sell, negative = buy
     pub current_price_cad: f64,
 }
-
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateTransactionRequest {
-    pub holding_id: String,
-    pub transaction_type: String,
-    pub quantity: f64,
-    pub price: f64,
-    pub currency: String,
-    pub fee: f64,
-    pub transacted_at: String,
-}

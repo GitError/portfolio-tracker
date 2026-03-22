@@ -64,7 +64,9 @@ export function Select({ value, onChange, options, style }: Props) {
         break;
       case 'Enter':
         e.preventDefault();
-        handleSelect(options[activeIndex].value);
+        if (options[activeIndex]) {
+          handleSelect(options[activeIndex]!.value);
+        }
         break;
       case 'Escape':
       case 'Tab':

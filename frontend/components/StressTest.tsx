@@ -678,7 +678,7 @@ export function StressTest() {
     if (presetName === 'Custom') return;
     const preset =
       presetScenarios.find((scenario) => scenario.name === presetName) ?? presetScenarios[0];
-    setShocks({ ...ZERO_SHOCKS, ...preset.shocks });
+    if (preset) setShocks({ ...ZERO_SHOCKS, ...preset.shocks });
   }, [presetName, presetScenarios]);
 
   // Run stress test whenever shocks or filtered portfolio change (debounced 150ms)
@@ -1109,7 +1109,7 @@ export function StressTest() {
                     }}
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
-                      const d = payload[0].payload;
+                      const d = payload[0]!.payload;
                       return (
                         <div
                           style={{

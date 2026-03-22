@@ -12,7 +12,7 @@ export interface Account {
 export interface CreateAccountRequest {
   name: string;
   accountType: AccountType;
-  institution?: string;
+  institution?: string | undefined;
 }
 
 export interface HoldingInput {
