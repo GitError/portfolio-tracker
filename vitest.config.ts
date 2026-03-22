@@ -7,7 +7,7 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./frontend/__tests__/setup.ts'],
-    exclude: ['.claude/**', 'node_modules/**'],
+    exclude: ['.claude/**', 'node_modules/**', 'e2e/**'],
     server: {
       deps: {
         // Force ESM-only packages through Vite's transform pipeline
