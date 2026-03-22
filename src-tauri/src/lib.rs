@@ -59,6 +59,19 @@ pub fn run() {
                 .build()
                 .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
+            // Spawn background WAL checkpoint task to prevent unbounded WAL growth.
+            let wal_pool = pool.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+                interval.tick().await; // skip immediate first tick
+                loop {
+                    interval.tick().await;
+                    let _ = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+                        .execute(&wal_pool)
+                        .await;
+                }
+            });
+
             app.manage(DbState(pool));
             app.manage(HttpClient(http_client));
             app.manage(SearchCacheState::new());
