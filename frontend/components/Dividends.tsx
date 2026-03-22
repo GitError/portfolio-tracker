@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { DollarSign, Plus, Trash2, TrendingUp } from 'lucide-react';
 import type { Dividend, DividendInput, Holding, HoldingWithPrice } from '../types/portfolio';
 import { usePortfolio } from '../hooks/usePortfolio';
@@ -17,6 +18,7 @@ interface AddDividendFormProps {
 }
 
 function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
+  const { t } = useTranslation();
   const [holdingId, setHoldingId] = useState(holdings[0]?.id ?? '');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('CAD');
@@ -62,7 +64,9 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>HOLDING</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('dividends.holding').toUpperCase()}
+          </div>
           <Select
             value={holdingId}
             onChange={setHoldingId}
@@ -71,7 +75,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
         </div>
         <div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-            AMOUNT / UNIT
+            {t('dividends.amountPerUnit').toUpperCase()}
           </div>
           <input
             style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
@@ -85,7 +89,9 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CURRENCY</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('dividends.currency').toUpperCase()}
+          </div>
           <Select
             value={currency}
             onChange={setCurrency}
@@ -95,7 +101,9 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>EX-DATE</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('dividends.exDate').toUpperCase()}
+          </div>
           <input
             style={inputStyle}
             type="date"
@@ -108,7 +116,9 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PAY DATE</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('dividends.payDate').toUpperCase()}
+          </div>
           <input
             style={inputStyle}
             type="date"
@@ -135,7 +145,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
             cursor: 'pointer',
           }}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           type="submit"
@@ -158,6 +168,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
 }
 
 export function Dividends() {
+  const { t } = useTranslation();
   const [dividends, setDividends] = useState<Dividend[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
@@ -289,7 +300,7 @@ export function Dividends() {
               marginBottom: 4,
             }}
           >
-            Dividends
+            {t('dividends.title')}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
             Record and track dividend income across your holdings.
@@ -582,7 +593,14 @@ export function Dividends() {
               borderBottom: '1px solid var(--border-primary)',
             }}
           >
-            {['SYMBOL', 'EX-DATE', 'PAY DATE', 'AMT / UNIT', 'CURRENCY', ''].map((h) => (
+            {[
+              t('holdings.columns.symbol'),
+              t('dividends.exDate'),
+              t('dividends.payDate'),
+              t('dividends.amountPerUnit'),
+              t('dividends.currency'),
+              '',
+            ].map((h) => (
               <div
                 key={h}
                 style={{

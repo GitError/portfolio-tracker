@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
@@ -66,6 +67,7 @@ function topMoversTitle(lastUpdated: string | undefined): string {
 }
 
 export function Dashboard({ portfolio, loading }: DashboardProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const accountFilter = (searchParams.get('account') ?? 'all') as 'all' | AccountType;
@@ -253,13 +255,15 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             zIndex: 1,
           }}
         >
-          <div style={LABEL}>Portfolio Value ({baseCurrency})</div>
+          <div style={LABEL}>
+            {t('dashboard.portfolioValue')} ({baseCurrency})
+          </div>
           <div style={{ width: 180, marginBottom: 12 }}>
             <Select
               value={accountFilter}
               onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
               options={[
-                { value: 'all', label: 'All Accounts' },
+                { value: 'all', label: t('holdings.allAccounts') },
                 ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
               ]}
             />
@@ -291,13 +295,15 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             zIndex: 1,
           }}
         >
-          <div style={LABEL}>Portfolio Value ({baseCurrency})</div>
+          <div style={LABEL}>
+            {t('dashboard.portfolioValue')} ({baseCurrency})
+          </div>
           <div style={{ width: 180, marginBottom: 12 }}>
             <Select
               value={accountFilter}
               onChange={(value) => setAccountFilter(value as 'all' | AccountType)}
               options={[
-                { value: 'all', label: 'All Accounts' },
+                { value: 'all', label: t('holdings.allAccounts') },
                 ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
               ]}
             />
@@ -335,7 +341,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   color: pnlColor(totals.dailyPnl),
                 }}
               >
-                today
+                {t('common.today')}
               </span>
             )}
           </div>
@@ -349,7 +355,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             }}
           >
             <div>
-              <div style={{ ...LABEL, marginBottom: 2 }}>Cost Basis ({baseCurrency})</div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>
+                {t('dashboard.costBasis')} ({baseCurrency})
+              </div>
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -361,7 +369,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               </div>
             </div>
             <div>
-              <div style={{ ...LABEL, marginBottom: 2 }}>Total Gain/Loss ({baseCurrency})</div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>
+                {t('dashboard.totalGainLoss')} ({baseCurrency})
+              </div>
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -375,7 +385,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               </div>
             </div>
             <div>
-              <div style={{ ...LABEL, marginBottom: 2 }}>Holdings</div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>{t('dashboard.holdings')}</div>
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -389,7 +399,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               </div>
             </div>
             <div>
-              <div style={{ ...LABEL, marginBottom: 2 }}>Last Refreshed</div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>{t('dashboard.lastUpdated')}</div>
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -406,7 +416,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               </div>
             </div>
             <div>
-              <div style={{ ...LABEL, marginBottom: 2 }}>Annual Income ({baseCurrency})</div>
+              <div style={{ ...LABEL, marginBottom: 2 }}>
+                {t('dashboard.annualDividend')} ({baseCurrency})
+              </div>
               <div
                 style={{
                   fontFamily: 'var(--font-mono)',
@@ -443,7 +455,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               marginBottom: 8,
             }}
           >
-            <div style={{ ...LABEL, marginBottom: 0 }}>Allocation ({baseCurrency})</div>
+            <div style={{ ...LABEL, marginBottom: 0 }}>
+              {t('dashboard.allocation')} ({baseCurrency})
+            </div>
             <div style={{ display: 'flex', gap: 0 }}>
               {(['type', 'account'] as const).map((view) => (
                 <button
@@ -463,7 +477,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                     borderRadius: 0,
                   }}
                 >
-                  {view === 'type' ? 'Asset Type' : 'Account'}
+                  {view === 'type' ? t('dashboard.assetType') : t('dashboard.account')}
                 </button>
               ))}
             </div>
@@ -587,7 +601,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                     letterSpacing: '0.06em',
                   }}
                 >
-                  View all →
+                  {t('common.viewAll')}
                 </button>
               )}
           </div>
@@ -686,7 +700,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             overflow: 'hidden',
           }}
         >
-          <div style={{ ...LABEL, flexShrink: 0 }}>Currency Exposure ({baseCurrency} base)</div>
+          <div style={{ ...LABEL, flexShrink: 0 }}>
+            {t('dashboard.currencyExposure')} ({baseCurrency} base)
+          </div>
           <div style={{ height: 200, flexShrink: 0 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -777,7 +793,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             overflow: 'hidden',
           }}
         >
-          <div style={{ ...LABEL, flexShrink: 0 }}>By Account</div>
+          <div style={{ ...LABEL, flexShrink: 0 }}>{t('dashboard.byAccount')}</div>
           {accountData.length === 0 ? (
             <div
               style={{
@@ -787,7 +803,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 marginTop: 8,
               }}
             >
-              No account data
+              {t('dashboard.noAccountData')}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -858,7 +874,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             overflow: 'hidden',
           }}
         >
-          <div style={{ ...LABEL, flexShrink: 0 }}>Concentration</div>
+          <div style={{ ...LABEL, flexShrink: 0 }}>{t('dashboard.concentration')}</div>
           {concentrationData.length === 0 ? (
             <div
               style={{
@@ -868,7 +884,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 marginTop: 8,
               }}
             >
-              No non-cash holdings
+              {t('dashboard.noNonCashHoldings')}
             </div>
           ) : (
             <>
@@ -940,11 +956,12 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                       color: 'var(--text-muted)',
                     }}
                   >
-                    Largest:{' '}
+                    {t('dashboard.largest')}:{' '}
                     <span style={{ color: 'var(--text-secondary)' }}>
                       {concentrationStats.largest.toFixed(1)}%
                     </span>
-                    {'  '}Top 3:{' '}
+                    {'  '}
+                    {t('dashboard.top3')}:{' '}
                     <span style={{ color: 'var(--text-secondary)' }}>
                       {concentrationStats.top3.toFixed(1)}%
                     </span>
@@ -957,7 +974,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                         color: 'var(--color-warning)',
                       }}
                     >
-                      &#9888; Concentration risk
+                      &#9888; {t('dashboard.concentrationRisk')}
                     </div>
                   )}
                 </div>
@@ -977,7 +994,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             overflow: 'hidden',
           }}
         >
-          <div style={{ ...LABEL, flexShrink: 0 }}>Cash</div>
+          <div style={{ ...LABEL, flexShrink: 0 }}>{t('dashboard.cash')}</div>
           {cashData.positions.length === 0 ? (
             <div
               style={{
@@ -987,7 +1004,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                 marginTop: 8,
               }}
             >
-              No cash positions
+              {t('dashboard.noCashPositions')}
             </div>
           ) : (
             <>
@@ -1010,9 +1027,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   marginBottom: 12,
                 }}
               >
-                Investable Cash
+                {t('dashboard.investableCash')}
                 <span style={{ marginLeft: 6, color: 'var(--text-secondary)' }}>
-                  {cashData.cashPct.toFixed(1)}% of portfolio
+                  {t('dashboard.ofPortfolio', { pct: cashData.cashPct.toFixed(1) })}
                 </span>
               </div>
               {cashData.positions.length > 1 && (
@@ -1072,38 +1089,40 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         >
           {[
             {
-              label: 'Positions',
+              label: t('dashboard.positions'),
               value: portfolio
                 ? String(filteredHoldings.filter((h) => h.assetType !== 'cash').length)
                 : '—',
-              sub: portfolio ? `${filteredHoldings.length} total` : '',
+              sub: portfolio ? `${filteredHoldings.length} ${t('common.total')}` : '',
             },
             {
-              label: 'Best Performer',
+              label: t('dashboard.bestPerformer'),
               value: stats?.best ? stats.best.symbol : '—',
               sub: stats?.best ? formatPercent(stats.best.gainLossPercent) : '',
               subColor: stats?.best ? pnlColor(stats.best.gainLossPercent) : undefined,
             },
             {
-              label: 'Worst Performer',
+              label: t('dashboard.worstPerformer'),
               value: stats?.worst ? stats.worst.symbol : '—',
               sub: stats?.worst ? formatPercent(stats.worst.gainLossPercent) : '',
               subColor: stats?.worst ? pnlColor(stats.worst.gainLossPercent) : undefined,
             },
             {
-              label: 'Cash Position',
+              label: t('dashboard.cashPosition'),
               value: stats ? formatCompact(stats.cashTotal) : '—',
               sub:
                 stats && totals.totalValue > 0
-                  ? `${((stats.cashTotal / totals.totalValue) * 100).toFixed(1)}% of portfolio`
+                  ? t('dashboard.ofPortfolio', {
+                      pct: ((stats.cashTotal / totals.totalValue) * 100).toFixed(1),
+                    })
                   : '',
             },
             {
-              label: 'Realized Gains',
+              label: t('dashboard.realizedGains'),
               value: portfolio
                 ? `${portfolio.realizedGains >= 0 ? '+' : ''}${formatCurrency(portfolio.realizedGains, baseCurrency)}`
                 : '—',
-              sub: 'All time',
+              sub: t('common.allTime'),
               subColor: portfolio ? pnlColor(portfolio.realizedGains) : undefined,
               valueColor: portfolio ? pnlColor(portfolio.realizedGains) : undefined,
             },

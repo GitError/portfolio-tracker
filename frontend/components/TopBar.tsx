@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshCw, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { formatCurrency, formatPercent } from '../lib/format';
@@ -16,18 +17,18 @@ interface TopBarProps {
   countdown?: number | null | undefined;
 }
 
-const ROUTE_TITLES: Record<string, string> = {
-  '/': 'Dashboard',
-  '/holdings': 'Holdings',
-  '/performance': 'Performance',
-  '/stress': 'Stress Test',
-  '/rebalance': 'Rebalance',
-  '/alerts': 'Alerts',
-  '/transactions': 'Transactions',
-  '/analytics': 'Analytics',
-  '/dividends': 'Dividends',
+const ROUTE_TITLE_KEYS: Record<string, string> = {
+  '/': 'nav.dashboard',
+  '/holdings': 'nav.holdings',
+  '/performance': 'nav.performance',
+  '/stress': 'nav.stressTest',
+  '/rebalance': 'nav.rebalance',
+  '/alerts': 'nav.alerts',
+  '/transactions': 'nav.transactions',
+  '/analytics': 'nav.analytics',
+  '/dividends': 'nav.dividends',
   '/help': 'Keyboard Shortcuts',
-  '/settings': 'Settings',
+  '/settings': 'nav.settings',
 };
 
 function useRelativeTime(isoDate: string | null): string {
@@ -152,8 +153,14 @@ export function TopBar({
   failedSymbols = [],
   countdown = null,
 }: TopBarProps) {
+  const { t } = useTranslation();
   const { pathname } = useLocation();
-  const title = ROUTE_TITLES[pathname] ?? 'Portfolio Tracker';
+  const titleKey = ROUTE_TITLE_KEYS[pathname];
+  const title = titleKey
+    ? titleKey.startsWith('nav.')
+      ? t(titleKey)
+      : titleKey
+    : 'Portfolio Tracker';
   const updatedLabel = useRelativeTime(portfolio?.lastUpdated ?? null);
   const dailyPnl = portfolio?.dailyPnl ?? 0;
   const prevValue = portfolio ? portfolio.totalValue - dailyPnl : 0;
@@ -249,7 +256,7 @@ export function TopBar({
               size={13}
               style={{ animation: loading ? 'spin 0.7s linear infinite' : 'none' }}
             />
-            Refresh
+            {t('common.refresh')}
           </button>
         </div>
       </div>

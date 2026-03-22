@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { RefreshCw, ArrowUpDown } from 'lucide-react';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import {
@@ -176,6 +177,7 @@ function formatMarketCap(cap?: number): string {
 }
 
 export function Analytics() {
+  const { t } = useTranslation();
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -277,7 +279,7 @@ export function Analytics() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Portfolio Analytics</h1>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{t('analytics.title')}</h1>
           <p
             style={{
               margin: '4px 0 0',
@@ -310,7 +312,7 @@ export function Analytics() {
             size={14}
             style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }}
           />
-          {analytics ? 'Refresh' : 'Load Analytics'}
+          {analytics ? t('common.refresh') : 'Load Analytics'}
         </button>
       </div>
 

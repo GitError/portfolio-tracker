@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell, BellOff, Plus, Trash2, RefreshCw } from 'lucide-react';
 import type { AlertDirection, Holding, PriceAlert, PriceAlertInput } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
@@ -40,6 +41,7 @@ interface AddAlertFormProps {
 }
 
 function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
+  const { t } = useTranslation();
   const defaultCurrency = holdings[0]?.currency ?? 'USD';
   const [symbol, setSymbol] = useState(holdings[0]?.symbol ?? '');
   const [direction, setDirection] = useState<AlertDirection>('above');
@@ -102,7 +104,9 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>SYMBOL</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('alerts.symbol').toUpperCase()}
+          </div>
           {holdings.length > 0 ? (
             <Select
               value={symbol}
@@ -120,13 +124,15 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
           )}
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>DIRECTION</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('alerts.direction').toUpperCase()}
+          </div>
           <Select
             value={direction}
             onChange={(value) => setDirection(value as AlertDirection)}
             options={[
-              { value: 'above', label: 'Above' },
-              { value: 'below', label: 'Below' },
+              { value: 'above', label: t('alerts.above') },
+              { value: 'below', label: t('alerts.below') },
             ]}
           />
         </div>
@@ -144,7 +150,9 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>CURRENCY</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('dividends.currency').toUpperCase()}
+          </div>
           <Select
             value={currency}
             onChange={setCurrency}
@@ -177,7 +185,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
             cursor: 'pointer',
           }}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           type="submit"
@@ -192,7 +200,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
             cursor: 'pointer',
           }}
         >
-          Add Alert
+          {t('alerts.addAlert')}
         </button>
       </div>
     </form>
@@ -200,6 +208,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
 }
 
 export function Alerts() {
+  const { t } = useTranslation();
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -322,7 +331,7 @@ export function Alerts() {
               marginBottom: 4,
             }}
           >
-            Price Alerts
+            {t('alerts.title')}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
             Get notified when a price crosses your threshold.
@@ -366,7 +375,7 @@ export function Alerts() {
               marginBottom: 8,
             }}
           >
-            Triggered ({triggered.length})
+            {t('alerts.triggered')} ({triggered.length})
           </div>
           <div
             style={{
@@ -400,7 +409,7 @@ export function Alerts() {
           marginBottom: 8,
         }}
       >
-        Active ({active.length})
+        {t('alerts.active')} ({active.length})
       </div>
 
       {active.length === 0 && !showForm ? (
@@ -439,6 +448,7 @@ function AlertRow({
   onDelete: (id: string) => void;
   onReset: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       style={{
@@ -486,7 +496,8 @@ function AlertRow({
               color: alert.direction === 'above' ? 'var(--color-gain)' : 'var(--color-loss)',
             }}
           >
-            {alert.direction} {formatCurrency(alert.threshold, alert.currency)}
+            {alert.direction === 'above' ? t('alerts.above') : t('alerts.below')}{' '}
+            {formatCurrency(alert.threshold, alert.currency)}
           </span>
           {alert.triggered && (
             <span
@@ -501,7 +512,7 @@ function AlertRow({
                 color: 'var(--color-warning)',
               }}
             >
-              TRIGGERED
+              {t('alerts.triggered').toUpperCase()}
             </span>
           )}
         </div>

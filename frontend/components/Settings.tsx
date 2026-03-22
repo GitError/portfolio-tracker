@@ -189,6 +189,7 @@ function ThemePicker({
 }
 
 function DataManagementSection() {
+  const { t } = useTranslation();
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: 'idle' });
   const [restoreStatus, setRestoreStatus] = useState<RestoreStatus>({ kind: 'idle' });
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -276,10 +277,10 @@ function DataManagementSection() {
         >
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
-              Backup Database
+              {t('settings.backupDatabase')}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-              Save a complete copy of your portfolio database to a file.
+              {t('settings.backupDatabaseDescription')}
             </div>
             {backupStatus.kind === 'success' && (
               <div
@@ -291,7 +292,7 @@ function DataManagementSection() {
                   wordBreak: 'break-all',
                 }}
               >
-                Saved: {backupStatus.path}
+                {t('settings.saved')} {backupStatus.path}
               </div>
             )}
             {backupStatus.kind === 'error' && (
@@ -311,7 +312,11 @@ function DataManagementSection() {
               onClick={handleBackup}
               disabled={isBackupLoading}
               icon={<Download size={13} />}
-              label={isBackupLoading ? 'Saving…' : 'Backup Database'}
+              label={
+                isBackupLoading
+                  ? t('settings.backupDatabase.saving')
+                  : t('settings.backupDatabase.button')
+              }
               variant="primary"
             />
           </div>
@@ -330,10 +335,10 @@ function DataManagementSection() {
         >
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
-              Restore from Backup
+              {t('settings.restoreFromBackup')}
             </div>
             <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
-              Replace all current data with a previously saved backup file.
+              {t('settings.restoreFromBackupDescription')}
             </div>
 
             {/* Persistent warning */}
@@ -351,7 +356,7 @@ function DataManagementSection() {
                 color: 'var(--color-warning)',
               }}
             >
-              This will replace all current data. The app will need to restart after restoring.
+              {t('settings.restoreWarning')}
             </div>
 
             {/* Inline confirmation */}
@@ -366,7 +371,7 @@ function DataManagementSection() {
                 }}
               >
                 <div style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Restore from:
+                  {t('settings.restoreFrom')}
                 </div>
                 <div
                   style={{
@@ -380,7 +385,7 @@ function DataManagementSection() {
                   {restoreStatus.filePath}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--color-loss)', marginBottom: 12 }}>
-                  Are you sure? This cannot be undone.
+                  {t('settings.areYouSure')}
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
@@ -397,7 +402,7 @@ function DataManagementSection() {
                       cursor: 'pointer',
                     }}
                   >
-                    Confirm Restore
+                    {t('settings.confirmRestore')}
                   </button>
                   <button
                     onClick={handleRestoreCancel}
@@ -413,7 +418,7 @@ function DataManagementSection() {
                       cursor: 'pointer',
                     }}
                   >
-                    Cancel
+                    {t('common.cancel')}
                   </button>
                 </div>
               </div>
@@ -457,7 +462,11 @@ function DataManagementSection() {
               onClick={() => fileInputRef.current?.click()}
               disabled={isRestoreLoading || restoreStatus.kind === 'confirm'}
               icon={<Upload size={13} />}
-              label={isRestoreLoading ? 'Restoring…' : 'Choose Backup File'}
+              label={
+                isRestoreLoading
+                  ? t('settings.restoreDatabase.restoring')
+                  : t('settings.restoreDatabase.chooseFile')
+              }
               variant="warning"
             />
           </div>
@@ -596,7 +605,7 @@ export function Settings() {
       </div>
 
       {/* Appearance */}
-      <SectionHeader title="Appearance" />
+      <SectionHeader title={t('settings.appearance')} />
       <div
         style={{
           background: 'var(--bg-surface)',
@@ -606,7 +615,7 @@ export function Settings() {
         }}
       >
         <SettingRow
-          label="Theme"
+          label={t('settings.theme')}
           description="Choose between dark, light, or match your system preference."
         >
           <ThemePicker theme={theme} onSelect={setTheme} />
