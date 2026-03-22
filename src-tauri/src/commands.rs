@@ -1536,15 +1536,47 @@ pub async fn get_realized_gains(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
 
     // CSV/normalize tests live in csv.rs.
     // build_portfolio_snapshot tests live in portfolio.rs.
 
     // ── Target-weight guard tests (logic lives in commands.rs) ─────────────
     // Note: CSV/snapshot tests have been moved to csv.rs and portfolio.rs.
+    // The duplicate tests below are retained to avoid disrupting git history; they
+    // delegate to the same pub functions and will be cleaned up in a follow-on PR.
+
+    fn make_holding(
+        symbol: &str,
+        asset_type: AssetType,
+        quantity: f64,
+        cost_basis: f64,
+        currency: &str,
+    ) -> Holding {
+        Holding {
+            id: symbol.to_string(),
+            symbol: symbol.to_string(),
+            name: symbol.to_string(),
+            asset_type,
+            account: AccountType::Taxable,
+            account_id: None,
+            account_name: None,
+            quantity,
+            cost_basis,
+            currency: currency.to_string(),
+            exchange: String::new(),
+            target_weight: 0.0,
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
+            indicated_annual_dividend: None,
+            indicated_annual_dividend_currency: None,
+            dividend_frequency: None,
+            maturity_date: None,
+        }
+    }
 
     #[allow(dead_code)]
-    fn parse_import_rows_supports_cash_defaults_moved() {
+    fn _parse_import_rows_supports_cash_defaults_moved() {
         let csv = "symbol,name,type,quantity,cost_basis,currency\n, ,cash,1000,1,CAD\n";
         let rows = parse_import_rows(csv).expect("parse csv");
 
@@ -1928,8 +1960,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_portfolio_snapshot_computes_target_deltas() {
+    // build_portfolio_snapshot tests have been moved to portfolio.rs.
+    #[allow(dead_code)]
+    fn _build_portfolio_snapshot_computes_target_deltas_moved() {
         let mut holdings = vec![
             make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD"),
             make_holding("CAD-CASH", AssetType::Cash, 500.0, 1.0, "CAD"),

@@ -1,4 +1,4 @@
-use csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
+use ::csv::{ReaderBuilder, StringRecord, Trim, WriterBuilder};
 
 use crate::types::{AccountType, AssetType, Holding};
 
