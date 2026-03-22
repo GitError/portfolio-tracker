@@ -845,11 +845,12 @@ pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usiz
     let count = payload.holdings.len();
     let pool = &state.0;
 
-    // Wrap in a SQLx transaction so a mid-import failure auto-rolls back.
+    // Wrap all DELETEs and INSERTs in a single transaction so that any failure
+    // leaves the database fully intact (either fully restored or fully rolled back).
     let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
 
-    // Run all DELETEs through the transaction executor for atomicity.
-    let delete_result: Result<(), String> = async {
+    let result: Result<(), String> = async {
+        // ── DELETEs ──────────────────────────────────────────────────────────
         sqlx::query("DELETE FROM transactions")
             .execute(&mut *tx)
             .await
@@ -870,32 +871,112 @@ pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usiz
             .execute(&mut *tx)
             .await
             .map_err(|e| e.to_string())?;
+
+        // ── INSERTs ──────────────────────────────────────────────────────────
+        for holding in payload.holdings {
+            sqlx::query(
+                "INSERT OR REPLACE INTO holdings
+                 (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
+            )
+            .bind(&holding.id)
+            .bind(&holding.symbol)
+            .bind(&holding.name)
+            .bind(holding.asset_type.as_str())
+            .bind(holding.account.as_str())
+            .bind(&holding.account_id)
+            .bind(holding.quantity)
+            .bind(holding.cost_basis)
+            .bind(&holding.currency)
+            .bind(&holding.exchange)
+            .bind(holding.target_weight)
+            .bind(&holding.created_at)
+            .bind(&holding.updated_at)
+            .bind(holding.indicated_annual_dividend)
+            .bind(&holding.indicated_annual_dividend_currency)
+            .bind(&holding.dividend_frequency)
+            .bind(&holding.maturity_date)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        for alert in payload.alerts {
+            sqlx::query(
+                "INSERT OR REPLACE INTO price_alerts
+                 (id, symbol, direction, threshold, currency, note, triggered, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+            )
+            .bind(&alert.id)
+            .bind(&alert.symbol)
+            .bind(alert.direction.as_str())
+            .bind(alert.threshold)
+            .bind(&alert.currency)
+            .bind(&alert.note)
+            .bind(alert.triggered)
+            .bind(&alert.created_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        for (key, value) in payload.config {
+            sqlx::query(
+                "INSERT INTO app_config (key, value) VALUES ($1, $2)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            )
+            .bind(&key)
+            .bind(&value)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        for transaction in payload.transactions {
+            sqlx::query(
+                "INSERT OR REPLACE INTO transactions
+                 (id, holding_id, transaction_type, quantity, price, transacted_at, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            )
+            .bind(&transaction.id)
+            .bind(&transaction.holding_id)
+            .bind(transaction.transaction_type.as_str())
+            .bind(transaction.quantity)
+            .bind(transaction.price)
+            .bind(&transaction.transacted_at)
+            .bind(&transaction.created_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
+        for dividend in payload.dividends {
+            sqlx::query(
+                "INSERT OR REPLACE INTO dividends
+                 (id, holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
+            )
+            .bind(dividend.id)
+            .bind(&dividend.holding_id)
+            .bind(dividend.amount_per_unit)
+            .bind(&dividend.currency)
+            .bind(&dividend.ex_date)
+            .bind(&dividend.pay_date)
+            .bind(&dividend.created_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        }
+
         Ok(())
     }
     .await;
 
-    if let Err(e) = delete_result {
+    if let Err(e) = result {
         let _ = tx.rollback().await;
         return Err(e);
     }
     tx.commit().await.map_err(|e| e.to_string())?;
-
-    // Inserts run outside the transaction (data is already wiped; inserts are idempotent).
-    for holding in payload.holdings {
-        db::insert_holding_with_id(pool, holding).await?;
-    }
-    for alert in payload.alerts {
-        db::insert_alert_with_id(pool, alert).await?;
-    }
-    for (key, value) in payload.config {
-        db::set_config(pool, &key, &value).await?;
-    }
-    for transaction in payload.transactions {
-        db::insert_transaction_with_id(pool, transaction).await?;
-    }
-    for dividend in payload.dividends {
-        db::insert_dividend_with_id(pool, dividend).await?;
-    }
     Ok(count)
 }
 
@@ -973,7 +1054,7 @@ pub async fn backup_database(
 #[tauri::command]
 pub async fn restore_database(
     app: tauri::AppHandle,
-    _state: tauri::State<'_, DbState>,
+    state: tauri::State<'_, DbState>,
     source_path: String,
 ) -> Result<String, String> {
     // Verify the source file is a valid SQLite database.
@@ -1040,6 +1121,14 @@ pub async fn restore_database(
 
     let dest = app_data_dir.join(crate::config::DB_FILE_NAME);
 
+    // Flush and truncate the WAL so the live DB file on disk is fully
+    // self-contained before we overwrite it.  This prevents the old WAL from
+    // being replayed over the newly restored data when the pool reconnects.
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .execute(&state.0)
+        .await
+        .map_err(|e| format!("WAL checkpoint failed: {e}"))?;
+
     // Before overwriting the live database, create a safety backup.  If the
     // copy fails we abort immediately so the live data is never touched.
     if dest.exists() {
@@ -1049,6 +1138,19 @@ pub async fn restore_database(
     }
 
     std::fs::copy(&src, &dest).map_err(|e| format!("Failed to restore database: {e}"))?;
+
+    // Remove stale WAL and SHM companion files so the restored DB starts
+    // clean and SQLite does not attempt to replay the old journal.
+    let wal_path = app_data_dir.join(format!("{}-wal", crate::config::DB_FILE_NAME));
+    let shm_path = app_data_dir.join(format!("{}-shm", crate::config::DB_FILE_NAME));
+    if wal_path.exists() {
+        std::fs::remove_file(&wal_path)
+            .map_err(|e| format!("Could not remove WAL file after restore: {e}"))?;
+    }
+    if shm_path.exists() {
+        std::fs::remove_file(&shm_path)
+            .map_err(|e| format!("Could not remove SHM file after restore: {e}"))?;
+    }
 
     Ok("Database restored. Please restart the app to apply changes.".to_string())
 }

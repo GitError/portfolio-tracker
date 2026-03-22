@@ -576,8 +576,8 @@ pub async fn upsert_symbol_fundamentals(
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
     sqlx::query(
-        "INSERT INTO symbol_cache (symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at)
+         VALUES ($1, $1, 'stock', '', '', $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT(symbol) DO UPDATE SET
            sector=excluded.sector,
            industry=excluded.industry,
