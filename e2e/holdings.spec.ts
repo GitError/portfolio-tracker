@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Holdings', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/holdings');
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
   });
 
   test('shows mock holdings in table', async ({ page }) => {
@@ -18,7 +18,7 @@ test.describe('Holdings', () => {
   test('opens Add Holding modal', async ({ page }) => {
     await page.getByRole('button', { name: 'Add Holding' }).click();
     await expect(page.getByRole('heading', { name: 'Add Holding' })).toBeVisible();
-    await expect(page.getByPlaceholder(/symbol/i)).toBeVisible();
+    await expect(page.getByTestId('symbol-search-input')).toBeVisible();
   });
 
   test('closes Add Holding modal via Cancel', async ({ page }) => {

@@ -200,6 +200,7 @@ export function SymbolSearch({
       <div style={{ position: 'relative' }}>
         <input
           ref={inputRef}
+          data-testid="symbol-search-input"
           type="text"
           value={query}
           onChange={handleInput}

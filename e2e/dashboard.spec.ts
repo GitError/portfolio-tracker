@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Dashboard', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await page.waitForTimeout(800);
+    await page.waitForLoadState('networkidle');
   });
 
   test('displays portfolio value panel', async ({ page }) => {

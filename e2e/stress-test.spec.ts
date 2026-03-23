@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Stress Test', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/stress');
-    await page.waitForTimeout(600);
+    await page.waitForLoadState('networkidle');
   });
 
   test('shows Mild Correction selected by default', async ({ page }) => {
