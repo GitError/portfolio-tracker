@@ -10,6 +10,7 @@ import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { isTauri, tauriInvoke } from '../lib/tauri';
+import { SUPPORTED_CURRENCIES } from '../lib/constants';
 
 interface AddDividendFormProps {
   holdings: Holding[];
@@ -95,7 +96,7 @@ function AddDividendForm({ holdings, onAdd, onCancel }: AddDividendFormProps) {
           <Select
             value={currency}
             onChange={setCurrency}
-            options={['CAD', 'USD', 'EUR', 'GBP'].map((c) => ({ value: c, label: c }))}
+            options={SUPPORTED_CURRENCIES.map((c) => ({ value: c, label: c }))}
           />
         </div>
       </div>

@@ -149,6 +149,8 @@ export interface ExportPayload {
   holdings: Holding[];
   alerts: PriceAlert[];
   config: [string, string][];
+  transactions: Transaction[];
+  dividends: Dividend[];
 }
 
 export interface FxRate {

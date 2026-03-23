@@ -168,12 +168,22 @@ function MetaCell({ value }: { value: string | number | undefined }) {
   );
 }
 
-function formatMarketCap(cap?: number): string {
+function formatMarketCap(cap?: number, currency = 'USD'): string {
   if (cap == null) return '';
-  if (cap >= 1e12) return `$${(cap / 1e12).toFixed(2)}T`;
-  if (cap >= 1e9) return `$${(cap / 1e9).toFixed(2)}B`;
-  if (cap >= 1e6) return `$${(cap / 1e6).toFixed(2)}M`;
-  return `$${cap.toFixed(0)}`;
+  const fmt = (value: number, suffix: string) => {
+    const locale = navigator.language || 'en';
+    const formatted = new Intl.NumberFormat(locale, {
+      style: 'decimal',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+    return `${formatted} ${currency}${suffix}`;
+  };
+  if (cap >= 1e12) return fmt(cap / 1e12, 'T');
+  if (cap >= 1e9) return fmt(cap / 1e9, 'B');
+  if (cap >= 1e6) return fmt(cap / 1e6, 'M');
+  const locale = navigator.language || 'en';
+  return `${new Intl.NumberFormat(locale, { style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cap)} ${currency}`;
 }
 
 export function Analytics() {
