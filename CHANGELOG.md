@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-5] - 2026-03-23
+
+### Added
+- **useFormatters hook** — reactive `formatCurrency`, `formatNumber`, `formatPercent`, `formatCompact` that automatically reformat when the active language changes; eliminates stale locale in memoised components
+
+### Changed
+- **i18n wired to 6 more components** — Dashboard, Analytics, Dividends, Alerts, Settings (Appearance + Data Management), and TopBar now call `t()` for all translatable strings; all 7 locales are now fully active at runtime
+- **Stale price cache now returns last known price** — portfolio no longer shows cost basis when prices are >60 min old (market closed); last cached price is always shown
+- **HTTP concurrency capped at 5** — `fetch_all_prices` and `fetch_all_fx_rates` now use `buffer_unordered(5)` instead of unbounded `join_all`, matching the analytics path
+- **WAL checkpoint scheduled** — background task runs `PRAGMA wal_checkpoint(PASSIVE)` every 5 minutes to prevent unbounded WAL growth
+
+### Fixed
+- **CI broken** — `actions/checkout@v6` and `actions/setup-node@v6` do not exist; downgraded to `@v4`; `cargo build/test` now use `--locked`; `ci-status` roll-up now treats `cancelled` as failure
+- **CSP re-enabled** — `tauri.conf.json` had `"csp": null`; added restrictive policy blocking XSS → Tauri command injection
+- **FOUC on launch** — inline script in `index.html` applies `data-theme` before React renders, eliminating dark→light flash for light-theme users
+- **i18n language flash on launch** — `i18n.ts` reads persisted language from `localStorage` synchronously before `i18next.init()` so the first render uses the correct locale
+- **weight/targetWeight unit mismatch** — `useActionInsights` compared `holding.weight` (0–1) with `holding.targetWeight` (0–100) directly, causing drift to always appear critical; normalised to same unit
+- **Dividends forward-income total mixed currencies** — replaced cross-currency sum with per-currency totals
+- **Date picker chrome tracked theme** — removed hardcoded `colorScheme: 'dark'`; `color-scheme` CSS property on `:root`/`[data-theme]` now drives native date picker appearance
+- **`import_data` atomicity gap** — DELETEs were committed before INSERTs; all operations now run in a single transaction
+- **`restore_database` WAL race** — pool WAL flushed and truncated before overwriting the DB file; companion `.wal`/`.shm` files deleted after restore
+- **`upsert_symbol_fundamentals` NOT NULL** — INSERT now provides defaults for `name`, `asset_type`, `exchange`, `currency` when inserting a new symbol
+- **N+1 queries** — `add_dividend` and `update_account` replaced full-table scans with targeted single-row queries
+- **Unicode symbol search** — `percent_encode_query` now encodes each UTF-8 byte; multi-byte characters (e.g. `é` → `%C3%A9`) encoded correctly
+- **Input validation** — `add_holding`/`update_holding` validate quantity, cost basis, and currency; `add_alert` validates threshold; `set_config_cmd` uses key allowlist; `restore_database` canonicalises source path
+- **npm high-severity vulnerabilities** — vitest downgraded from `4.1.x` to `4.0.18` (removes `flatted ≤3.4.1`)
+- **`formatMarketCap` currency suffix** — `"1.50 USDT"` → `"1.50T USD"`
+- **Coverage threshold enforced** — vitest now fails if line/function/branch/statement coverage drops below 80%
+
+### Removed
+- **Unused Rust dependencies** — `tracing-appender`, SQLx `chrono` feature, `uuid` `serde` feature
+- **Redundant `[data-theme='dark']` CSS block** — all variables were identical to `:root` defaults
+
 ## [0.1.0-4] - 2026-03-21
 
 ### Added
