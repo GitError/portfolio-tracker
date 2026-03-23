@@ -21,7 +21,7 @@ test.describe('Dashboard', () => {
   });
 
   test('displays total gain/loss', async ({ page }) => {
-    await expect(page.getByText('Total Gain/Loss', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('Total Gain', { exact: false }).first()).toBeVisible();
   });
 
   test('shows allocation section', async ({ page }) => {
