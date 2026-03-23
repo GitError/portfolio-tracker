@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-6] - 2026-03-23
+
+### Changed
+- **lucide-react** updated from 0.577.0 to 1.0.0 (stable major release, fully backwards-compatible API)
+- **react-i18next** updated 16.6.0 → 16.6.2 (bug fixes)
+- **i18next** updated 25.10.2 → 25.10.5 (bug fixes)
+- **tailwindcss** floor updated to ^4.2.2 (4.2.2 adds Vite 8 support in `@tailwindcss/vite`)
+- **@tailwindcss/vite** floor updated to ^4.2.2 (matches tailwindcss)
+- **vite** floor updated to ^7.3.1 (current installed version)
+
+### Fixed
+- **vitest re-introduced flatted vulnerability** — dependabot PR #335 bumped `vitest`/`@vitest/coverage-v8`/`@vitest/ui` to 4.1.0 which re-introduced the `flatted ≤3.4.1` prototype-pollution vulnerability; repinned all three to exact `4.0.18`
+
 ## [0.1.0-5] - 2026-03-23
 
 ### Added
