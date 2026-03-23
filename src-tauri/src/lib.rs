@@ -61,7 +61,7 @@ pub fn run() {
 
             // Spawn background WAL checkpoint task to prevent unbounded WAL growth.
             let wal_pool = pool.clone();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
                 interval.tick().await; // skip immediate first tick
                 loop {
