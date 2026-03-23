@@ -79,10 +79,15 @@ Files changed:
 $(git diff --name-only origin/$BRANCH..HEAD)"
 
     echo ""
-    read "REPLY?Claude review complete. Continue pushing? [y/N] "
-    if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
-      echo "Push aborted."
-      exit 1
+    if [[ -t 0 ]]; then
+      # Interactive terminal: ask the user to confirm
+      read "REPLY?Claude review complete. Continue pushing? [y/N] "
+      if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+        echo "Push aborted."
+        exit 1
+      fi
+    else
+      echo "  (Non-interactive: auto-approved after review)"
     fi
   fi
 fi

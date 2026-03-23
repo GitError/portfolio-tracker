@@ -177,7 +177,7 @@ function formatMarketCap(cap?: number, currency = 'USD'): string {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value);
-    return `${formatted} ${currency}${suffix}`;
+    return `${formatted}${suffix} ${currency}`;
   };
   if (cap >= 1e12) return fmt(cap / 1e12, 'T');
   if (cap >= 1e9) return fmt(cap / 1e9, 'B');

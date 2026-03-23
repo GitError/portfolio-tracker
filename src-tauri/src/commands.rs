@@ -48,9 +48,10 @@ pub async fn set_config_cmd(
 ) -> Result<(), String> {
     const ALLOWED_CONFIG_KEYS: &[&str] = &[
         "base_currency",
-        "ui_language",
-        "theme",
-        "refresh_interval",
+        "app_language",
+        "app_theme",
+        "auto_refresh_interval_ms",
+        "auto_refresh_market_hours_only",
         "cost_basis_method",
         "notifications_enabled",
     ];
