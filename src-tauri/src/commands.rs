@@ -909,8 +909,8 @@ pub async fn backup_database(
     };
 
     // Canonicalize the app data dir (must exist).
-    let canonical_app_dir = std::fs::canonicalize(&app_data_dir)
-        .map_err(|e| format!("Cannot resolve app dir: {e}"))?;
+    let canonical_app_dir =
+        std::fs::canonicalize(&app_data_dir).map_err(|e| format!("Cannot resolve app dir: {e}"))?;
     // Canonicalize dest — if the file doesn't exist yet, canonicalize its parent
     // to still resolve any symlinks in the directory component.
     let canonical_dest = std::fs::canonicalize(&dest).unwrap_or_else(|_| {
