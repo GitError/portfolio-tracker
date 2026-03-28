@@ -10,8 +10,6 @@ import { Select } from './ui/Select';
 import { formatNumber } from '../lib/format';
 import type { Transaction, Holding } from '../types/portfolio';
 
-type TxType = 'buy' | 'sell' | 'all';
-
 const TX_TYPE_COLORS: Record<string, string> = {
   buy: 'var(--color-gain)',
   sell: 'var(--color-loss)',
@@ -86,31 +84,11 @@ export function TransactionHistory() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  const [filterHoldingId, setFilterHoldingId] = useState<string>('all');
-  const [filterType, setFilterType] = useState<TxType>('all');
-
   const [modalOpen, setModalOpen] = useState(false);
   const [modalHolding, setModalHolding] = useState<Holding | null>(null);
   const [selectorHoldingId, setSelectorHoldingId] = useState<string>('');
 
   const holdings: Holding[] = useMemo(() => (portfolio?.holdings ?? []) as Holding[], [portfolio]);
-
-  const filterHoldingOptions = useMemo(
-    () => [
-      { value: 'all', label: 'All Holdings' },
-      ...holdings.map((h) => ({ value: h.id, label: `${h.symbol} — ${h.name}` })),
-    ],
-    [holdings]
-  );
-
-  const filterTypeOptions = useMemo(
-    () => [
-      { value: 'all', label: 'All Types' },
-      { value: 'buy', label: 'Buy' },
-      { value: 'sell', label: 'Sell' },
-    ],
-    []
-  );
 
   const selectorHoldingOptions = useMemo(
     () => holdings.map((h) => ({ value: h.id, label: h.symbol })),
@@ -154,13 +132,7 @@ export function TransactionHistory() {
     return map;
   }, [holdings]);
 
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (filterHoldingId !== 'all' && tx.holdingId !== filterHoldingId) return false;
-      if (filterType !== 'all' && tx.transactionType !== filterType) return false;
-      return true;
-    });
-  }, [transactions, filterHoldingId, filterType]);
+  const filteredTransactions = transactions;
 
   // Group by holdingId for display
   const groupedByHolding = useMemo(() => {
@@ -252,27 +224,9 @@ export function TransactionHistory() {
         </div>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Filter by holding */}
-          <div style={{ width: 230 }}>
-            <Select
-              value={filterHoldingId}
-              onChange={setFilterHoldingId}
-              options={filterHoldingOptions}
-            />
-          </div>
-
-          {/* Filter by type */}
-          <div style={{ width: 150 }}>
-            <Select
-              value={filterType}
-              onChange={(value) => setFilterType(value as TxType)}
-              options={filterTypeOptions}
-            />
-          </div>
-
           {/* Holding selector for add */}
           {holdings.length > 0 && (
-            <div style={{ width: 150 }} title="Select holding for new transaction">
+            <div style={{ width: 180 }} title="Select holding for new transaction">
               <Select
                 value={selectorHoldingId}
                 onChange={setSelectorHoldingId}

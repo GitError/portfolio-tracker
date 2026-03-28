@@ -44,6 +44,22 @@ export function isPriceStale(
   return Date.now() - new Date(updatedAt).getTime() > thresholdMs;
 }
 
+/** Formats a date string as "Dec 2025". Returns "—" for null/invalid. */
+export function formatMonthYear(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en', { month: 'short', year: 'numeric' });
+}
+
+/** Formats a date string as "Jan 5, 2025". Returns "—" for null/invalid. */
+export function formatShortDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function formatCompact(n: number | null | undefined): string {
   if (!isValidNumber(n)) return INVALID_NUMBER;
   const abs = Math.abs(n);

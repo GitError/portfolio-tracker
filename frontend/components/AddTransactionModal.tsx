@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriInvoke, isTauri } from '../lib/tauri';
+import { useToast } from './ui/Toast';
 import type { Holding, Transaction, TransactionInput } from '../types/portfolio';
 
 type TxType = 'buy' | 'sell';
@@ -31,6 +32,7 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
   const [transactedAt, setTransactedAt] = useState(() => formatLocalDatetime(new Date()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   if (!isOpen) return null;
 
@@ -60,7 +62,13 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
         price: parseFloat(price),
         transactedAt: new Date(transactedAt).toISOString(),
       };
-      await invoke<Transaction>('add_transaction', { input });
+      if (isTauri()) {
+        await tauriInvoke<Transaction>('add_transaction', { input });
+      }
+      showToast(
+        `${txType === 'buy' ? 'Buy' : 'Sell'} transaction logged for ${holding.symbol}`,
+        'success'
+      );
       onSaved();
       onClose();
     } catch (err) {

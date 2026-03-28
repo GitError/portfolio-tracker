@@ -16,11 +16,18 @@ import { usePortfolio } from '../hooks/usePortfolio';
 import { AddHoldingModal } from './AddHoldingModal';
 import { AddTransactionModal } from './AddTransactionModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
-import { Badge } from './ui/Badge';
+import { AccountBadge, Badge, ExchangeBadge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { useToast } from './ui/Toast';
-import { formatCurrency, formatNumber, formatPercent, isPriceStale } from '../lib/format';
+import {
+  formatCurrency,
+  formatMonthYear,
+  formatNumber,
+  formatPercent,
+  formatShortDate,
+  isPriceStale,
+} from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ACCOUNT_TYPE_CONFIG } from '../lib/constants';
 import type {
@@ -173,6 +180,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [showPrevClose, setShowPrevClose] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
   const [showMaturity, setShowMaturity] = useState(false);
+  const [showOpenDate, setShowOpenDate] = useState(false);
   const [priceMap, setPriceMap] = useState<Record<string, PriceData>>({});
 
   // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
@@ -548,7 +556,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               active: showPrevClose,
               toggle: () => setShowPrevClose((v) => !v),
             },
-            { label: 'Open', active: showOpen, toggle: () => setShowOpen((v) => !v) },
+            { label: 'Day Open', active: showOpen, toggle: () => setShowOpen((v) => !v) },
+            { label: 'Open Date', active: showOpenDate, toggle: () => setShowOpenDate((v) => !v) },
             { label: 'Maturity', active: showMaturity, toggle: () => setShowMaturity((v) => !v) },
           ].map(({ label, active, toggle }) => (
             <button
@@ -827,7 +836,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           textAlign: 'right',
                         }}
                       >
-                        {(group.totalWeight * 100).toFixed(1)}%
+                        {group.totalWeight.toFixed(1)}%
                       </span>
                     </button>
                     {/* Holdings rows */}
@@ -916,28 +925,15 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                   <td style={TD}>
                                     <Badge type={h.assetType} />
                                   </td>
-                                  <td
-                                    style={{
-                                      ...TD,
-                                      color: 'var(--text-secondary)',
-                                      fontFamily: 'var(--font-mono)',
-                                      textTransform: 'uppercase',
-                                    }}
-                                  >
-                                    {ACCOUNT_OPTIONS.find((opt) => opt.value === h.account)
-                                      ?.label ?? h.account}
+                                  <td style={TD}>
+                                    <AccountBadge account={h.account} />
                                   </td>
-                                  <td
-                                    style={{
-                                      ...TD,
-                                      color: h.exchange
-                                        ? 'var(--text-secondary)'
-                                        : 'var(--text-muted)',
-                                      fontFamily: 'var(--font-mono)',
-                                      textTransform: 'uppercase',
-                                    }}
-                                  >
-                                    {h.exchange || '—'}
+                                  <td style={TD}>
+                                    {h.exchange ? (
+                                      <ExchangeBadge exchange={h.exchange} />
+                                    ) : (
+                                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                                    )}
                                   </td>
                                   <td
                                     style={{
@@ -1011,7 +1007,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                       color: 'var(--text-secondary)',
                                     }}
                                   >
-                                    {(h.weight * 100).toFixed(1)}%
+                                    {h.weight.toFixed(1)}%
                                   </td>
                                   <td
                                     style={{
@@ -1421,7 +1417,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                       </th>
                     ))}
                     {showPrevClose && <th style={{ ...TH, textAlign: 'right' }}>Prev Close</th>}
-                    {showOpen && <th style={{ ...TH, textAlign: 'right' }}>Open</th>}
+                    {showOpen && <th style={{ ...TH, textAlign: 'right' }}>Day Open</th>}
+                    {showOpenDate && <th style={{ ...TH, textAlign: 'right' }}>Open Date</th>}
                     {showMaturity && <th style={{ ...TH, textAlign: 'right' }}>Maturity</th>}
                     <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                   </tr>
@@ -1491,26 +1488,15 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         <td style={TD}>
                           <Badge type={h.assetType} />
                         </td>
-                        <td
-                          style={{
-                            ...TD,
-                            color: 'var(--text-secondary)',
-                            fontFamily: 'var(--font-mono)',
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {ACCOUNT_OPTIONS.find((option) => option.value === h.account)?.label ??
-                            h.account}
+                        <td style={TD}>
+                          <AccountBadge account={h.account} />
                         </td>
-                        <td
-                          style={{
-                            ...TD,
-                            color: h.exchange ? 'var(--text-secondary)' : 'var(--text-muted)',
-                            fontFamily: 'var(--font-mono)',
-                            textTransform: 'uppercase',
-                          }}
-                        >
-                          {h.exchange || '—'}
+                        <td style={TD}>
+                          {h.exchange ? (
+                            <ExchangeBadge exchange={h.exchange} />
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          )}
                         </td>
                         <td
                           style={{
@@ -1676,6 +1662,18 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                 })()}
                           </td>
                         )}
+                        {showOpenDate && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {formatShortDate(h.createdAt)}
+                          </td>
+                        )}
                         {showMaturity &&
                           (() => {
                             const md = h.maturityDate;
@@ -1698,7 +1696,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                   color,
                                 }}
                               >
-                                {md}
+                                {formatMonthYear(md)}
                                 {daysUntil <= 90 && daysUntil > 0 && (
                                   <span
                                     style={{

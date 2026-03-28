@@ -146,15 +146,24 @@ export const ACCOUNT_OPTIONS: { value: AccountType; label: string }[] = [
 
 export const ACCOUNT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   tfsa: { label: 'TFSA', color: 'var(--color-gain)' },
-  rrsp: { label: 'RRSP', color: '#8b5cf6' },
-  fhsa: { label: 'FHSA', color: '#06b6d4' },
-  taxable: { label: 'Taxable', color: 'var(--color-accent)' },
+  rrsp: { label: 'RRSP', color: 'var(--color-accent)' },
+  fhsa: { label: 'FHSA', color: '#8b5cf6' },
+  taxable: { label: 'Taxable', color: '#f97316' },
   crypto: { label: 'Crypto', color: 'var(--color-crypto)' },
   cash: { label: 'Cash', color: 'var(--color-cash)' },
   other: { label: 'Other', color: 'var(--text-muted)' },
 };
 
-export const SUPPORTED_CURRENCIES = ['CAD', 'USD', 'EUR', 'GBP', 'CHF', 'JPY', 'AUD'] as const;
+export const SUPPORTED_CURRENCIES = [
+  'CAD',
+  'USD',
+  'EUR',
+  'GBP',
+  'CHF',
+  'JPY',
+  'AUD',
+  'PLN',
+] as const;
 
 export const CHART_RANGES = [
   { label: '1W', value: '1W' },
@@ -171,4 +180,6 @@ export const CURRENCY_COLORS: Record<string, string> = {
   GBP: '#f59e0b',
   CHF: '#f43f5e',
   JPY: '#ec4899',
+  AUD: '#10b981',
+  PLN: '#e53e3e',
 };

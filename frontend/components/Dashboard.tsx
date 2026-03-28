@@ -157,13 +157,22 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
     }));
   }, [filteredHoldings, portfolio, totals]);
 
-  const topMovers = useMemo(() => {
-    if (!portfolio) return [];
-    return [...filteredHoldings]
-      .filter((h) => h.assetType !== 'cash')
-      .sort((a, b) => Math.abs(b.dailyChangePercent) - Math.abs(a.dailyChangePercent))
-      .slice(0, config.topMoversCount);
-  }, [filteredHoldings, portfolio]);
+  const nonCashHoldings = useMemo(
+    () => filteredHoldings.filter((h) => h.assetType !== 'cash'),
+    [filteredHoldings]
+  );
+
+  const topGainers = useMemo(
+    () =>
+      [...nonCashHoldings].sort((a, b) => b.dailyChangePercent - a.dailyChangePercent).slice(0, 3),
+    [nonCashHoldings]
+  );
+
+  const topLosers = useMemo(
+    () =>
+      [...nonCashHoldings].sort((a, b) => a.dailyChangePercent - b.dailyChangePercent).slice(0, 3),
+    [nonCashHoldings]
+  );
 
   const stats = useMemo(() => {
     if (!portfolio || filteredHoldings.length === 0) return null;
@@ -213,7 +222,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
         id: h.id,
         symbol: h.symbol,
         assetType: h.assetType,
-        weightPct: h.weight * 100,
+        weightPct: h.weight, // already 0–100 percent from Rust
       }));
   }, [filteredHoldings, portfolio, totals]);
 
@@ -561,7 +570,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
           </div>
         </div>
 
-        {/* Panel 3 — Top Movers (spans 2 cols) — #45 */}
+        {/* Panel 3 — Top Gainers / Top Losers (spans 2 cols) — #339 */}
         <div
           style={{
             ...PANEL,
@@ -584,108 +593,134 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             }}
           >
             <span>{topMoversTitle(portfolio?.lastUpdated)}</span>
-            {portfolio &&
-              filteredHoldings.filter((h) => h.assetType !== 'cash').length >
-                config.topMoversCount && (
-                <button
-                  onClick={() => void navigate('/holdings')}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: 'var(--color-accent)',
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    cursor: 'pointer',
-                    padding: 0,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.06em',
-                  }}
-                >
-                  {t('common.viewAll')}
-                </button>
-              )}
+            {portfolio && nonCashHoldings.length > 6 && (
+              <button
+                onClick={() => void navigate('/holdings')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--color-accent)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  padding: 0,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                }}
+              >
+                {t('common.viewAll')}
+              </button>
+            )}
           </div>
-          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr>
-                  {['Symbol', 'Name', 'Change %', `Change (${baseCurrency})`].map((col) => (
-                    <th
-                      key={col}
-                      style={{
-                        textAlign:
-                          col === 'Change %' || col === `Change (${baseCurrency})`
-                            ? 'right'
-                            : 'left',
-                        padding: '4px 0',
-                        color: 'var(--text-muted)',
-                        fontWeight: 400,
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 10,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.06em',
-                        borderBottom: '1px solid var(--border-primary)',
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {topMovers.map((h) => {
-                  const dailyChange = h.marketValueCad * (h.dailyChangePercent / 100);
-                  const arrow =
-                    h.dailyChangePercent > 0 ? '\u25b2' : h.dailyChangePercent < 0 ? '\u25bc' : '';
-                  return (
-                    <tr key={h.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                      <td
-                        style={{
-                          padding: '6px 0',
-                          fontFamily: 'var(--font-mono)',
-                          fontWeight: 600,
-                          color: 'var(--text-primary)',
-                          fontSize: 12,
-                        }}
-                      >
-                        {h.symbol}
-                      </td>
-                      <td
-                        style={{ padding: '6px 0', color: 'var(--text-secondary)', fontSize: 11 }}
-                      >
-                        {h.name}
-                      </td>
-                      <td
-                        style={{
-                          padding: '6px 0',
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: pnlColor(h.dailyChangePercent),
-                        }}
-                      >
-                        {arrow && (
-                          <span style={{ marginRight: 3, color: pnlColor(h.dailyChangePercent) }}>
-                            {arrow}
-                          </span>
-                        )}
-                        {formatPercent(h.dailyChangePercent)}
-                      </td>
-                      <td
-                        style={{
-                          padding: '6px 0',
-                          textAlign: 'right',
-                          fontFamily: 'var(--font-mono)',
-                          color: pnlColor(dailyChange),
-                        }}
-                      >
-                        {dailyChange >= 0 ? '+' : ''}
-                        {formatCurrency(dailyChange, baseCurrency)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 16, overflow: 'hidden' }}>
+            {(['gainers', 'losers'] as const).map((side) => {
+              const movers = side === 'gainers' ? topGainers : topLosers;
+              const label =
+                side === 'gainers' ? t('dashboard.topGainers') : t('dashboard.topLosers');
+              const accentColor = side === 'gainers' ? 'var(--color-gain)' : 'var(--color-loss)';
+              return (
+                <div key={side} style={{ flex: 1, minWidth: 0, overflowY: 'auto' }}>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: accentColor,
+                      fontFamily: 'var(--font-mono)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      marginBottom: 6,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        {['Symbol', 'Name', '%'].map((col) => (
+                          <th
+                            key={col}
+                            style={{
+                              textAlign: col === '%' ? 'right' : 'left',
+                              padding: '4px 0',
+                              color: 'var(--text-muted)',
+                              fontWeight: 400,
+                              fontFamily: 'var(--font-mono)',
+                              fontSize: 10,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.06em',
+                              borderBottom: '1px solid var(--border-primary)',
+                            }}
+                          >
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {movers.map((h) => (
+                        <tr key={h.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                          <td
+                            style={{
+                              padding: '6px 0',
+                              fontFamily: 'var(--font-mono)',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              fontSize: 12,
+                            }}
+                          >
+                            {h.symbol}
+                          </td>
+                          <td
+                            style={{
+                              padding: '6px 0',
+                              color: 'var(--text-secondary)',
+                              fontSize: 11,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                              maxWidth: 120,
+                            }}
+                          >
+                            {h.name}
+                          </td>
+                          <td
+                            style={{
+                              padding: '6px 0',
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: pnlColor(h.dailyChangePercent),
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {h.dailyChangePercent > 0
+                              ? '\u25b2'
+                              : h.dailyChangePercent < 0
+                                ? '\u25bc'
+                                : ''}{' '}
+                            {formatPercent(h.dailyChangePercent)}
+                          </td>
+                        </tr>
+                      ))}
+                      {movers.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={3}
+                            style={{
+                              padding: '12px 0',
+                              color: 'var(--text-muted)',
+                              fontSize: 11,
+                              textAlign: 'center',
+                            }}
+                          >
+                            —
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
           </div>
         </div>
 

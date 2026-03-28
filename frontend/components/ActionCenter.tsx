@@ -8,7 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import type { ActionInsight, InsightSeverity } from '../types/portfolio';
+import type { ActionInsight, InsightDirection, InsightSeverity } from '../types/portfolio';
 
 interface ActionCenterProps {
   insights: ActionInsight[];
@@ -122,11 +122,26 @@ function InsightCard({ insight }: InsightCardProps) {
 
 // ─── Action Center panel ──────────────────────────────────────────────────
 
+const DIRECTION_COLOR: Record<InsightDirection, string> = {
+  buy: 'var(--color-accent)',
+  sell: 'var(--color-loss)',
+  review: 'var(--text-secondary)',
+};
+
+const DIRECTION_BG: Record<InsightDirection, string> = {
+  buy: 'rgba(59, 130, 246, 0.12)',
+  sell: 'rgba(255, 71, 87, 0.12)',
+  review: 'rgba(107, 114, 128, 0.12)',
+};
+
 export function ActionCenter({ insights }: ActionCenterProps) {
   const [expanded, setExpanded] = useState(false);
 
   const criticalCount = insights.filter((i) => i.severity === 'critical').length;
   const warningCount = insights.filter((i) => i.severity === 'warning').length;
+  const buyCount = insights.filter((i) => i.direction === 'buy').length;
+  const sellCount = insights.filter((i) => i.direction === 'sell').length;
+  const reviewCount = insights.filter((i) => i.direction === 'review').length;
 
   return (
     <div
@@ -162,7 +177,7 @@ export function ActionCenter({ insights }: ActionCenterProps) {
             Action Center
           </span>
 
-          {/* Badge summary when collapsed or when there are active issues */}
+          {/* Badge summary — severity + direction counts */}
           {insights.length > 0 && (
             <div style={{ display: 'flex', gap: 5 }}>
               {criticalCount > 0 && (
@@ -204,6 +219,36 @@ export function ActionCenter({ insights }: ActionCenterProps) {
                   <AlertTriangle size={9} />
                   {warningCount}
                 </span>
+              )}
+              {/* Direction badges */}
+              {(
+                [
+                  ['buy', buyCount],
+                  ['sell', sellCount],
+                  ['review', reviewCount],
+                ] as [InsightDirection, number][]
+              ).map(([dir, count]) =>
+                count > 0 ? (
+                  <span
+                    key={dir}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '1px 5px',
+                      background: DIRECTION_BG[dir],
+                      border: `1px solid ${DIRECTION_COLOR[dir]}33`,
+                      borderRadius: 2,
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 10,
+                      color: DIRECTION_COLOR[dir],
+                      fontWeight: 600,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                    }}
+                  >
+                    {count} {dir}
+                  </span>
+                ) : null
               )}
             </div>
           )}

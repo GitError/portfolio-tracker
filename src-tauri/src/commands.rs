@@ -307,10 +307,10 @@ pub async fn import_holdings_csv(
                 currency: row.currency,
                 exchange: row.exchange,
                 target_weight: row.target_weight,
-                indicated_annual_dividend: None,
-                indicated_annual_dividend_currency: None,
-                dividend_frequency: None,
-                maturity_date: None,
+                indicated_annual_dividend: row.indicated_annual_dividend,
+                indicated_annual_dividend_currency: row.indicated_annual_dividend_currency,
+                dividend_frequency: row.dividend_frequency,
+                maturity_date: row.maturity_date,
             });
             continue;
         }
@@ -371,10 +371,10 @@ pub async fn import_holdings_csv(
                 row.exchange
             },
             target_weight: row.target_weight,
-            indicated_annual_dividend: None,
-            indicated_annual_dividend_currency: None,
-            dividend_frequency: None,
-            maturity_date: None,
+            indicated_annual_dividend: row.indicated_annual_dividend,
+            indicated_annual_dividend_currency: row.indicated_annual_dividend_currency,
+            dividend_frequency: row.dividend_frequency,
+            maturity_date: row.maturity_date,
         });
     }
 

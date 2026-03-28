@@ -320,6 +320,8 @@ export interface PortfolioAnalytics {
 
 export type InsightSeverity = 'info' | 'warning' | 'critical';
 
+export type InsightDirection = 'buy' | 'sell' | 'review';
+
 export interface ActionInsight {
   id: string;
   type:
@@ -329,6 +331,8 @@ export interface ActionInsight {
     | 'missing_targets'
     | 'account_imbalance';
   severity: InsightSeverity;
+  /** Suggested action direction for grouping (buy/sell/review). */
+  direction: InsightDirection;
   title: string;
   explanation: string;
   metrics?: Record<string, string | number>;

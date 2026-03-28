@@ -24,6 +24,7 @@ const STORAGE_KEY = 'sidebar-expanded';
 
 interface SidebarProps {
   portfolio: PortfolioSnapshot | null;
+  unseenAlertCount?: number | undefined;
 }
 
 const NAV_ITEM_DEFS = [
@@ -40,7 +41,7 @@ const NAV_ITEM_DEFS = [
   { to: '/help', key: 'nav.help', Icon: HelpCircle },
 ];
 
-export function Sidebar({ portfolio }: SidebarProps) {
+export function Sidebar({ portfolio, unseenAlertCount = 0 }: SidebarProps) {
   const { t } = useTranslation();
   const navItems = NAV_ITEM_DEFS.map((item) => ({ ...item, label: t(item.key) }));
   const [expanded, setExpanded] = useState(() => {
@@ -109,39 +110,85 @@ export function Sidebar({ portfolio }: SidebarProps) {
 
       {/* Nav */}
       <div style={{ flex: 1, paddingTop: 8 }}>
-        {navItems.map(({ to, label, Icon }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={to === '/'}
-            style={({ isActive }) => ({
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '10px 0',
-              paddingLeft: expanded ? 20 : 0,
-              justifyContent: expanded ? 'flex-start' : 'center',
-              textDecoration: 'none',
-              color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-              background: isActive ? 'var(--bg-surface-hover)' : 'transparent',
-              borderLeft: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
-              transition: 'color 150ms, background 150ms',
-              fontSize: 13,
-              fontWeight: isActive ? 600 : 400,
-              whiteSpace: 'nowrap',
-            })}
-          >
-            <Icon
-              size={18}
-              style={{
-                flexShrink: 0,
-                marginLeft: expanded ? 0 : 'auto',
-                marginRight: expanded ? 0 : 'auto',
-              }}
-            />
-            {expanded && label}
-          </NavLink>
-        ))}
+        {navItems.map(({ to, label, Icon }) => {
+          const isAlertsItem = to === '/alerts';
+          const showBadge = isAlertsItem && unseenAlertCount > 0;
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              style={({ isActive }) => ({
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: '10px 0',
+                paddingLeft: expanded ? 20 : 0,
+                justifyContent: expanded ? 'flex-start' : 'center',
+                textDecoration: 'none',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                background: isActive ? 'var(--bg-surface-hover)' : 'transparent',
+                borderLeft: isActive ? '2px solid var(--color-accent)' : '2px solid transparent',
+                transition: 'color 150ms, background 150ms',
+                fontSize: 13,
+                fontWeight: isActive ? 600 : 400,
+                whiteSpace: 'nowrap',
+              })}
+            >
+              <span
+                style={{
+                  position: 'relative',
+                  flexShrink: 0,
+                  display: 'flex',
+                  marginLeft: expanded ? 0 : 'auto',
+                  marginRight: expanded ? 0 : 'auto',
+                }}
+              >
+                <Icon size={18} />
+                {showBadge && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      top: -4,
+                      right: -4,
+                      background: 'var(--color-loss)',
+                      color: '#fff',
+                      borderRadius: '50%',
+                      width: 14,
+                      height: 14,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontFamily: 'var(--font-mono)',
+                    }}
+                  >
+                    {unseenAlertCount > 9 ? '9+' : unseenAlertCount}
+                  </span>
+                )}
+              </span>
+              {expanded && label}
+              {expanded && showBadge && (
+                <span
+                  style={{
+                    marginLeft: 'auto',
+                    marginRight: 4,
+                    background: 'var(--color-loss)',
+                    color: '#fff',
+                    borderRadius: 10,
+                    padding: '1px 6px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {unseenAlertCount > 99 ? '99+' : unseenAlertCount}
+                </span>
+              )}
+            </NavLink>
+          );
+        })}
       </div>
 
       {/* Portfolio mini value */}

@@ -213,7 +213,12 @@ export function Alerts() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const { showToast } = useToast();
-  const { holdings } = usePortfolio();
+  const { holdings, markAlertsSeen } = usePortfolio();
+
+  // Clear unseen badge when user visits this page
+  useEffect(() => {
+    markAlertsSeen();
+  }, [markAlertsSeen]);
 
   const loadAlerts = useCallback(async () => {
     try {

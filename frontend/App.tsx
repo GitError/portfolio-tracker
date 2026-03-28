@@ -27,8 +27,15 @@ function AppRoutes() {
   // Initialize theme on mount — applies data-theme to <html> and reacts to OS changes
   useTheme();
 
-  const { portfolio, loading, error, failedSymbols, triggeredAlertIds, refreshPrices } =
-    usePortfolio();
+  const {
+    portfolio,
+    loading,
+    error,
+    failedSymbols,
+    triggeredAlertIds,
+    unseenTriggeredCount,
+    refreshPrices,
+  } = usePortfolio();
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
@@ -125,6 +132,7 @@ function AppRoutes() {
               onBaseCurrencyChange={handleBaseCurrencyChange}
               failedSymbols={failedSymbols}
               countdown={countdown}
+              unseenAlertCount={unseenTriggeredCount}
             />
           }
         >

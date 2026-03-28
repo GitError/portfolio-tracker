@@ -11,6 +11,7 @@ interface LayoutProps {
   onBaseCurrencyChange: (currency: string) => void;
   failedSymbols?: string[];
   countdown?: number | null;
+  unseenAlertCount?: number;
 }
 
 export function Layout({
@@ -21,6 +22,7 @@ export function Layout({
   onBaseCurrencyChange,
   failedSymbols,
   countdown,
+  unseenAlertCount,
 }: LayoutProps) {
   return (
     <div
@@ -31,7 +33,7 @@ export function Layout({
         background: 'var(--bg-primary)',
       }}
     >
-      <Sidebar portfolio={portfolio} />
+      <Sidebar portfolio={portfolio} unseenAlertCount={unseenAlertCount} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar
           portfolio={portfolio}

@@ -950,9 +950,9 @@ export function StressTest() {
               ...PANEL,
               background:
                 result && result.totalImpact < -1
-                  ? 'linear-gradient(135deg, #1a0a0e 0%, var(--bg-surface) 60%)'
+                  ? 'linear-gradient(135deg, rgba(255,71,87,0.06) 0%, var(--bg-surface) 60%)'
                   : result && result.totalImpact > 1
-                    ? 'linear-gradient(135deg, #0a1a12 0%, var(--bg-surface) 60%)'
+                    ? 'linear-gradient(135deg, rgba(0,212,170,0.06) 0%, var(--bg-surface) 60%)'
                     : 'var(--bg-surface)',
             }}
           >

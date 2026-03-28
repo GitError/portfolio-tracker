@@ -14,6 +14,7 @@ import type {
   ImportResult,
   PortfolioSnapshot,
   PreviewImportResult,
+  PriceAlert,
   RefreshResult,
 } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
@@ -29,6 +30,12 @@ export interface UsePortfolioReturn {
   triggeredAlertIds: string[];
   /** Non-fatal errors encountered while evaluating price alerts during the last refresh. */
   alertRefreshErrors: string[];
+  /** Current list of all price alerts (refreshed after each price update). */
+  alerts: PriceAlert[];
+  /** Count of triggered alerts not yet seen by the user (clears when they visit Alerts screen). */
+  unseenTriggeredCount: number;
+  /** Mark all triggered alerts as seen (call when user visits the Alerts screen). */
+  markAlertsSeen: () => void;
   refreshPrices: () => Promise<void>;
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
@@ -90,10 +97,14 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       currency,
       exchange: (cells[columnIndex('exchange')] ?? '').toUpperCase(),
       targetWeight: Number(cells[columnIndex('target_weight')]) || 0,
-      indicatedAnnualDividend: null,
-      indicatedAnnualDividendCurrency: null,
-      dividendFrequency: null,
-      maturityDate: null,
+      indicatedAnnualDividend: cells[columnIndex('indicated_annual_dividend')]
+        ? Number(cells[columnIndex('indicated_annual_dividend')]) || null
+        : null,
+      indicatedAnnualDividendCurrency:
+        cells[columnIndex('indicated_annual_dividend_currency')] || null,
+      dividendFrequency: (cells[columnIndex('dividend_frequency')] ||
+        null) as HoldingInput['dividendFrequency'],
+      maturityDate: cells[columnIndex('maturity_date')] || null,
     };
   });
 }
@@ -133,6 +144,23 @@ function usePortfolioState(): UsePortfolioReturn {
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [triggeredAlertIds, setTriggeredAlertIds] = useState<string[]>([]);
   const [alertRefreshErrors, setAlertRefreshErrors] = useState<string[]>([]);
+  const [alerts, setAlerts] = useState<PriceAlert[]>([]);
+  const [unseenTriggeredCount, setUnseenTriggeredCount] = useState(0);
+
+  const refreshAlerts = useCallback(async () => {
+    if (!isTauri()) return;
+    try {
+      const fresh = await tauriInvoke<PriceAlert[]>('get_alerts');
+      setAlerts(fresh);
+    } catch {
+      /* best-effort */
+    }
+  }, []);
+
+  // Load alerts on startup
+  useEffect(() => {
+    void refreshAlerts();
+  }, [refreshAlerts]);
 
   const loadPortfolio = useCallback(async () => {
     setLoading(true);
@@ -170,9 +198,14 @@ function usePortfolioState(): UsePortfolioReturn {
       if (isTauri()) {
         const result = await tauriInvoke<RefreshResult>('refresh_prices');
         setFailedSymbols(result.failedSymbols);
-        setTriggeredAlertIds(result.triggeredAlerts ?? []);
+        const triggered = result.triggeredAlerts ?? [];
+        setTriggeredAlertIds(triggered);
         const alertErrors = result.alertErrors ?? [];
         setAlertRefreshErrors(alertErrors);
+        if (triggered.length > 0) {
+          setUnseenTriggeredCount((prev) => prev + triggered.length);
+          await refreshAlerts();
+        }
         // alertErrors surfaced in UI via alertRefreshErrors state
         await loadPortfolio();
       } else {
@@ -294,6 +327,10 @@ function usePortfolioState(): UsePortfolioReturn {
     };
   }, []);
 
+  const markAlertsSeen = useCallback(() => {
+    setUnseenTriggeredCount(0);
+  }, []);
+
   const exportHoldingsCsv = useCallback(async (): Promise<string> => {
     if (isTauri()) {
       return tauriInvoke<string>('export_holdings_csv');
@@ -334,6 +371,9 @@ function usePortfolioState(): UsePortfolioReturn {
     failedSymbols,
     triggeredAlertIds,
     alertRefreshErrors,
+    alerts,
+    unseenTriggeredCount,
+    markAlertsSeen,
     refreshPrices,
     addHolding,
     updateHolding,

@@ -1,21 +1,22 @@
 import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface ShortcutRow {
   keys: string[];
-  description: string;
+  descriptionKey: string;
 }
 
 const SHORTCUTS: ShortcutRow[] = [
-  { keys: ['⌘R', 'Ctrl+R'], description: 'Refresh prices' },
-  { keys: ['⌘N', 'Ctrl+N'], description: 'Add new holding' },
-  { keys: ['⌘E', 'Ctrl+E'], description: 'Export holdings as CSV' },
-  { keys: ['⌘1', 'Ctrl+1'], description: 'Go to Dashboard' },
-  { keys: ['⌘2', 'Ctrl+2'], description: 'Go to Holdings' },
-  { keys: ['⌘3', 'Ctrl+3'], description: 'Go to Performance' },
-  { keys: ['⌘4', 'Ctrl+4'], description: 'Go to Stress Test' },
-  { keys: ['⌘,', 'Ctrl+,'], description: 'Go to Settings' },
-  { keys: ['?'], description: 'Toggle this help overlay' },
-  { keys: ['Esc'], description: 'Close this overlay' },
+  { keys: ['⌘R', 'Ctrl+R'], descriptionKey: 'keyboard.refreshPrices' },
+  { keys: ['⌘N', 'Ctrl+N'], descriptionKey: 'keyboard.addHolding' },
+  { keys: ['⌘E', 'Ctrl+E'], descriptionKey: 'keyboard.exportCsv' },
+  { keys: ['⌘1', 'Ctrl+1'], descriptionKey: 'keyboard.goDashboard' },
+  { keys: ['⌘2', 'Ctrl+2'], descriptionKey: 'keyboard.goHoldings' },
+  { keys: ['⌘3', 'Ctrl+3'], descriptionKey: 'keyboard.goPerformance' },
+  { keys: ['⌘4', 'Ctrl+4'], descriptionKey: 'keyboard.goStressTest' },
+  { keys: ['⌘,', 'Ctrl+,'], descriptionKey: 'keyboard.goSettings' },
+  { keys: ['?'], descriptionKey: 'keyboard.toggleHelp' },
+  { keys: ['Esc'], descriptionKey: 'keyboard.closeOverlay' },
 ];
 
 interface KeyboardShortcutsOverlayProps {
@@ -24,6 +25,8 @@ interface KeyboardShortcutsOverlayProps {
 }
 
 export function KeyboardShortcutsOverlay({ isOpen, onClose }: KeyboardShortcutsOverlayProps) {
+  const { t } = useTranslation();
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -44,7 +47,7 @@ export function KeyboardShortcutsOverlay({ isOpen, onClose }: KeyboardShortcutsO
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Keyboard shortcuts"
+      aria-label={t('keyboard.title')}
       onClick={onClose}
       style={{
         position: 'fixed',
@@ -86,11 +89,11 @@ export function KeyboardShortcutsOverlay({ isOpen, onClose }: KeyboardShortcutsO
               letterSpacing: '-0.01em',
             }}
           >
-            Keyboard Shortcuts
+            {t('keyboard.title')}
           </span>
           <button
             onClick={onClose}
-            aria-label="Close keyboard shortcuts"
+            aria-label={t('keyboard.closeOverlay')}
             style={{
               background: 'none',
               border: '1px solid var(--border-primary)',
@@ -110,7 +113,7 @@ export function KeyboardShortcutsOverlay({ isOpen, onClose }: KeyboardShortcutsO
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {SHORTCUTS.map((shortcut) => (
             <div
-              key={shortcut.description}
+              key={shortcut.descriptionKey}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -127,7 +130,7 @@ export function KeyboardShortcutsOverlay({ isOpen, onClose }: KeyboardShortcutsO
                   color: 'var(--text-secondary)',
                 }}
               >
-                {shortcut.description}
+                {t(shortcut.descriptionKey)}
               </span>
               <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 {shortcut.keys.map((key, index) => (
@@ -180,7 +183,7 @@ export function KeyboardShortcutsOverlay({ isOpen, onClose }: KeyboardShortcutsO
             letterSpacing: '0.04em',
           }}
         >
-          SHORTCUTS DISABLED WHEN TYPING IN INPUT FIELDS
+          {t('keyboard.disabledInInputs')}
         </div>
       </div>
     </div>

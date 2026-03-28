@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Download, RefreshCw } from 'lucide-react';
+import { Download, RefreshCw, Copy } from 'lucide-react';
 import { Spinner } from './ui/Spinner';
 import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
+import { tauriInvoke } from '../lib/tauri';
 import type { RebalanceSuggestion } from '../types/portfolio';
 
 const DEFAULT_DRIFT_THRESHOLD = 5;
@@ -88,7 +88,7 @@ export function Rebalance() {
     setLoading(true);
     setError(null);
     try {
-      const result = await invoke<RebalanceSuggestion[]>('get_rebalance_suggestions', {
+      const result = await tauriInvoke<RebalanceSuggestion[]>('get_rebalance_suggestions', {
         driftThreshold: threshold,
       });
       setSuggestions(result);
@@ -112,24 +112,35 @@ export function Rebalance() {
     void fetchSuggestions(driftThreshold);
   }, [fetchSuggestions, driftThreshold]);
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(() => {
+    if (!suggestions || suggestions.length === 0) return;
+    const csv = buildCsvContent(suggestions);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rebalance-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [suggestions]);
+
+  const handleCopyClipboard = useCallback(async () => {
     if (!suggestions || suggestions.length === 0) return;
     const csv = buildCsvContent(suggestions);
     try {
       await navigator.clipboard.writeText(csv);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback: create a temporary textarea
       const textarea = document.createElement('textarea');
       textarea.value = csv;
       document.body.appendChild(textarea);
       textarea.select();
       document.execCommand('copy');
       document.body.removeChild(textarea);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }, [suggestions]);
 
   // Load on first render
@@ -267,11 +278,36 @@ export function Rebalance() {
             Refresh
           </button>
 
-          {/* Export CSV */}
+          {/* Copy to clipboard */}
           <button
-            onClick={() => void handleExport()}
+            onClick={() => void handleCopyClipboard()}
             disabled={!suggestions || suggestions.length === 0}
-            title="Copy trade list as CSV"
+            title="Copy trade list as CSV to clipboard"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              background: 'transparent',
+              border: '1px solid var(--border-primary)',
+              borderRadius: 2,
+              color: 'var(--text-secondary)',
+              cursor: !suggestions || suggestions.length === 0 ? 'not-allowed' : 'pointer',
+              fontSize: 13,
+              fontFamily: 'var(--font-sans)',
+              opacity: !suggestions || suggestions.length === 0 ? 0.4 : 1,
+              transition: 'opacity 150ms',
+            }}
+          >
+            <Copy size={14} />
+            {copied ? 'Copied!' : 'Copy CSV'}
+          </button>
+
+          {/* Save CSV file */}
+          <button
+            onClick={handleExport}
+            disabled={!suggestions || suggestions.length === 0}
+            title="Save trade list as CSV file"
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -290,7 +326,7 @@ export function Rebalance() {
             }}
           >
             <Download size={14} />
-            {copied ? 'Copied!' : 'Export CSV'}
+            Save CSV
           </button>
         </div>
       </div>

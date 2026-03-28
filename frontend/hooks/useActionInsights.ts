@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type {
   ActionInsight,
   HoldingWithPrice,
+  InsightDirection,
   InsightSeverity,
   PortfolioSnapshot,
 } from '../types/portfolio';
@@ -27,21 +28,22 @@ export function buildInsights(
   for (const holding of holdings) {
     if (!holding.targetWeight || holding.targetWeight <= 0) continue;
 
-    // targetWeight is stored as 0–100 in DB; weight is 0–1 from Rust. Normalise to fractions.
-    const targetFraction = holding.targetWeight / 100;
-    const drift = Math.abs(holding.weight - targetFraction);
-    if (drift <= 0.05) continue;
+    // Both holding.weight and holding.targetWeight are in 0–100 percent scale from Rust.
+    const drift = Math.abs(holding.weight - holding.targetWeight);
+    if (drift <= 5) continue;
 
-    const severity: InsightSeverity = drift > 0.1 ? 'critical' : 'warning';
-    const driftPct = (drift * 100).toFixed(1);
-    const actualPct = (holding.weight * 100).toFixed(1);
+    const severity: InsightSeverity = drift > 10 ? 'critical' : 'warning';
+    const driftPct = drift.toFixed(1);
+    const actualPct = holding.weight.toFixed(1);
     const targetPct = holding.targetWeight.toFixed(1);
-    const direction = holding.weight > targetFraction ? 'overweight' : 'underweight';
+    const direction = holding.weight > holding.targetWeight ? 'overweight' : 'underweight';
+    const insightDirection: InsightDirection = direction === 'underweight' ? 'buy' : 'sell';
 
     insights.push({
       id: `target_drift_${holding.id}`,
       type: 'target_drift',
       severity,
+      direction: insightDirection,
       title: `${holding.symbol} is ${direction} by ${driftPct}%`,
       explanation: `Current weight ${actualPct}% vs target ${targetPct}%. Consider rebalancing.`,
       metrics: {
@@ -56,7 +58,7 @@ export function buildInsights(
 
   // ── 2. concentration_risk ─────────────────────────────────────────────────
   for (const holding of holdings) {
-    const weightPct = holding.weight * 100;
+    const weightPct = holding.weight; // already 0–100 percent from Rust
     if (weightPct <= 30) continue;
 
     const severity: InsightSeverity = weightPct > 50 ? 'critical' : 'warning';
@@ -65,6 +67,7 @@ export function buildInsights(
       id: `concentration_risk_${holding.id}`,
       type: 'concentration_risk',
       severity,
+      direction: 'sell' as InsightDirection,
       title: `${holding.symbol} dominates the portfolio`,
       explanation: `${holding.symbol} represents ${weightPct.toFixed(1)}% of portfolio — consider diversifying.`,
       metrics: {
@@ -85,6 +88,7 @@ export function buildInsights(
       id: 'idle_cash',
       type: 'idle_cash',
       severity: 'info',
+      direction: 'buy' as InsightDirection,
       title: 'High cash allocation',
       explanation: `Cash represents ${cashPct.toFixed(1)}% of portfolio — consider deploying.`,
       metrics: {
@@ -102,6 +106,7 @@ export function buildInsights(
       id: 'missing_targets',
       type: 'missing_targets',
       severity: 'info',
+      direction: 'review' as InsightDirection,
       title: 'Target weights not set',
       explanation: `${withoutTarget.length} of ${holdings.length} holdings have no target weight. Set targets to enable rebalancing recommendations.`,
       metrics: {

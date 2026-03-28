@@ -14,6 +14,10 @@ pub struct ParsedImportRow {
     pub currency: String,
     pub exchange: String,
     pub target_weight: f64,
+    pub indicated_annual_dividend: Option<f64>,
+    pub indicated_annual_dividend_currency: Option<String>,
+    pub dividend_frequency: Option<String>,
+    pub maturity_date: Option<String>,
 }
 
 pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
@@ -29,6 +33,10 @@ pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
             "currency",
             "exchange",
             "target_weight",
+            "indicated_annual_dividend",
+            "indicated_annual_dividend_currency",
+            "dividend_frequency",
+            "maturity_date",
         ])
         .map_err(|e| e.to_string())?;
 
@@ -44,6 +52,20 @@ pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
                 holding.currency.clone(),
                 holding.exchange.clone(),
                 holding.target_weight.to_string(),
+                holding
+                    .indicated_annual_dividend
+                    .map(|v| v.to_string())
+                    .unwrap_or_default(),
+                holding
+                    .indicated_annual_dividend_currency
+                    .clone()
+                    .unwrap_or_default(),
+                holding
+                    .dividend_frequency
+                    .as_ref()
+                    .map(|f| f.as_str().to_string())
+                    .unwrap_or_default(),
+                holding.maturity_date.clone().unwrap_or_default(),
             ])
             .map_err(|e| e.to_string())?;
     }
@@ -138,6 +160,12 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
     let currency_index = find_column_index(&headers, "currency")
         .ok_or_else(|| "Missing required column: currency".to_string())?;
     let target_weight_index = find_column_index(&headers, "target_weight");
+    let indicated_annual_dividend_index =
+        find_column_index(&headers, "indicated_annual_dividend");
+    let indicated_annual_dividend_currency_index =
+        find_column_index(&headers, "indicated_annual_dividend_currency");
+    let dividend_frequency_index = find_column_index(&headers, "dividend_frequency");
+    let maturity_date_index = find_column_index(&headers, "maturity_date");
 
     let mut rows = Vec::new();
 
@@ -237,6 +265,32 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
             return Err(format!("Row {}: exchange exceeds maximum length", row));
         }
 
+        let iad_str = parse_optional_field(&record, indicated_annual_dividend_index);
+        let indicated_annual_dividend = if iad_str.is_empty() {
+            None
+        } else {
+            iad_str.parse::<f64>().ok()
+        };
+        let iad_currency_str =
+            parse_optional_field(&record, indicated_annual_dividend_currency_index);
+        let indicated_annual_dividend_currency = if iad_currency_str.is_empty() {
+            None
+        } else {
+            Some(iad_currency_str.to_uppercase())
+        };
+        let div_freq_str = parse_optional_field(&record, dividend_frequency_index);
+        let dividend_frequency = if div_freq_str.is_empty() {
+            None
+        } else {
+            Some(div_freq_str.to_lowercase())
+        };
+        let maturity_date_str = parse_optional_field(&record, maturity_date_index);
+        let maturity_date = if maturity_date_str.is_empty() {
+            None
+        } else {
+            Some(maturity_date_str)
+        };
+
         rows.push(ParsedImportRow {
             row,
             symbol,
@@ -248,6 +302,10 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
             currency,
             exchange,
             target_weight,
+            indicated_annual_dividend,
+            indicated_annual_dividend_currency,
+            dividend_frequency,
+            maturity_date,
         });
     }
 
