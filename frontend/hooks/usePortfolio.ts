@@ -5,6 +5,7 @@ import {
   useEffect,
   useCallback,
   useContext,
+  useRef,
   type ReactNode,
 } from 'react';
 import type {
@@ -36,6 +37,7 @@ export interface UsePortfolioReturn {
   unseenTriggeredCount: number;
   /** Mark all triggered alerts as seen (call when user visits the Alerts screen). */
   markAlertsSeen: () => void;
+  /** Deduplicated price refresh — concurrent calls share the same in-flight request. */
   refreshPrices: () => Promise<void>;
   addHolding: (input: HoldingInput) => Promise<Holding>;
   updateHolding: (holding: Holding) => Promise<Holding>;
@@ -147,6 +149,9 @@ function usePortfolioState(): UsePortfolioReturn {
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [unseenTriggeredCount, setUnseenTriggeredCount] = useState(0);
 
+  /** Tracks the in-flight refresh promise to deduplicate concurrent calls (#381). */
+  const pendingRefreshRef = useRef<Promise<RefreshResult | null> | null>(null);
+
   const refreshAlerts = useCallback(async () => {
     if (!isTauri()) return;
     try {
@@ -185,45 +190,89 @@ function usePortfolioState(): UsePortfolioReturn {
     }
   }, []);
 
+  /** Reload portfolio data without showing the loading spinner. */
+  const loadPortfolioSilent = useCallback(async () => {
+    setError(null);
+    try {
+      if (isTauri()) {
+        const [snap, rawHoldings] = await Promise.all([
+          tauriInvoke<PortfolioSnapshot>('get_portfolio'),
+          tauriInvoke<Holding[]>('get_holdings'),
+        ]);
+        setPortfolio(snap);
+        setHoldings(rawHoldings);
+      } else {
+        await new Promise((r) => setTimeout(r, 500));
+        setPortfolio(MOCK_SNAPSHOT);
+        setHoldings(MOCK_HOLDINGS);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
   useEffect(() => {
     loadPortfolio();
   }, [loadPortfolio]);
 
-  const refreshPrices = useCallback(async () => {
+  /**
+   * Internal refresh that returns the result and deduplicates concurrent calls.
+   * If a refresh is already in-flight, returns the same promise (#381).
+   */
+  const refreshPricesInternal = useCallback((): Promise<RefreshResult | null> => {
+    if (pendingRefreshRef.current) {
+      return pendingRefreshRef.current;
+    }
     setLoading(true);
     setError(null);
     setFailedSymbols([]);
     setAlertRefreshErrors([]);
-    try {
-      if (isTauri()) {
-        const result = await tauriInvoke<RefreshResult>('refresh_prices');
-        setFailedSymbols(result.failedSymbols);
-        const triggered = result.triggeredAlerts ?? [];
-        setTriggeredAlertIds(triggered);
-        const alertErrors = result.alertErrors ?? [];
-        setAlertRefreshErrors(alertErrors);
-        if (triggered.length > 0) {
-          setUnseenTriggeredCount((prev) => prev + triggered.length);
-          await refreshAlerts();
+
+    const p: Promise<RefreshResult | null> = (async () => {
+      try {
+        if (isTauri()) {
+          const result = await tauriInvoke<RefreshResult>('refresh_prices');
+          setFailedSymbols(result.failedSymbols);
+          const triggered = result.triggeredAlerts ?? [];
+          setTriggeredAlertIds(triggered);
+          const alertErrors = result.alertErrors ?? [];
+          setAlertRefreshErrors(alertErrors);
+          if (triggered.length > 0) {
+            setUnseenTriggeredCount((prev) => prev + triggered.length);
+            await refreshAlerts();
+          }
+          // alertErrors surfaced in UI via alertRefreshErrors state
+          await loadPortfolio();
+          return result;
+        } else {
+          await new Promise((r) => setTimeout(r, 800));
+          setPortfolio({ ...MOCK_SNAPSHOT, lastUpdated: new Date().toISOString() });
+          return null;
         }
-        // alertErrors surfaced in UI via alertRefreshErrors state
-        await loadPortfolio();
-      } else {
-        await new Promise((r) => setTimeout(r, 800));
-        setPortfolio({ ...MOCK_SNAPSHOT, lastUpdated: new Date().toISOString() });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        return null;
+      } finally {
+        pendingRefreshRef.current = null;
+        setLoading(false);
       }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
+    })();
+
+    pendingRefreshRef.current = p;
+    return p;
   }, [loadPortfolio, refreshAlerts]);
+
+  /** Public-facing refreshPrices: deduplicates in-flight requests, returns void. */
+  const refreshPrices = useCallback(async (): Promise<void> => {
+    await refreshPricesInternal();
+  }, [refreshPricesInternal]);
 
   const addHolding = useCallback(
     async (input: HoldingInput): Promise<Holding> => {
       if (isTauri()) {
         const created = await tauriInvoke<Holding>('add_holding', { holding: input });
-        await loadPortfolio();
+        // Reload silently — keep current portfolio visible while data refreshes
+        void loadPortfolioSilent();
         return created;
       }
       // Mock: create a fake holding
@@ -240,14 +289,15 @@ function usePortfolioState(): UsePortfolioReturn {
       });
       return mock;
     },
-    [loadPortfolio]
+    [loadPortfolioSilent]
   );
 
   const updateHolding = useCallback(
     async (holding: Holding): Promise<Holding> => {
       if (isTauri()) {
         const updated = await tauriInvoke<Holding>('update_holding', { holding });
-        await loadPortfolio();
+        // Reload silently — keep current portfolio visible while data refreshes
+        void loadPortfolioSilent();
         return updated;
       }
       const updated = { ...holding, updatedAt: new Date().toISOString() };
@@ -258,14 +308,26 @@ function usePortfolioState(): UsePortfolioReturn {
       });
       return updated;
     },
-    [loadPortfolio]
+    [loadPortfolioSilent]
   );
 
   const deleteHolding = useCallback(
     async (id: string): Promise<void> => {
       if (isTauri()) {
-        await tauriInvoke('delete_holding', { id });
-        await loadPortfolio();
+        // Optimistic: remove from UI immediately for instant feedback (#374)
+        setPortfolio((prev) =>
+          prev ? { ...prev, holdings: prev.holdings.filter((h) => h.id !== id) } : prev
+        );
+        setHoldings((prev) => prev.filter((h) => h.id !== id));
+        try {
+          await tauriInvoke('delete_holding', { id });
+          // Background reload to recalculate portfolio totals/weights
+          void loadPortfolioSilent();
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+          // Rollback: reload to restore the deleted holding
+          void loadPortfolio();
+        }
         return;
       }
       setHoldings((prev) => {
@@ -274,7 +336,7 @@ function usePortfolioState(): UsePortfolioReturn {
         return updated;
       });
     },
-    [loadPortfolio]
+    [loadPortfolio, loadPortfolioSilent]
   );
 
   const importHoldingsCsv = useCallback(
