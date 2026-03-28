@@ -7,6 +7,7 @@ import type {
   SymbolResult,
 } from '../types/portfolio';
 import { ACCOUNT_OPTIONS, SUPPORTED_CURRENCIES } from '../lib/constants';
+import { formatNumber } from '../lib/format';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
@@ -292,7 +293,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
 
     if (projectedTotal > 100) {
       showToast(
-        `Warning: total target weight will be ${projectedTotal.toFixed(1)}% (exceeds 100%)`,
+        `Warning: total target weight will be ${formatNumber(projectedTotal, 1)}% (exceeds 100%)`,
         'info'
       );
     }
@@ -557,7 +558,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                     color: weightTotalColor,
                   }}
                 >
-                  Portfolio total: {projectedTotal.toFixed(1)}% of 100%
+                  Portfolio total: {formatNumber(projectedTotal, 1)}% of 100%
                 </div>
               )}
             </Field>

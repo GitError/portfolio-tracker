@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
+import { formatCurrency, formatCompact, formatNumber, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import {
   ACCOUNT_OPTIONS,
@@ -563,7 +563,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   {d.name}
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-                  {d.pct.toFixed(1)}% · {formatCurrency(d.value, baseCurrency)}
+                  {formatNumber(d.pct, 1)}% · {formatCurrency(d.value, baseCurrency)}
                 </span>
               </div>
             ))}
@@ -808,7 +808,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   {d.name}
                 </span>
                 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>
-                  {d.pct.toFixed(1)}%
+                  {formatNumber(d.pct, 1)}%
                 </span>
               </div>
             ))}
@@ -872,7 +872,9 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                       }}
                     >
                       {formatCurrency(acct.amount, baseCurrency)}{' '}
-                      <span style={{ color: 'var(--text-muted)' }}>{acct.pct.toFixed(1)}%</span>
+                      <span style={{ color: 'var(--text-muted)' }}>
+                        {formatNumber(acct.pct, 1)}%
+                      </span>
                     </span>
                   </div>
                   <div
@@ -967,7 +969,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                           fontSize: 11,
                         }}
                       >
-                        {h.weightPct.toFixed(1)}%
+                        {formatNumber(h.weightPct, 1)}%
                       </span>
                     </div>
                   );
@@ -993,12 +995,12 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
                   >
                     {t('dashboard.largest')}:{' '}
                     <span style={{ color: 'var(--text-secondary)' }}>
-                      {concentrationStats.largest.toFixed(1)}%
+                      {formatNumber(concentrationStats.largest, 1)}%
                     </span>
                     {'  '}
                     {t('dashboard.top3')}:{' '}
                     <span style={{ color: 'var(--text-secondary)' }}>
-                      {concentrationStats.top3.toFixed(1)}%
+                      {formatNumber(concentrationStats.top3, 1)}%
                     </span>
                   </div>
                   {concentrationStats.hasRisk && (
@@ -1064,7 +1066,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               >
                 {t('dashboard.investableCash')}
                 <span style={{ marginLeft: 6, color: 'var(--text-secondary)' }}>
-                  {t('dashboard.ofPortfolio', { pct: cashData.cashPct.toFixed(1) })}
+                  {t('dashboard.ofPortfolio', { pct: formatNumber(cashData.cashPct, 1) })}
                 </span>
               </div>
               {cashData.positions.length > 1 && (
@@ -1148,7 +1150,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               sub:
                 stats && totals.totalValue > 0
                   ? t('dashboard.ofPortfolio', {
-                      pct: ((stats.cashTotal / totals.totalValue) * 100).toFixed(1),
+                      pct: formatNumber((stats.cashTotal / totals.totalValue) * 100, 1),
                     })
                   : '',
             },

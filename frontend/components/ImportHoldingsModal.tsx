@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ImportResult, PreviewImportResult, PreviewRow } from '../types/portfolio';
 import { ASSET_TYPE_CONFIG } from '../lib/constants';
+import { formatNumber } from '../lib/format';
 import { Badge } from './ui/Badge';
 
 interface Props {
@@ -133,13 +134,13 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               <td style={{ ...TD, ...MONO, color: 'var(--text-muted)' }}>{r.exchange || '—'}</td>
               <td style={{ ...TD, ...MONO, color: 'var(--text-muted)' }}>{r.currency}</td>
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
-                {r.quantity.toLocaleString()}
+                {formatNumber(r.quantity, 4)}
               </td>
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
-                {r.costBasis.toFixed(2)}
+                {formatNumber(r.costBasis, 2)}
               </td>
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
-                {r.targetWeight.toFixed(1)}%
+                {formatNumber(r.targetWeight, 1)}%
               </td>
               <td style={TD}>{statusCell(r.status)}</td>
             </tr>
