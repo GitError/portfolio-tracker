@@ -66,9 +66,13 @@ pub fn run() {
                 interval.tick().await; // skip immediate first tick
                 loop {
                     interval.tick().await;
-                    let _ = sqlx::query("PRAGMA wal_checkpoint(PASSIVE)")
+                    match sqlx::query("PRAGMA wal_checkpoint(RESTART)")
                         .execute(&wal_pool)
-                        .await;
+                        .await
+                    {
+                        Ok(_) => tracing::debug!("WAL checkpoint complete"),
+                        Err(e) => tracing::warn!("WAL checkpoint failed: {}", e),
+                    }
                 }
             });
 
@@ -95,8 +99,6 @@ pub fn run() {
             commands::get_cached_prices,
             commands::get_config_cmd,
             commands::set_config_cmd,
-            commands::export_data,
-            commands::import_data,
             commands::get_alerts,
             commands::add_alert,
             commands::delete_alert,
@@ -107,7 +109,6 @@ pub fn run() {
             commands::delete_transaction,
             commands::backup_database,
             commands::restore_database,
-            commands::get_symbol_metadata,
             commands::get_portfolio_analytics,
             commands::get_dividends,
             commands::add_dividend,

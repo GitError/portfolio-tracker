@@ -37,6 +37,7 @@ pub async fn set_config(pool: &SqlitePool, key: &str, value: &str) -> Result<(),
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn get_all_config(pool: &SqlitePool) -> Result<Vec<(String, String)>, String> {
     use sqlx::Row;
     let rows = sqlx::query("SELECT key, value FROM app_config ORDER BY key")
@@ -65,8 +66,7 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
             .bind(input.account.as_str())
             .fetch_optional(pool)
             .await
-            .ok()
-            .flatten()
+            .map_err(|e| format!("Account lookup failed: {e}"))?
             .map(|r| r.get::<String, _>(0))
     };
 
@@ -137,8 +137,7 @@ pub async fn insert_holding_in_tx(
             .bind(input.account.as_str())
             .fetch_optional(&mut *conn)
             .await
-            .ok()
-            .flatten()
+            .map_err(|e| format!("Account lookup failed: {e}"))?
             .map(|r| r.get::<String, _>(0))
     };
 
@@ -203,8 +202,7 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
             .bind(holding.account.as_str())
             .fetch_optional(pool)
             .await
-            .ok()
-            .flatten()
+            .map_err(|e| format!("Account lookup failed: {e}"))?
             .map(|r| r.get::<String, _>(0))
     };
 
@@ -642,7 +640,12 @@ pub async fn get_snapshots_in_range(
         .map(|r| {
             let recorded_at: String = r.get(0);
             let total_value: f64 = r.get(1);
-            let date = recorded_at.get(..10).unwrap_or(&recorded_at).to_string();
+            let date = chrono::DateTime::parse_from_rfc3339(&recorded_at)
+                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|_| {
+                    tracing::warn!("Could not parse recorded_at date: {}", recorded_at);
+                    recorded_at.chars().take(10).collect()
+                });
             PerformancePoint {
                 date,
                 value: total_value,
@@ -652,33 +655,19 @@ pub async fn get_snapshots_in_range(
 }
 
 pub async fn prune_snapshots(pool: &SqlitePool) -> Result<(), String> {
-    // Step 1: deduplicate — keep only the latest snapshot per calendar day.
+    // Keep only the latest snapshot per calendar day, retaining the 730
+    // most-recent distinct days (≈ 2 years). Combines deduplication and
+    // age-pruning into a single pass so no intermediate state can be observed.
     sqlx::query(
         "DELETE FROM portfolio_snapshots
          WHERE id NOT IN (
-             SELECT MAX(id)
-             FROM portfolio_snapshots
+           SELECT id FROM portfolio_snapshots
+           WHERE id IN (
+             SELECT MAX(id) FROM portfolio_snapshots
              GROUP BY DATE(recorded_at)
-         )",
-    )
-    .execute(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    // Step 2: retain the 730 most-recent distinct days (≈ 2 years).
-    // Any day older than the 730th-most-recent is removed entirely.
-    sqlx::query(
-        "DELETE FROM portfolio_snapshots
-         WHERE DATE(recorded_at) < (
-             SELECT DATE(recorded_at)
-             FROM (
-                 SELECT DISTINCT DATE(recorded_at) AS recorded_at
-                 FROM portfolio_snapshots
-                 ORDER BY recorded_at DESC
-                 LIMIT 730
-             )
-             ORDER BY recorded_at ASC
-             LIMIT 1
+           )
+           ORDER BY DATE(recorded_at) DESC
+           LIMIT 730
          )",
     )
     .execute(pool)
