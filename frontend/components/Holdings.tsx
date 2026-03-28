@@ -471,7 +471,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       .catch(() => {
         /* best-effort */
       });
-  }, [portfolio]);
+  }, [portfolio?.lastUpdated]);
 
   const isEmpty = holdings.length === 0;
 
