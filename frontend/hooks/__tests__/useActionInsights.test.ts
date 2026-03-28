@@ -16,7 +16,7 @@ function makeHolding(overrides: Partial<HoldingWithPrice> = {}): HoldingWithPric
     currency: 'USD',
     exchange: 'NASDAQ',
     targetWeight: 0,
-    weight: 0.1,
+    weight: 10,
     currentPrice: 200,
     currentPriceCad: 280,
     marketValueCad: 2800,
@@ -73,8 +73,8 @@ describe('buildInsights', () => {
 
   // ── 3. target_drift: drift < 5% → no insight ──────────────────────────────
   it('target_drift: drift < 5% produces no insight', () => {
-    // targetWeight=10 (10%), weight=0.12 (12%) → drift=0.02 (2%)
-    const holding = makeHolding({ targetWeight: 10, weight: 0.12, marketValueCad: 1200 });
+    // targetWeight=10 (10%), weight=12 (12%) → drift=2 (2%)
+    const holding = makeHolding({ targetWeight: 10, weight: 12, marketValueCad: 1200 });
     const snapshot = makeSnapshot([holding]);
     const insights = buildInsights(snapshot, [holding]);
     expect(insights.some((i) => i.type === 'target_drift')).toBe(false);
@@ -82,12 +82,12 @@ describe('buildInsights', () => {
 
   // ── 4. target_drift: drift 6% → warning ───────────────────────────────────
   it('target_drift: drift of 6% produces warning severity', () => {
-    // targetWeight=10 (10%), weight=0.16 (16%) → drift=0.06 (6%) → warning
+    // targetWeight=10 (10%), weight=16 (16%) → drift=6 (6%) → warning
     const holding = makeHolding({
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 10,
-      weight: 0.16,
+      weight: 16,
       marketValueCad: 1600,
     });
     const snapshot = makeSnapshot([holding]);
@@ -99,12 +99,12 @@ describe('buildInsights', () => {
 
   // ── 5. target_drift: drift 15% → critical ─────────────────────────────────
   it('target_drift: drift of 15% produces critical severity', () => {
-    // targetWeight=10 (10%), weight=0.25 (25%) → drift=0.15 (15%) → critical
+    // targetWeight=10 (10%), weight=25 (25%) → drift=15 (15%) → critical
     const holding = makeHolding({
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 10,
-      weight: 0.25,
+      weight: 25,
       marketValueCad: 2500,
     });
     const snapshot = makeSnapshot([holding]);
@@ -116,12 +116,12 @@ describe('buildInsights', () => {
 
   // ── 6. target_drift: direction 'overweight' ────────────────────────────────
   it('target_drift: direction is overweight when weight > targetFraction', () => {
-    // targetWeight=10 → targetFraction=0.10; weight=0.20 → overweight
+    // targetWeight=10 (10%); weight=20 (20%) → overweight
     const holding = makeHolding({
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 10,
-      weight: 0.2,
+      weight: 20,
       marketValueCad: 2000,
     });
     const snapshot = makeSnapshot([holding]);
@@ -132,12 +132,12 @@ describe('buildInsights', () => {
 
   // ── 7. target_drift: direction 'underweight' ───────────────────────────────
   it('target_drift: direction is underweight when weight < targetFraction', () => {
-    // targetWeight=30 → targetFraction=0.30; weight=0.10 → underweight
+    // targetWeight=30 (30%); weight=10 (10%) → underweight
     const holding = makeHolding({
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 30,
-      weight: 0.1,
+      weight: 10,
       marketValueCad: 1000,
     });
     const snapshot = makeSnapshot([holding]);
@@ -148,12 +148,12 @@ describe('buildInsights', () => {
 
   // ── 8. target_drift: correct display values ────────────────────────────────
   it('target_drift: metrics contain correct actualPct, targetPct, driftPct strings', () => {
-    // targetWeight=20 (20%), weight=0.32 (32%) → drift=0.12 (12%)
+    // targetWeight=20 (20%), weight=32 (32%) → drift=12 (12%)
     const holding = makeHolding({
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 20,
-      weight: 0.32,
+      weight: 32,
       marketValueCad: 3200,
     });
     const snapshot = makeSnapshot([holding]);
@@ -166,8 +166,8 @@ describe('buildInsights', () => {
 
   // ── 9. concentration_risk: weight < 30% → no insight ─────────────────────
   it('concentration_risk: weight < 30% produces no concentration insight', () => {
-    // weight=0.25 → weightPct=25% ≤ 30
-    const holding = makeHolding({ weight: 0.25, marketValueCad: 2500 });
+    // weight=25 (25%) ≤ 30 → no insight
+    const holding = makeHolding({ weight: 25, marketValueCad: 2500 });
     const snapshot = makeSnapshot([holding]);
     const insights = buildInsights(snapshot, [holding]);
     expect(insights.some((i) => i.type === 'concentration_risk')).toBe(false);
@@ -175,7 +175,7 @@ describe('buildInsights', () => {
 
   // ── 10. concentration_risk: weight exactly 30% → no insight ──────────────
   it('concentration_risk: weight exactly 30% produces no concentration insight', () => {
-    const holding = makeHolding({ weight: 0.3, marketValueCad: 3000 });
+    const holding = makeHolding({ weight: 30, marketValueCad: 3000 });
     const snapshot = makeSnapshot([holding]);
     const insights = buildInsights(snapshot, [holding]);
     expect(insights.some((i) => i.type === 'concentration_risk')).toBe(false);
@@ -183,7 +183,7 @@ describe('buildInsights', () => {
 
   // ── 11. concentration_risk: weight 35% → warning ─────────────────────────
   it('concentration_risk: weight 35% produces warning severity', () => {
-    const holding = makeHolding({ weight: 0.35, marketValueCad: 3500 });
+    const holding = makeHolding({ weight: 35, marketValueCad: 3500 });
     const snapshot = makeSnapshot([holding]);
     const insights = buildInsights(snapshot, [holding]);
     const conc = insights.find((i) => i.type === 'concentration_risk');
@@ -193,7 +193,7 @@ describe('buildInsights', () => {
 
   // ── 12. concentration_risk: weight 55% → critical ────────────────────────
   it('concentration_risk: weight 55% produces critical severity', () => {
-    const holding = makeHolding({ weight: 0.55, marketValueCad: 5500 });
+    const holding = makeHolding({ weight: 55, marketValueCad: 5500 });
     const snapshot = makeSnapshot([holding]);
     const insights = buildInsights(snapshot, [holding]);
     const conc = insights.find((i) => i.type === 'concentration_risk');
@@ -207,14 +207,14 @@ describe('buildInsights', () => {
       id: 'h1',
       symbol: 'AAPL',
       assetType: 'stock',
-      weight: 0.85,
+      weight: 85,
       marketValueCad: 8500,
     });
     const cash = makeHolding({
       id: 'h2',
       symbol: 'CASH-CAD',
       assetType: 'cash',
-      weight: 0.15,
+      weight: 15,
       marketValueCad: 1500,
     });
     const holdings = [stock, cash];
@@ -229,14 +229,14 @@ describe('buildInsights', () => {
       id: 'h1',
       symbol: 'AAPL',
       assetType: 'stock',
-      weight: 0.7,
+      weight: 70,
       marketValueCad: 7000,
     });
     const cash = makeHolding({
       id: 'h2',
       symbol: 'CASH-CAD',
       assetType: 'cash',
-      weight: 0.3,
+      weight: 30,
       marketValueCad: 3000,
     });
     const holdings = [stock, cash];
@@ -254,21 +254,21 @@ describe('buildInsights', () => {
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 30,
-      weight: 0.33,
+      weight: 33,
       marketValueCad: 3300,
     });
     const h2 = makeHolding({
       id: 'h2',
       symbol: 'MSFT',
       targetWeight: 30,
-      weight: 0.33,
+      weight: 33,
       marketValueCad: 3300,
     });
     const h3 = makeHolding({
       id: 'h3',
       symbol: 'GOOG',
       targetWeight: 0,
-      weight: 0.34,
+      weight: 34,
       marketValueCad: 3400,
     });
     const holdings = [h1, h2, h3];
@@ -284,21 +284,21 @@ describe('buildInsights', () => {
       id: 'h1',
       symbol: 'AAPL',
       targetWeight: 30,
-      weight: 0.33,
+      weight: 33,
       marketValueCad: 3300,
     });
     const h2 = makeHolding({
       id: 'h2',
       symbol: 'MSFT',
       targetWeight: 0,
-      weight: 0.33,
+      weight: 33,
       marketValueCad: 3300,
     });
     const h3 = makeHolding({
       id: 'h3',
       symbol: 'GOOG',
       targetWeight: 0,
-      weight: 0.34,
+      weight: 34,
       marketValueCad: 3400,
     });
     const holdings = [h1, h2, h3];
@@ -311,39 +311,32 @@ describe('buildInsights', () => {
 
   // ── 17. Sort order: critical before warning before info ───────────────────
   it('sorts insights critical → warning → info', () => {
-    // h1: 55% weight → critical concentration_risk
-    // h2: 35% weight → warning concentration_risk, but total is > 100% — use separate total
-    // We need a scenario that naturally produces all three severities.
-    // Use:
-    //   - h1 with weight 0.55 → concentration_risk critical (weightPct > 50)
-    //   - h2 with weight 0.35 → concentration_risk warning (weightPct 30–50)
-    //   - cash > 20% of totalValue → idle_cash info
-    // For a self-consistent snapshot we use a large total value so each
-    // holding's marketValueCad / totalValue gives the desired weight.
+    // h1: weight=55 → concentration_risk critical (weightPct > 50)
+    // h2: weight=35 → concentration_risk warning (weightPct 30–50)
+    // cash > 20% of totalValue → idle_cash info
     const h1 = makeHolding({
       id: 'h1',
       symbol: 'AAPL',
       assetType: 'stock',
-      weight: 0.55,
+      weight: 55,
       marketValueCad: 11000,
     });
     const h2 = makeHolding({
       id: 'h2',
       symbol: 'MSFT',
       assetType: 'stock',
-      weight: 0.35,
+      weight: 35,
       marketValueCad: 7000,
     });
     const cash = makeHolding({
       id: 'h3',
       symbol: 'CASH-CAD',
       assetType: 'cash',
-      weight: 0.1,
+      weight: 10,
       marketValueCad: 2000,
     });
     const holdings = [h1, h2, cash];
-    // Override totalValue so idle_cash is triggered: cashPct = 2000 / 10000 = 20% (not > 20)
-    // Use totalValue = 8000 so cashPct = 2000/8000 = 25%
+    // Override totalValue so idle_cash is triggered: cashPct = 2000 / 8000 = 25%
     const snapshot: PortfolioSnapshot = {
       ...makeSnapshot(holdings),
       totalValue: 8000,
