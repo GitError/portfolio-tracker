@@ -62,12 +62,25 @@ pub fn build_portfolio_snapshot(
             holding.currency.to_uppercase(),
             base_currency.to_uppercase()
         );
-        let fx_rate = if holding.currency.eq_ignore_ascii_case(base_currency) {
-            1.0
+        let (fx_rate, fx_stale) = if holding.currency.eq_ignore_ascii_case(base_currency) {
+            (1.0, false)
         } else {
-            fx_map.get(&fx_pair).map(|r| r.rate).unwrap_or_else(|| {
-                convert_to_base(1.0, &holding.currency, base_currency, cached_fx)
-            })
+            match fx_map
+                .get(&fx_pair)
+                .map(|r| r.rate)
+                .or_else(|| convert_to_base(1.0, &holding.currency, base_currency, cached_fx))
+            {
+                Some(rate) => (rate, false),
+                None => {
+                    tracing::warn!(
+                        symbol = %holding.symbol,
+                        currency = %holding.currency,
+                        base = %base_currency,
+                        "FX rate unavailable — marking holding as fx_stale, values shown in source currency"
+                    );
+                    (1.0, true)
+                }
+            }
         };
 
         let current_price_cad = current_price * fx_rate;
@@ -134,6 +147,7 @@ pub fn build_portfolio_snapshot(
             target_delta_value: 0.0,
             target_delta_percent: 0.0,
             daily_change_percent: change_percent,
+            fx_stale,
         });
     }
 

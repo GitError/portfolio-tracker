@@ -52,17 +52,28 @@ pub async fn fetch_all_fx_rates(
         .collect()
 }
 
-pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[FxRate]) -> f64 {
+/// Convert `amount` from `from_currency` into `base` using the cached `rates`.
+///
+/// Returns `Some(converted)` when a rate is available, or `None` when no
+/// matching rate exists in the cache.  Callers should treat `None` as a signal
+/// that the conversion is unreliable and surface a stale-FX warning to the
+/// user rather than silently falling back to a 1:1 rate.
+pub fn convert_to_base(
+    amount: f64,
+    from_currency: &str,
+    base: &str,
+    rates: &[FxRate],
+) -> Option<f64> {
     let from_upper = from_currency.to_uppercase();
     let base_upper = base.to_uppercase();
     if from_upper == base_upper {
-        return amount;
+        return Some(amount);
     }
 
     // Try the direct pair first: e.g. USDCAD when converting USD → CAD
     let direct_pair = format!("{}{}", from_upper, base_upper);
     if let Some(rate) = rates.iter().find(|r| r.pair == direct_pair) {
-        return amount * rate.rate;
+        return Some(amount * rate.rate);
     }
 
     // Fall back to the inverted pair: e.g. CADUSD when converting USD → CAD
@@ -70,16 +81,16 @@ pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[Fx
     let inverted_pair = format!("{}{}", base_upper, from_upper);
     if let Some(rate) = rates.iter().find(|r| r.pair == inverted_pair) {
         if rate.rate != 0.0 {
-            return amount / rate.rate;
+            return Some(amount / rate.rate);
         }
     }
 
     tracing::warn!(
-        "FX rate not found for {} → {}, returning unconverted amount",
+        "FX rate not found for {} → {}, holding will be marked as fx_stale",
         from_currency,
         base
     );
-    amount
+    None
 }
 
 #[cfg(test)]
@@ -97,29 +108,29 @@ mod tests {
     #[test]
     fn base_passthrough_returns_amount_unchanged() {
         let rates = vec![make_rate("USDCAD", 1.36)];
-        assert_eq!(convert_to_base(100.0, "CAD", "CAD", &rates), 100.0);
-        assert_eq!(convert_to_base(100.0, "cad", "CAD", &rates), 100.0);
-        assert_eq!(convert_to_base(100.0, "USD", "USD", &rates), 100.0);
+        assert_eq!(convert_to_base(100.0, "CAD", "CAD", &rates), Some(100.0));
+        assert_eq!(convert_to_base(100.0, "cad", "CAD", &rates), Some(100.0));
+        assert_eq!(convert_to_base(100.0, "USD", "USD", &rates), Some(100.0));
     }
 
     #[test]
     fn usd_converts_to_cad_correctly() {
         let rates = vec![make_rate("USDCAD", 1.36)];
-        let result = convert_to_base(100.0, "USD", "CAD", &rates);
+        let result = convert_to_base(100.0, "USD", "CAD", &rates).unwrap();
         assert!((result - 136.0).abs() < 0.001);
     }
 
     #[test]
     fn cad_converts_to_usd_correctly() {
         let rates = vec![make_rate("CADUSD", 0.735)];
-        let result = convert_to_base(100.0, "CAD", "USD", &rates);
+        let result = convert_to_base(100.0, "CAD", "USD", &rates).unwrap();
         assert!((result - 73.5).abs() < 0.001);
     }
 
     #[test]
-    fn missing_rate_returns_amount_unchanged() {
+    fn missing_rate_returns_none() {
         let result = convert_to_base(200.0, "EUR", "CAD", &[]);
-        assert_eq!(result, 200.0);
+        assert_eq!(result, None);
     }
 
     #[test]
@@ -127,7 +138,7 @@ mod tests {
         // Only USDCAD is cached (as stored when CAD was the base). When base switches
         // to USD we must invert the stored rate rather than return unconverted.
         let rates = vec![make_rate("USDCAD", 1.36)];
-        let result = convert_to_base(100.0, "CAD", "USD", &rates);
+        let result = convert_to_base(100.0, "CAD", "USD", &rates).unwrap();
         // 100 CAD / 1.36 ≈ 73.529
         assert!((result - (100.0_f64 / 1.36)).abs() < 0.001);
     }
