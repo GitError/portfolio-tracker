@@ -217,7 +217,7 @@ function usePortfolioState(): UsePortfolioReturn {
     } finally {
       setLoading(false);
     }
-  }, [loadPortfolio]);
+  }, [loadPortfolio, refreshAlerts]);
 
   const addHolding = useCallback(
     async (input: HoldingInput): Promise<Holding> => {

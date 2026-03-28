@@ -5,15 +5,16 @@ BRANCH=$(git rev-parse --abbrev-ref HEAD)
 CARGO="${HOME}/.cargo/bin/cargo"
 echo "🚀 Pre-push verification for branch: $BRANCH"
 
-# ── Stage 1: Lint + format (< 10s) ───────────────────────────────────────────
+# ── Stage 1: Lint + type check + format (< 15s) ──────────────────────────────
 echo ""
-echo "Stage 1: Lint + format..."
+echo "Stage 1: Lint + type check + format..."
 npm run lint --silent
+npm run typecheck --silent
 npm run format:check --silent
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" fmt --check 2>/dev/null && cd ..
+  cd src-tauri && "$CARGO" fmt --check && cd ..
 fi
-echo "  ✓ Lint + format passed"
+echo "  ✓ Lint + type check + format passed"
 
 # ── Stage 2: Build verification (< 2 min) ────────────────────────────────────
 echo ""
@@ -49,7 +50,7 @@ echo "  ✓ Tests passed"
 echo ""
 echo "Stage 4: Clippy..."
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" clippy --quiet -- -D warnings 2>/dev/null && cd ..
+  cd src-tauri && "$CARGO" clippy -- -D warnings && cd ..
   echo "  ✓ Clippy passed"
 else
   echo "  (cargo not found, skipping clippy)"

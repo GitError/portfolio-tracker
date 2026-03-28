@@ -160,8 +160,7 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
     let currency_index = find_column_index(&headers, "currency")
         .ok_or_else(|| "Missing required column: currency".to_string())?;
     let target_weight_index = find_column_index(&headers, "target_weight");
-    let indicated_annual_dividend_index =
-        find_column_index(&headers, "indicated_annual_dividend");
+    let indicated_annual_dividend_index = find_column_index(&headers, "indicated_annual_dividend");
     let indicated_annual_dividend_currency_index =
         find_column_index(&headers, "indicated_annual_dividend_currency");
     let dividend_frequency_index = find_column_index(&headers, "dividend_frequency");
