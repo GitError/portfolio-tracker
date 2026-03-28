@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Download, RefreshCw, Copy } from 'lucide-react';
 import { Spinner } from './ui/Spinner';
 import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
@@ -10,7 +10,7 @@ const DEFAULT_DRIFT_THRESHOLD = 5;
 function DriftBadge({ drift }: { drift: number }) {
   const isOver = drift > 0;
   const color = isOver ? 'var(--color-loss)' : 'var(--color-accent)';
-  const label = isOver ? `+${drift.toFixed(2)}pp` : `${drift.toFixed(2)}pp`;
+  const label = isOver ? `+${formatNumber(drift, 2)}pp` : `${formatNumber(drift, 2)}pp`;
   return (
     <span
       style={{
@@ -144,11 +144,10 @@ export function Rebalance() {
   }, [suggestions]);
 
   // Load on first render
-  const [initialized, setInitialized] = useState(false);
-  if (!initialized) {
-    setInitialized(true);
+  useEffect(() => {
     void fetchSuggestions(driftThreshold);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount; driftThreshold starts at DEFAULT and handleThresholdChange handles subsequent changes
 
   return (
     <div

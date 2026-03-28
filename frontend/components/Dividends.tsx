@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DollarSign, Plus, Trash2, TrendingUp } from 'lucide-react';
 import type { Dividend, DividendInput, Holding, HoldingWithPrice } from '../types/portfolio';
 import { usePortfolio } from '../hooks/usePortfolio';
-import { formatCurrency } from '../lib/format';
+import { formatCurrency, formatNumber } from '../lib/format';
 import { MOCK_DIVIDENDS, MOCK_HOLDINGS } from '../lib/mockData';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
@@ -670,7 +670,7 @@ export function Dividends() {
                   textAlign: 'right',
                 }}
               >
-                +{div.amountPerUnit.toFixed(4)}
+                +{formatNumber(div.amountPerUnit, 4)}
               </div>
               <div
                 style={{

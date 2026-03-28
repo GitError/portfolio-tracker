@@ -696,7 +696,10 @@ export function StressTest() {
     [filteredPortfolio, presetName, runTest]
   );
 
-  // Initial run on mount / portfolio load / filter change
+  // Initial run on mount / portfolio load / filter change.
+  // shocks and scheduleRun are intentionally omitted from deps: shocks changes are handled
+  // synchronously in handleSliderChange/handlePresetChange, and including scheduleRun (which
+  // closes over filteredPortfolio) would cause a double invocation on every filter change.
   useEffect(() => {
     if (filteredPortfolio) scheduleRun(shocks);
     // eslint-disable-next-line react-hooks/exhaustive-deps
