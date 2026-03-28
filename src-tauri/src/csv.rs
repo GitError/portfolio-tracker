@@ -105,6 +105,13 @@ fn parse_required_field(
     Ok(value.to_string())
 }
 
+/// Strip null bytes and ASCII control characters from a string field.
+/// This prevents control characters from being stored in the database or
+/// causing downstream parsing issues.
+fn sanitize_str(s: &str) -> String {
+    s.chars().filter(|c| !c.is_control()).collect()
+}
+
 fn parse_optional_field(record: &StringRecord, index: Option<usize>) -> String {
     index
         .and_then(|i| record.get(i))
@@ -204,9 +211,14 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
                 }
             })
         };
-        let currency =
-            parse_required_field(&record, currency_index, row, "currency")?.to_uppercase();
-        let raw_symbol = parse_optional_field(&record, Some(symbol_index));
+        let currency = sanitize_str(&parse_required_field(
+            &record,
+            currency_index,
+            row,
+            "currency",
+        )?)
+        .to_uppercase();
+        let raw_symbol = sanitize_str(&parse_optional_field(&record, Some(symbol_index)));
         let symbol = if matches!(asset_type, AssetType::Cash) {
             if raw_symbol.is_empty() || raw_symbol.eq_ignore_ascii_case("CASH") {
                 format!("{}-CASH", currency)
@@ -251,8 +263,8 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
             parsed
         };
 
-        let name = parse_optional_field(&record, name_index);
-        let exchange = parse_optional_field(&record, exchange_index).to_uppercase();
+        let name = sanitize_str(&parse_optional_field(&record, name_index));
+        let exchange = sanitize_str(&parse_optional_field(&record, exchange_index)).to_uppercase();
 
         if name.len() > crate::config::MAX_FIELD_LEN {
             return Err(format!("Row {}: name exceeds maximum length", row));
@@ -277,13 +289,31 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
         } else {
             Some(iad_currency_str.to_uppercase())
         };
-        let div_freq_str = parse_optional_field(&record, dividend_frequency_index);
+        let div_freq_str = parse_optional_field(&record, dividend_frequency_index).to_lowercase();
+        const VALID_FREQS: &[&str] =
+            &["monthly", "quarterly", "semi-annual", "annual", "irregular"];
+        if !div_freq_str.is_empty() && !VALID_FREQS.contains(&div_freq_str.as_str()) {
+            return Err(format!(
+                "Row {}: invalid dividend_frequency '{}'. Valid: {}",
+                row,
+                div_freq_str,
+                VALID_FREQS.join(", ")
+            ));
+        }
         let dividend_frequency = if div_freq_str.is_empty() {
             None
         } else {
-            Some(div_freq_str.to_lowercase())
+            Some(div_freq_str)
         };
         let maturity_date_str = parse_optional_field(&record, maturity_date_index);
+        if !maturity_date_str.is_empty() {
+            chrono::NaiveDate::parse_from_str(&maturity_date_str, "%Y-%m-%d").map_err(|_| {
+                format!(
+                    "Row {}: invalid maturity_date '{}' (expected YYYY-MM-DD)",
+                    row, maturity_date_str
+                )
+            })?;
+        }
         let maturity_date = if maturity_date_str.is_empty() {
             None
         } else {

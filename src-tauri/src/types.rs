@@ -477,6 +477,7 @@ pub struct RefreshResult {
 }
 
 /// Full data export payload — includes all user data for backup/restore.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportPayload {
