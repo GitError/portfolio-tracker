@@ -128,7 +128,9 @@ async fn validate_symbol(
         .find(|candidate| candidate.symbol.eq_ignore_ascii_case(symbol));
 
     if let Some(ref symbol_result) = result {
-        let _ = db::upsert_symbol(pool, symbol_result).await;
+        if let Err(e) = db::upsert_symbol(pool, symbol_result).await {
+            tracing::warn!("Failed to cache symbol: {}", e);
+        }
     }
 
     Ok(result)
@@ -720,7 +722,9 @@ pub async fn search_symbols(
     {
         let pool = &db.0;
         for r in &results {
-            let _ = db::upsert_symbol(pool, r).await;
+            if let Err(e) = db::upsert_symbol(pool, r).await {
+                tracing::warn!("Failed to cache symbol: {}", e);
+            }
         }
     }
     cache.set(key, results.clone());
@@ -798,13 +802,26 @@ pub async fn add_dividend(
     dividend: DividendInput,
 ) -> Result<Dividend, String> {
     let pool = &db.0;
-    // Look up the symbol for the holding with a targeted query (avoids N+1)
-    let symbol: Option<String> = sqlx::query_scalar("SELECT symbol FROM holdings WHERE id = $1")
-        .bind(&dividend.holding_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-    let symbol = symbol.unwrap_or_default();
+    // Look up the symbol and currency for the holding with a targeted query (avoids N+1)
+    let row: Option<(String, String)> =
+        sqlx::query_as("SELECT symbol, currency FROM holdings WHERE id = $1")
+            .bind(&dividend.holding_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    let (symbol, holding_currency) = match row {
+        Some((s, c)) => (s, c),
+        None => (String::new(), String::new()),
+    };
+    // Validate that the dividend currency matches the holding's currency.
+    if !holding_currency.is_empty()
+        && holding_currency.to_uppercase() != dividend.currency.to_uppercase()
+    {
+        return Err(format!(
+            "Dividend currency {} does not match holding currency {}",
+            dividend.currency, holding_currency
+        ));
+    }
     db::insert_dividend(pool, dividend, &symbol).await
 }
 
@@ -846,174 +863,6 @@ pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, Str
     db::reset_alert(pool, &id).await
 }
 
-#[tauri::command]
-pub async fn export_data(state: State<'_, DbState>) -> Result<String, String> {
-    let pool = &state.0;
-    let payload = crate::types::ExportPayload {
-        holdings: db::get_all_holdings(pool).await?,
-        alerts: db::get_alerts(pool).await?,
-        config: db::get_all_config(pool).await?,
-        transactions: db::get_all_transactions(pool).await?,
-        dividends: db::get_dividends(pool).await?,
-    };
-    serde_json::to_string(&payload).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn import_data(state: State<'_, DbState>, json: String) -> Result<usize, String> {
-    // Try full ExportPayload first; fall back to legacy plain Vec<Holding> format.
-    let payload: crate::types::ExportPayload = if let Ok(p) = serde_json::from_str(&json) {
-        p
-    } else {
-        let holdings: Vec<Holding> =
-            serde_json::from_str(&json).map_err(|e| format!("Invalid JSON: {e}"))?;
-        crate::types::ExportPayload {
-            holdings,
-            alerts: vec![],
-            config: vec![],
-            transactions: vec![],
-            dividends: vec![],
-        }
-    };
-
-    let count = payload.holdings.len();
-    let pool = &state.0;
-
-    // Wrap all DELETEs and INSERTs in a single transaction so that any failure
-    // leaves the database fully intact (either fully restored or fully rolled back).
-    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
-
-    let result: Result<(), String> = async {
-        // ── DELETEs ──────────────────────────────────────────────────────────
-        sqlx::query("DELETE FROM transactions")
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM dividends")
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM holdings")
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM price_alerts")
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        sqlx::query("DELETE FROM app_config")
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        // ── INSERTs ──────────────────────────────────────────────────────────
-        for holding in payload.holdings {
-            sqlx::query(
-                "INSERT OR REPLACE INTO holdings
-                 (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)",
-            )
-            .bind(&holding.id)
-            .bind(&holding.symbol)
-            .bind(&holding.name)
-            .bind(holding.asset_type.as_str())
-            .bind(holding.account.as_str())
-            .bind(&holding.account_id)
-            .bind(holding.quantity)
-            .bind(holding.cost_basis)
-            .bind(&holding.currency)
-            .bind(&holding.exchange)
-            .bind(holding.target_weight)
-            .bind(&holding.created_at)
-            .bind(&holding.updated_at)
-            .bind(holding.indicated_annual_dividend)
-            .bind(&holding.indicated_annual_dividend_currency)
-            .bind(&holding.dividend_frequency)
-            .bind(&holding.maturity_date)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        }
-
-        for alert in payload.alerts {
-            sqlx::query(
-                "INSERT OR REPLACE INTO price_alerts
-                 (id, symbol, direction, threshold, currency, note, triggered, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-            )
-            .bind(&alert.id)
-            .bind(&alert.symbol)
-            .bind(alert.direction.as_str())
-            .bind(alert.threshold)
-            .bind(&alert.currency)
-            .bind(&alert.note)
-            .bind(alert.triggered)
-            .bind(&alert.created_at)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        }
-
-        for (key, value) in payload.config {
-            sqlx::query(
-                "INSERT INTO app_config (key, value) VALUES ($1, $2)
-                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            )
-            .bind(&key)
-            .bind(&value)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        }
-
-        for transaction in payload.transactions {
-            sqlx::query(
-                "INSERT OR REPLACE INTO transactions
-                 (id, holding_id, transaction_type, quantity, price, transacted_at, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            )
-            .bind(&transaction.id)
-            .bind(&transaction.holding_id)
-            .bind(transaction.transaction_type.as_str())
-            .bind(transaction.quantity)
-            .bind(transaction.price)
-            .bind(&transaction.transacted_at)
-            .bind(&transaction.created_at)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        }
-
-        for dividend in payload.dividends {
-            sqlx::query(
-                "INSERT OR REPLACE INTO dividends
-                 (id, holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)",
-            )
-            .bind(dividend.id)
-            .bind(&dividend.holding_id)
-            .bind(dividend.amount_per_unit)
-            .bind(&dividend.currency)
-            .bind(&dividend.ex_date)
-            .bind(&dividend.pay_date)
-            .bind(&dividend.created_at)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
-    }
-    .await;
-
-    if let Err(e) = result {
-        let _ = tx.rollback().await;
-        return Err(e);
-    }
-    tx.commit().await.map_err(|e| e.to_string())?;
-    Ok(count)
-}
-
 /// SQLite magic bytes: first 16 bytes of a valid SQLite database file.
 const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
 
@@ -1049,29 +898,36 @@ pub async fn backup_database(
 
     // Resolve the destination path. If only a filename is provided (no
     // directory component), save the backup to the app data directory.
-    // Absolute paths are accepted only if their parent is the app data
-    // directory — this prevents writing backup files to arbitrary locations.
+    // Absolute paths are accepted only if they resolve (after canonicalization)
+    // to a path inside the app data directory — this prevents symlink-based
+    // path traversal and writing backup files to arbitrary locations.
     let requested = std::path::PathBuf::from(&destination_path);
     let dest = if requested.is_absolute() {
-        let parent = requested
-            .parent()
-            .ok_or_else(|| "Destination path has no parent directory".to_string())?;
-        // Canonicalize both sides to resolve symlinks / ".." components before
-        // comparing; fall back to the non-canonical paths if they don't exist yet.
-        let canonical_parent =
-            std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-        let canonical_app_data =
-            std::fs::canonicalize(&app_data_dir).unwrap_or_else(|_| app_data_dir.clone());
-        if canonical_parent != canonical_app_data {
-            return Err(format!(
-                "Backup destination must be inside the app data directory ({})",
-                app_data_dir.display()
-            ));
-        }
         requested
     } else {
         app_data_dir.join(&requested)
     };
+
+    // Canonicalize the app data dir (must exist).
+    let canonical_app_dir = std::fs::canonicalize(&app_data_dir)
+        .map_err(|e| format!("Cannot resolve app dir: {e}"))?;
+    // Canonicalize dest — if the file doesn't exist yet, canonicalize its parent
+    // to still resolve any symlinks in the directory component.
+    let canonical_dest = std::fs::canonicalize(&dest).unwrap_or_else(|_| {
+        if let Some(parent) = dest.parent() {
+            std::fs::canonicalize(parent)
+                .unwrap_or_else(|_| parent.to_path_buf())
+                .join(dest.file_name().unwrap_or_default())
+        } else {
+            dest.clone()
+        }
+    });
+    if !canonical_dest.starts_with(&canonical_app_dir) {
+        return Err(format!(
+            "Backup destination must be inside the app data directory ({})",
+            app_data_dir.display()
+        ));
+    }
 
     if let Some(parent) = dest.parent() {
         if !parent.as_os_str().is_empty() {
@@ -1441,23 +1297,15 @@ pub(crate) async fn get_symbol_metadata_with_cache(
 
         // Persist to cache (best-effort)
         if let Some(pool) = pool {
-            let _ = db::upsert_symbol_fundamentals(pool, &meta).await;
+            if let Err(e) = db::upsert_symbol_fundamentals(pool, &meta).await {
+                tracing::warn!("Failed to cache symbol fundamentals: {}", e);
+            }
         }
 
         results[original_idx] = Some(meta);
     }
 
     Ok(results.into_iter().flatten().collect())
-}
-
-#[tauri::command]
-pub async fn get_symbol_metadata(
-    state: State<'_, DbState>,
-    http: State<'_, HttpClient>,
-    symbols: Vec<String>,
-) -> Result<Vec<SymbolMetadata>, String> {
-    let pool = &state.0;
-    get_symbol_metadata_with_cache(&http.0, &symbols, Some(pool)).await
 }
 
 fn compute_portfolio_analytics(
