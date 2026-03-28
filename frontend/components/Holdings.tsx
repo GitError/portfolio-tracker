@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -13,6 +13,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
+import { useConfig } from '../hooks/useConfig';
 import { AddHoldingModal } from './AddHoldingModal';
 import { AddTransactionModal } from './AddTransactionModal';
 import { ImportHoldingsModal } from './ImportHoldingsModal';
@@ -177,10 +178,30 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [txModalHolding, setTxModalHolding] = useState<Holding | undefined>(undefined);
   const [groupByAccount, setGroupByAccount] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [showPrevClose, setShowPrevClose] = useState(false);
-  const [showOpen, setShowOpen] = useState(false);
-  const [showMaturity, setShowMaturity] = useState(false);
-  const [showOpenDate, setShowOpenDate] = useState(false);
+  const [colPickerOpen, setColPickerOpen] = useState(false);
+  const colPickerRef = useRef<HTMLDivElement>(null);
+  const { value: hiddenColumnsRaw, setValue: setHiddenColumnsRaw } = useConfig(
+    'holdings_hidden_columns',
+    JSON.stringify([
+      'prevClose',
+      'dayOpen',
+      'openDate',
+      'maturityDate',
+      'weight',
+      'targetWeight',
+      'targetDeltaPercent',
+      'targetDeltaValue',
+      'exchange',
+      'gainLossPercent',
+    ])
+  );
+  const hiddenColumns = useMemo<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(hiddenColumnsRaw) as string[]);
+    } catch {
+      return new Set();
+    }
+  }, [hiddenColumnsRaw]);
   const [priceMap, setPriceMap] = useState<Record<string, PriceData>>({});
 
   // Auto-open the add-holding modal when navigated here via keyboard shortcut (?add=1)
@@ -472,6 +493,59 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     }
   }, [onExportRef, handleExport]);
 
+  useEffect(() => {
+    if (!colPickerOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (colPickerRef.current && !colPickerRef.current.contains(e.target as Node)) {
+        setColPickerOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [colPickerOpen]);
+
+  const ALWAYS_VISIBLE_COLS = new Set(['symbol', 'marketValueCad']);
+
+  const ALL_COLUMNS: { key: string; label: string; align: 'left' | 'right' }[] = [
+    { key: 'symbol', label: t('holdings.columns.symbol'), align: 'left' },
+    { key: 'name', label: t('holdings.columns.name'), align: 'left' },
+    { key: 'assetType', label: t('holdings.columns.type'), align: 'left' },
+    { key: 'account', label: t('holdings.columns.account'), align: 'left' },
+    { key: 'exchange', label: t('holdings.columns.exchange'), align: 'left' },
+    { key: 'quantity', label: t('holdings.columns.quantity'), align: 'right' },
+    { key: 'costBasis', label: t('holdings.columns.costBasis'), align: 'right' },
+    { key: 'currentPrice', label: t('holdings.columns.currentPrice'), align: 'right' },
+    {
+      key: 'marketValueCad',
+      label: `${t('holdings.columns.marketValue')} (${baseCurrency})`,
+      align: 'right',
+    },
+    { key: 'weight', label: 'Current %', align: 'right' },
+    { key: 'targetWeight', label: t('holdings.columns.targetWeight'), align: 'right' },
+    { key: 'targetDeltaPercent', label: 'Delta %', align: 'right' },
+    { key: 'targetDeltaValue', label: `Rebalance (${baseCurrency})`, align: 'right' },
+    {
+      key: 'gainLoss',
+      label: `${t('holdings.columns.gainLoss')} (${baseCurrency})`,
+      align: 'right',
+    },
+    { key: 'gainLossPercent', label: 'G/L %', align: 'right' },
+    { key: 'prevClose', label: 'Prev Close', align: 'right' },
+    { key: 'dayOpen', label: 'Day Open', align: 'right' },
+    { key: 'openDate', label: 'Open Date', align: 'right' },
+    { key: 'maturityDate', label: 'Maturity', align: 'right' },
+  ];
+
+  function toggleHiddenColumn(key: string) {
+    const next = new Set(hiddenColumns);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    void setHiddenColumnsRaw(JSON.stringify(Array.from(next)));
+  }
+
   return (
     <div>
       {/* Top bar */}
@@ -549,39 +623,90 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             ]}
             style={{ width: 160 }}
           />
-          {/* Column visibility toggles */}
-          {[
-            {
-              label: 'Prev Close',
-              active: showPrevClose,
-              toggle: () => setShowPrevClose((v) => !v),
-            },
-            { label: 'Day Open', active: showOpen, toggle: () => setShowOpen((v) => !v) },
-            { label: 'Open Date', active: showOpenDate, toggle: () => setShowOpenDate((v) => !v) },
-            { label: 'Maturity', active: showMaturity, toggle: () => setShowMaturity((v) => !v) },
-          ].map(({ label, active, toggle }) => (
+          {/* Column visibility dropdown */}
+          <div ref={colPickerRef} style={{ position: 'relative' }}>
             <button
-              key={label}
-              onClick={toggle}
+              onClick={() => setColPickerOpen((v) => !v)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 4,
                 padding: '6px 10px',
-                background: active ? 'rgba(59,130,246,0.12)' : 'var(--bg-surface)',
-                border: active
+                background: colPickerOpen ? 'rgba(59,130,246,0.12)' : 'var(--bg-surface)',
+                border: colPickerOpen
                   ? '1px solid var(--color-accent)'
                   : '1px solid var(--border-primary)',
-                color: active ? 'var(--color-accent)' : 'var(--text-muted)',
+                color: colPickerOpen ? 'var(--color-accent)' : 'var(--text-muted)',
                 borderRadius: '2px',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 10,
                 cursor: 'pointer',
               }}
             >
-              {label}
+              Columns
             </button>
-          ))}
+            {colPickerOpen && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: 4,
+                  zIndex: 200,
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 2,
+                  maxHeight: 360,
+                  overflowY: 'auto',
+                  minWidth: 160,
+                }}
+              >
+                {ALL_COLUMNS.map((col) => {
+                  const isAlways = ALWAYS_VISIBLE_COLS.has(col.key);
+                  const isVisible = !hiddenColumns.has(col.key);
+                  return (
+                    <label
+                      key={col.key}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '6px 12px',
+                        cursor: isAlways ? 'not-allowed' : 'pointer',
+                        opacity: isAlways ? 0.45 : 1,
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 11,
+                        color: 'var(--text-primary)',
+                        userSelect: 'none',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isAlways)
+                          (e.currentTarget as HTMLElement).style.background =
+                            'var(--bg-surface-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'transparent';
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isVisible}
+                        disabled={isAlways}
+                        onChange={() => {
+                          if (!isAlways) toggleHiddenColumn(col.key);
+                        }}
+                        style={{
+                          accentColor: 'var(--color-accent)',
+                          cursor: isAlways ? 'not-allowed' : 'pointer',
+                        }}
+                      />
+                      {col.label}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setGroupByAccount((prev) => !prev)}
             title={groupByAccount ? 'Disable group by account' : 'Group by account'}
@@ -1398,28 +1523,38 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
                       />
                     </th>
-                    {columns.map(({ key, label, align }) => (
-                      <th
-                        key={key}
-                        onClick={() => toggleSort(key)}
-                        style={{ ...TH, textAlign: align }}
-                      >
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                          {label}
-                          {sort.key === key ? (
-                            sort.dir === 'asc' ? (
-                              <ChevronUp size={10} />
-                            ) : (
-                              <ChevronDown size={10} />
-                            )
-                          ) : null}
-                        </span>
-                      </th>
-                    ))}
-                    {showPrevClose && <th style={{ ...TH, textAlign: 'right' }}>Prev Close</th>}
-                    {showOpen && <th style={{ ...TH, textAlign: 'right' }}>Day Open</th>}
-                    {showOpenDate && <th style={{ ...TH, textAlign: 'right' }}>Open Date</th>}
-                    {showMaturity && <th style={{ ...TH, textAlign: 'right' }}>Maturity</th>}
+                    {columns
+                      .filter(({ key }) => !hiddenColumns.has(key))
+                      .map(({ key, label, align }) => (
+                        <th
+                          key={key}
+                          onClick={() => toggleSort(key)}
+                          style={{ ...TH, textAlign: align }}
+                        >
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            {label}
+                            {sort.key === key ? (
+                              sort.dir === 'asc' ? (
+                                <ChevronUp size={10} />
+                              ) : (
+                                <ChevronDown size={10} />
+                              )
+                            ) : null}
+                          </span>
+                        </th>
+                      ))}
+                    {!hiddenColumns.has('prevClose') && (
+                      <th style={{ ...TH, textAlign: 'right' }}>Prev Close</th>
+                    )}
+                    {!hiddenColumns.has('dayOpen') && (
+                      <th style={{ ...TH, textAlign: 'right' }}>Day Open</th>
+                    )}
+                    {!hiddenColumns.has('openDate') && (
+                      <th style={{ ...TH, textAlign: 'right' }}>Open Date</th>
+                    )}
+                    {!hiddenColumns.has('maturityDate') && (
+                      <th style={{ ...TH, textAlign: 'right' }}>Maturity</th>
+                    )}
                     <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
                   </tr>
                 </thead>
@@ -1474,74 +1609,90 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         >
                           {h.symbol}
                         </td>
-                        <td
-                          style={{
-                            ...TD,
-                            color: 'var(--text-secondary)',
-                            maxWidth: 160,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                          }}
-                        >
-                          {h.name}
-                        </td>
-                        <td style={TD}>
-                          <Badge type={h.assetType} />
-                        </td>
-                        <td style={TD}>
-                          <AccountBadge account={h.account} />
-                        </td>
-                        <td style={TD}>
-                          {h.exchange ? (
-                            <ExchangeBadge exchange={h.exchange} />
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>—</span>
-                          )}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: 'var(--text-secondary)',
-                          }}
-                        >
-                          {formatNumber(h.quantity, h.assetType === 'crypto' ? 4 : 2)}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: 'var(--text-secondary)',
-                          }}
-                        >
-                          {formatNumber(h.costBasis, 2)} {h.currency}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: 'var(--text-primary)',
-                          }}
-                        >
-                          {h.assetType === 'cash' ? (
-                            '—'
-                          ) : (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              {formatNumber(h.currentPrice, 2)} {h.currency}
-                              {isPriceStale(portfolio?.lastUpdated) && (
-                                <span title="Price may be stale (last refreshed over 2h ago)">
-                                  <Clock
-                                    size={10}
-                                    style={{ color: 'var(--color-warning)', flexShrink: 0 }}
-                                  />
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </td>
+                        {!hiddenColumns.has('name') && (
+                          <td
+                            style={{
+                              ...TD,
+                              color: 'var(--text-secondary)',
+                              maxWidth: 160,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {h.name}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('assetType') && (
+                          <td style={TD}>
+                            <Badge type={h.assetType} />
+                          </td>
+                        )}
+                        {!hiddenColumns.has('account') && (
+                          <td style={TD}>
+                            <AccountBadge account={h.account} />
+                          </td>
+                        )}
+                        {!hiddenColumns.has('exchange') && (
+                          <td style={TD}>
+                            {h.exchange ? (
+                              <ExchangeBadge exchange={h.exchange} />
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            )}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('quantity') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {formatNumber(h.quantity, h.assetType === 'crypto' ? 4 : 2)}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('costBasis') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {formatNumber(h.costBasis, 2)} {h.currency}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('currentPrice') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-primary)',
+                            }}
+                          >
+                            {h.assetType === 'cash' ? (
+                              '—'
+                            ) : (
+                              <span
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              >
+                                {formatNumber(h.currentPrice, 2)} {h.currency}
+                                {isPriceStale(portfolio?.lastUpdated) && (
+                                  <span title="Price may be stale (last refreshed over 2h ago)">
+                                    <Clock
+                                      size={10}
+                                      style={{ color: 'var(--color-warning)', flexShrink: 0 }}
+                                    />
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </td>
+                        )}
                         <td
                           style={{
                             ...TD,
@@ -1553,78 +1704,91 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         >
                           {formatCurrency(h.marketValueCad, baseCurrency)}
                         </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: 'var(--text-secondary)',
-                          }}
-                        >
-                          {h.weight.toFixed(1)}%
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                          }}
-                        >
-                          {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: pnlColor(h.targetDeltaPercent),
-                          }}
-                        >
-                          {h.targetWeight > 0 || h.assetType === 'cash'
-                            ? formatPercent(h.targetDeltaPercent)
-                            : '—'}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color: pnlColor(h.targetDeltaValue),
-                            fontWeight: 600,
-                          }}
-                        >
-                          {h.targetWeight > 0 || h.assetType === 'cash'
-                            ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
-                            : '—'}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color:
-                              h.assetType === 'cash' ? 'var(--text-muted)' : pnlColor(h.gainLoss),
-                          }}
-                        >
-                          {h.assetType === 'cash'
-                            ? '—'
-                            : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss, baseCurrency)}`}
-                        </td>
-                        <td
-                          style={{
-                            ...TD,
-                            textAlign: 'right',
-                            fontFamily: 'var(--font-mono)',
-                            color:
-                              h.assetType === 'cash'
-                                ? 'var(--text-muted)'
-                                : pnlColor(h.gainLossPercent),
-                          }}
-                        >
-                          {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}
-                        </td>
-                        {showPrevClose && (
+                        {!hiddenColumns.has('weight') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: 'var(--text-secondary)',
+                            }}
+                          >
+                            {h.weight.toFixed(1)}%
+                          </td>
+                        )}
+                        {!hiddenColumns.has('targetWeight') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color:
+                                h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                            }}
+                          >
+                            {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('targetDeltaPercent') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: pnlColor(h.targetDeltaPercent),
+                            }}
+                          >
+                            {h.targetWeight > 0 || h.assetType === 'cash'
+                              ? formatPercent(h.targetDeltaPercent)
+                              : '—'}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('targetDeltaValue') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color: pnlColor(h.targetDeltaValue),
+                              fontWeight: 600,
+                            }}
+                          >
+                            {h.targetWeight > 0 || h.assetType === 'cash'
+                              ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
+                              : '—'}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('gainLoss') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color:
+                                h.assetType === 'cash' ? 'var(--text-muted)' : pnlColor(h.gainLoss),
+                            }}
+                          >
+                            {h.assetType === 'cash'
+                              ? '—'
+                              : `${h.gainLoss >= 0 ? '+' : ''}${formatCurrency(h.gainLoss, baseCurrency)}`}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('gainLossPercent') && (
+                          <td
+                            style={{
+                              ...TD,
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-mono)',
+                              color:
+                                h.assetType === 'cash'
+                                  ? 'var(--text-muted)'
+                                  : pnlColor(h.gainLossPercent),
+                            }}
+                          >
+                            {h.assetType === 'cash' ? '—' : formatPercent(h.gainLossPercent)}
+                          </td>
+                        )}
+                        {!hiddenColumns.has('prevClose') && (
                           <td
                             style={{
                               ...TD,
@@ -1643,7 +1807,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                 })()}
                           </td>
                         )}
-                        {showOpen && (
+                        {!hiddenColumns.has('dayOpen') && (
                           <td
                             style={{
                               ...TD,
@@ -1662,7 +1826,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                 })()}
                           </td>
                         )}
-                        {showOpenDate && (
+                        {!hiddenColumns.has('openDate') && (
                           <td
                             style={{
                               ...TD,
@@ -1674,7 +1838,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                             {formatShortDate(h.createdAt)}
                           </td>
                         )}
-                        {showMaturity &&
+                        {!hiddenColumns.has('maturityDate') &&
                           (() => {
                             const md = h.maturityDate;
                             if (!md) return <td style={TD} />;
