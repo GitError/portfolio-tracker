@@ -41,8 +41,12 @@ function AppRoutes() {
   const { value: baseCurrency, setValue: setBaseCurrency } = useConfig('base_currency', 'CAD');
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
 
+  const handleRefresh = useCallback(async (): Promise<void> => {
+    await refreshPrices();
+  }, [refreshPrices]);
+
   const { countdown } = useAutoRefresh({
-    onRefresh: refreshPrices,
+    onRefresh: handleRefresh,
   });
 
   const [currencyChanging, setCurrencyChanging] = useState(false);
