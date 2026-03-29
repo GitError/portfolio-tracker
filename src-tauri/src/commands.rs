@@ -2141,7 +2141,7 @@ pub async fn get_holdings_paginated(
     if page < 1 {
         return Err("page must be >= 1".to_string());
     }
-    if page_size < 1 || page_size > 500 {
+    if !(1..=500).contains(&page_size) {
         return Err("page_size must be between 1 and 500".to_string());
     }
     let pool = &db.0;
@@ -2158,7 +2158,7 @@ pub async fn get_transactions_paginated(
     if page < 1 {
         return Err("page must be >= 1".to_string());
     }
-    if page_size < 1 || page_size > 500 {
+    if !(1..=500).contains(&page_size) {
         return Err("page_size must be between 1 and 500".to_string());
     }
     let pool = &db.0;
@@ -2174,7 +2174,7 @@ pub async fn get_alerts_paginated(
     if page < 1 {
         return Err("page must be >= 1".to_string());
     }
-    if page_size < 1 || page_size > 500 {
+    if !(1..=500).contains(&page_size) {
         return Err("page_size must be between 1 and 500".to_string());
     }
     let pool = &db.0;
@@ -2190,7 +2190,7 @@ pub async fn get_dividends_paginated(
     if page < 1 {
         return Err("page must be >= 1".to_string());
     }
-    if page_size < 1 || page_size > 500 {
+    if !(1..=500).contains(&page_size) {
         return Err("page_size must be between 1 and 500".to_string());
     }
     let pool = &db.0;
