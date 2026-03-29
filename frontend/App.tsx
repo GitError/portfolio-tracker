@@ -30,6 +30,8 @@ function AppRoutes() {
   const {
     portfolio,
     loading,
+    isRefreshing,
+    isOffline,
     error,
     failedSymbols,
     triggeredAlertIds,
@@ -131,6 +133,8 @@ function AppRoutes() {
             <Layout
               portfolio={portfolio}
               loading={loading || currencyChanging}
+              isRefreshing={isRefreshing}
+              isOffline={isOffline}
               onRefresh={refreshPrices}
               baseCurrency={baseCurrency}
               onBaseCurrencyChange={handleBaseCurrencyChange}

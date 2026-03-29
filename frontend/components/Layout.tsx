@@ -6,6 +6,8 @@ import type { PortfolioSnapshot } from '../types/portfolio';
 interface LayoutProps {
   portfolio: PortfolioSnapshot | null;
   loading: boolean;
+  isRefreshing?: boolean | undefined;
+  isOffline?: boolean | undefined;
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
@@ -17,6 +19,8 @@ interface LayoutProps {
 export function Layout({
   portfolio,
   loading,
+  isRefreshing,
+  isOffline,
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
@@ -38,6 +42,8 @@ export function Layout({
         <TopBar
           portfolio={portfolio}
           loading={loading}
+          isRefreshing={isRefreshing}
+          isOffline={isOffline}
           onRefresh={onRefresh}
           baseCurrency={baseCurrency}
           onBaseCurrencyChange={onBaseCurrencyChange}
