@@ -25,6 +25,10 @@ export interface UsePortfolioReturn {
   portfolio: PortfolioSnapshot | null;
   holdings: Holding[];
   loading: boolean;
+  /** True while a background price refresh is in-flight (does not block the UI). */
+  isRefreshing: boolean;
+  /** True when operating from a cached snapshot because the backend is unreachable. */
+  isOffline: boolean;
   error: string | null;
   failedSymbols: string[];
   /** IDs of price alerts triggered during the last price refresh. */
@@ -139,10 +143,37 @@ function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
   };
 }
 
+const CACHE_KEY = 'portfolio_snapshot_cache';
+
+interface PortfolioCache {
+  snapshot: PortfolioSnapshot;
+  holdings: Holding[];
+}
+
+function loadCachedPortfolio(): PortfolioCache | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as PortfolioCache;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedPortfolio(snapshot: PortfolioSnapshot, holdings: Holding[]): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ snapshot, holdings }));
+  } catch {
+    /* storage may be full — best effort */
+  }
+}
+
 function usePortfolioState(): UsePortfolioReturn {
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [triggeredAlertIds, setTriggeredAlertIds] = useState<string[]>([]);
@@ -152,6 +183,13 @@ function usePortfolioState(): UsePortfolioReturn {
 
   /** Tracks the in-flight refresh promise to deduplicate concurrent calls (#381). */
   const pendingRefreshRef = useRef<Promise<RefreshResult | null> | null>(null);
+  /** Kept in sync with isOffline state so write callbacks can read it without a dep. */
+  const isOfflineRef = useRef(false);
+
+  // Keep isOfflineRef in sync so write callbacks can guard without a stale closure
+  useEffect(() => {
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
 
   const refreshAlerts = useCallback(async () => {
     if (!isTauri()) return;
@@ -179,13 +217,24 @@ function usePortfolioState(): UsePortfolioReturn {
         ]);
         setPortfolio(snap);
         setHoldings(rawHoldings);
+        setIsOffline(false);
+        saveCachedPortfolio(snap, rawHoldings);
       } else {
         await new Promise((r) => setTimeout(r, 500));
         setPortfolio(MOCK_SNAPSHOT);
         setHoldings(MOCK_HOLDINGS);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // Try to serve the last-known snapshot from localStorage
+      const cached = loadCachedPortfolio();
+      if (cached) {
+        setPortfolio(cached.snapshot);
+        setHoldings(cached.holdings);
+        setIsOffline(true);
+        setError(null);
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setLoading(false);
     }
@@ -202,6 +251,8 @@ function usePortfolioState(): UsePortfolioReturn {
         ]);
         setPortfolio(snap);
         setHoldings(rawHoldings);
+        setIsOffline(false);
+        saveCachedPortfolio(snap, rawHoldings);
       } else {
         await new Promise((r) => setTimeout(r, 500));
         setPortfolio(MOCK_SNAPSHOT);
@@ -224,7 +275,7 @@ function usePortfolioState(): UsePortfolioReturn {
     if (pendingRefreshRef.current) {
       return pendingRefreshRef.current;
     }
-    setLoading(true);
+    setIsRefreshing(true);
     setError(null);
     setFailedSymbols([]);
     setAlertRefreshErrors([]);
@@ -243,7 +294,7 @@ function usePortfolioState(): UsePortfolioReturn {
             await refreshAlerts();
           }
           // alertErrors surfaced in UI via alertRefreshErrors state
-          await loadPortfolio();
+          await loadPortfolioSilent();
           return result;
         } else {
           await new Promise((r) => setTimeout(r, 800));
@@ -255,13 +306,13 @@ function usePortfolioState(): UsePortfolioReturn {
         return null;
       } finally {
         pendingRefreshRef.current = null;
-        setLoading(false);
+        setIsRefreshing(false);
       }
     })();
 
     pendingRefreshRef.current = p;
     return p;
-  }, [loadPortfolio, refreshAlerts]);
+  }, [loadPortfolioSilent, refreshAlerts]);
 
   /** Public-facing refreshPrices: deduplicates in-flight requests, returns void. */
   const refreshPrices = useCallback(async (): Promise<void> => {
@@ -270,6 +321,7 @@ function usePortfolioState(): UsePortfolioReturn {
 
   const addHolding = useCallback(
     async (input: HoldingInput): Promise<Holding> => {
+      if (isOfflineRef.current) throw new Error('Cannot add holdings while offline');
       if (isTauri()) {
         const created = await tauriInvoke<Holding>('add_holding', { holding: input });
         // Reload silently — keep current portfolio visible while data refreshes
@@ -295,6 +347,7 @@ function usePortfolioState(): UsePortfolioReturn {
 
   const updateHolding = useCallback(
     async (holding: Holding): Promise<Holding> => {
+      if (isOfflineRef.current) throw new Error('Cannot update holdings while offline');
       if (isTauri()) {
         const updated = await tauriInvoke<Holding>('update_holding', { holding });
         // Reload silently — keep current portfolio visible while data refreshes
@@ -314,6 +367,7 @@ function usePortfolioState(): UsePortfolioReturn {
 
   const deleteHolding = useCallback(
     async (id: string): Promise<void> => {
+      if (isOfflineRef.current) throw new Error('Cannot delete holdings while offline');
       if (isTauri()) {
         // Optimistic: remove from UI immediately for instant feedback (#374)
         setPortfolio((prev) =>
@@ -430,6 +484,8 @@ function usePortfolioState(): UsePortfolioReturn {
     portfolio,
     holdings,
     loading,
+    isRefreshing,
+    isOffline,
     error,
     failedSymbols,
     triggeredAlertIds,
