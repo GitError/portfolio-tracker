@@ -9,8 +9,8 @@
 mod tests {
     use crate::db;
     use crate::types::{
-        AccountType, AlertDirection, AssetType, DividendInput, HoldingId, HoldingInput,
-        PriceAlertInput, TransactionInput, TransactionType,
+        AccountType, AlertDirection, AssetType, DividendInput, HoldingInput, PriceAlertInput,
+        TransactionInput, TransactionType,
     };
 
     // ── helpers ──────────────────────────────────────────────────────────────
