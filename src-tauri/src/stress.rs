@@ -119,6 +119,7 @@ mod tests {
             indicated_annual_dividend_currency: None,
             dividend_frequency: None,
             maturity_date: None,
+            fx_stale: false,
         }
     }
 
