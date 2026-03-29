@@ -274,6 +274,9 @@ pub struct HoldingWithPrice {
     pub target_delta_value: f64,
     pub target_delta_percent: f64,
     pub daily_change_percent: f64,
+    /// True when the FX rate for this holding's currency was not available;
+    /// values are shown in the source currency as a fallback.
+    pub fx_stale: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

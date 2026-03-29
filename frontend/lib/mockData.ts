@@ -34,6 +34,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '2',
@@ -59,6 +60,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '3',
@@ -84,6 +86,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '4',
@@ -109,6 +112,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '5',
@@ -134,6 +138,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   // ETFs
   {
@@ -160,6 +165,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '7',
@@ -185,6 +191,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   // Crypto
   {
@@ -211,6 +218,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '9',
@@ -236,6 +244,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   // Cash
   {
@@ -262,6 +271,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '11',
@@ -287,6 +297,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
   {
     id: '12',
@@ -312,6 +323,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     indicatedAnnualDividendCurrency: null,
     dividendFrequency: null,
     maturityDate: null,
+    fxStale: false,
   },
 ];
 
