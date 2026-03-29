@@ -2,6 +2,44 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use ts_rs::TS;
 
+// ── ID newtypes ───────────────────────────────────────────────────────────────
+
+/// Typed wrapper for a holding's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export)]
+#[serde(transparent)]
+pub struct HoldingId(pub String);
+
+impl std::fmt::Display for HoldingId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Typed wrapper for a price-alert's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export)]
+#[serde(transparent)]
+pub struct AlertId(pub String);
+
+impl std::fmt::Display for AlertId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Typed wrapper for a transaction's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export)]
+#[serde(transparent)]
+pub struct TransactionId(pub String);
+
+impl std::fmt::Display for TransactionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 // ── Transaction types ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
@@ -38,8 +76,8 @@ impl std::str::FromStr for TransactionType {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
-    pub id: String,
-    pub holding_id: String,
+    pub id: TransactionId,
+    pub holding_id: HoldingId,
     /// "buy" | "sell"
     pub transaction_type: TransactionType,
     pub quantity: f64,
@@ -54,7 +92,7 @@ pub struct Transaction {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
-    pub holding_id: String,
+    pub holding_id: HoldingId,
     pub transaction_type: TransactionType,
     pub quantity: f64,
     pub price: f64,
@@ -192,7 +230,7 @@ pub struct CreateAccountRequest {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Holding {
-    pub id: String,
+    pub id: HoldingId,
     pub symbol: String,
     pub name: String,
     pub asset_type: AssetType,
@@ -260,7 +298,7 @@ pub struct FxRate {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct HoldingWithPrice {
-    pub id: String,
+    pub id: HoldingId,
     pub symbol: String,
     pub name: String,
     pub asset_type: AssetType,
@@ -327,7 +365,7 @@ pub struct StressScenario {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct StressHoldingResult {
-    pub holding_id: String,
+    pub holding_id: HoldingId,
     pub symbol: String,
     pub name: String,
     pub current_value: f64,
@@ -419,7 +457,7 @@ pub struct PerformancePoint {
 #[serde(rename_all = "camelCase")]
 pub struct Dividend {
     pub id: i64,
-    pub holding_id: String,
+    pub holding_id: HoldingId,
     pub symbol: String,
     pub amount_per_unit: f64,
     pub currency: String,
@@ -432,7 +470,7 @@ pub struct Dividend {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DividendInput {
-    pub holding_id: String,
+    pub holding_id: HoldingId,
     pub amount_per_unit: f64,
     pub currency: String,
     pub ex_date: String,
@@ -473,7 +511,7 @@ impl std::str::FromStr for AlertDirection {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlert {
-    pub id: String,
+    pub id: AlertId,
     pub symbol: String,
     pub direction: AlertDirection,
     pub threshold: f64,
@@ -581,7 +619,7 @@ pub struct PortfolioAnalytics {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RebalanceSuggestion {
-    pub holding_id: String,
+    pub holding_id: HoldingId,
     pub symbol: String,
     pub name: String,
     pub current_value_cad: f64,

@@ -1,7 +1,7 @@
 use crate::types::{PortfolioSnapshot, StressHoldingResult, StressResult, StressScenario};
 
 #[cfg(test)]
-use crate::types::{AccountType, AssetType, HoldingWithPrice};
+use crate::types::{AccountType, AssetType, HoldingId, HoldingWithPrice};
 
 fn fx_shock_key(currency: &str, base_currency: &str) -> String {
     format!(
@@ -86,7 +86,7 @@ mod tests {
         value: f64,
     ) -> HoldingWithPrice {
         HoldingWithPrice {
-            id: symbol.to_string(),
+            id: HoldingId(symbol.to_string()),
             symbol: symbol.to_string(),
             name: symbol.to_string(),
             asset_type: asset_type.clone(),
