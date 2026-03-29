@@ -10,6 +10,8 @@ import type { PortfolioSnapshot } from '../types/portfolio';
 interface TopBarProps {
   portfolio: PortfolioSnapshot | null;
   loading: boolean;
+  isRefreshing?: boolean | undefined;
+  isOffline?: boolean | undefined;
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
@@ -147,6 +149,8 @@ function formatCountdown(seconds: number): string {
 export function TopBar({
   portfolio,
   loading,
+  isRefreshing = false,
+  isOffline = false,
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
@@ -167,15 +171,17 @@ export function TopBar({
   const rawDailyPct = prevValue !== 0 ? (dailyPnl / prevValue) * 100 : 0;
   const dailyPct = Number.isFinite(rawDailyPct) ? rawDailyPct : 0;
 
+  const isBusy = loading || isRefreshing;
   // Flash the countdown label in the last 10 seconds before refresh
-  const isUrgent = !loading && countdown !== null && countdown < 10;
+  const isUrgent = !isBusy && countdown !== null && countdown < 10;
 
   return (
     <div style={{ position: 'sticky', top: 0, zIndex: 5 }}>
       <div
         style={{
           background: 'var(--bg-primary)',
-          borderBottom: failedSymbols.length > 0 ? 'none' : '1px solid var(--border-primary)',
+          borderBottom:
+            failedSymbols.length > 0 || isOffline ? 'none' : '1px solid var(--border-primary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -219,16 +225,18 @@ export function TopBar({
           <span
             style={{
               fontSize: 11,
-              color: 'var(--text-muted)',
+              color: isRefreshing ? 'var(--color-accent)' : 'var(--text-muted)',
               fontFamily: 'var(--font-mono)',
               animation: isUrgent ? 'pulse 1s ease-in-out infinite' : 'none',
             }}
           >
             {loading
-              ? 'Refreshing...'
-              : countdown !== null
-                ? `Auto-refreshing in ${formatCountdown(countdown)}`
-                : `Updated ${updatedLabel}`}
+              ? 'Loading...'
+              : isRefreshing
+                ? 'Refreshing...'
+                : countdown !== null
+                  ? `Auto-refreshing in ${formatCountdown(countdown)}`
+                  : `Updated ${updatedLabel}`}
           </span>
 
           {/* Currency picker */}
@@ -237,7 +245,7 @@ export function TopBar({
           {/* Refresh button */}
           <button
             onClick={onRefresh}
-            disabled={loading}
+            disabled={isBusy}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -245,21 +253,63 @@ export function TopBar({
               padding: '5px 12px',
               background: 'transparent',
               border: '1px solid var(--border-primary)',
-              color: loading ? 'var(--text-muted)' : 'var(--text-secondary)',
+              color: isBusy ? 'var(--text-muted)' : 'var(--text-secondary)',
               borderRadius: '2px',
-              cursor: loading ? 'not-allowed' : 'pointer',
+              cursor: isBusy ? 'not-allowed' : 'pointer',
               fontSize: 12,
               fontFamily: 'var(--font-sans)',
             }}
           >
             <RefreshCw
               size={13}
-              style={{ animation: loading ? 'spin 0.7s linear infinite' : 'none' }}
+              style={{ animation: isBusy ? 'spin 0.7s linear infinite' : 'none' }}
             />
             {t('common.refresh')}
           </button>
         </div>
       </div>
+
+      {/* Offline banner */}
+      {isOffline && (
+        <div
+          style={{
+            background: 'rgba(59,130,246,0.08)',
+            borderBottom: failedSymbols.length > 0 ? 'none' : '1px solid var(--border-primary)',
+            borderTop: '1px solid rgba(59,130,246,0.3)',
+            padding: '6px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-accent)',
+          }}
+        >
+          <AlertTriangle size={12} />
+          <span>
+            Offline — showing last-known portfolio
+            {portfolio?.lastUpdated ? ` (${new Date(portfolio.lastUpdated).toLocaleString()})` : ''}
+          </span>
+          <button
+            onClick={onRefresh}
+            disabled={isBusy}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: '1px solid var(--color-accent)',
+              color: 'var(--color-accent)',
+              fontSize: 10,
+              fontFamily: 'var(--font-mono)',
+              padding: '2px 8px',
+              cursor: 'pointer',
+              borderRadius: '2px',
+              opacity: isBusy ? 0.5 : 1,
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Failed symbols warning banner */}
       {failedSymbols.length > 0 && (
@@ -281,7 +331,7 @@ export function TopBar({
           <span>Price refresh failed for: {failedSymbols.join(', ')} — showing cached prices</span>
           <button
             onClick={onRefresh}
-            disabled={loading}
+            disabled={isBusy}
             style={{
               marginLeft: 'auto',
               background: 'none',
@@ -292,7 +342,7 @@ export function TopBar({
               padding: '2px 8px',
               cursor: 'pointer',
               borderRadius: '2px',
-              opacity: loading ? 0.5 : 1,
+              opacity: isBusy ? 0.5 : 1,
             }}
           >
             Retry
