@@ -723,36 +723,29 @@ mod tests {
         );
     }
 
-    /// maturity_date is an optional free-text field; any value is accepted at the
-    /// parse layer — format validation is the caller's responsibility.
+    /// maturity_date must be in YYYY-MM-DD format; non-ISO dates are rejected at the parse layer.
     #[test]
-    fn parse_import_rows_non_iso_maturity_date_is_stored_as_is() {
+    fn parse_import_rows_non_iso_maturity_date_returns_error() {
         let csv = "symbol,name,type,quantity,cost_basis,currency,maturity_date\n\
                    GIC,GIC Bond,stock,1,1000,CAD,31/12/2030\n";
-        // parse_import_rows does not validate the date format; the value passes through
-        let rows =
-            parse_import_rows(csv).expect("parse should succeed (no date validation at CSV layer)");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(
-            rows[0].maturity_date.as_deref(),
-            Some("31/12/2030"),
-            "maturity_date stored verbatim at parse layer"
+        let err = parse_import_rows(csv)
+            .expect_err("non-ISO maturity_date should be rejected at parse layer");
+        assert!(
+            err.contains("maturity_date"),
+            "error should mention maturity_date, got: {err}"
         );
     }
 
-    /// dividend_frequency is stored verbatim; unrecognised values pass the parse
-    /// layer and are validated at the command layer when inserted into the DB.
+    /// dividend_frequency must be one of the known enum values; unrecognised values are rejected.
     #[test]
-    fn parse_import_rows_invalid_dividend_frequency_is_stored_as_lowercase() {
+    fn parse_import_rows_invalid_dividend_frequency_returns_error() {
         let csv = "symbol,name,type,quantity,cost_basis,currency,dividend_frequency\n\
                    AAPL,Apple Inc.,stock,10,150,USD,fortnightly\n";
-        let rows =
-            parse_import_rows(csv).expect("parse layer should accept unknown dividend_frequency");
-        assert_eq!(rows.len(), 1);
-        assert_eq!(
-            rows[0].dividend_frequency.as_deref(),
-            Some("fortnightly"),
-            "unrecognised frequency stored verbatim (lowercased)"
+        let err = parse_import_rows(csv)
+            .expect_err("unknown dividend_frequency should be rejected at parse layer");
+        assert!(
+            err.contains("dividend_frequency"),
+            "error should mention dividend_frequency, got: {err}"
         );
     }
 
