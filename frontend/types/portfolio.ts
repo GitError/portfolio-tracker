@@ -24,6 +24,7 @@ export interface HoldingInput {
   name: string;
   assetType: AssetType;
   account: AccountType;
+  accountId: string | null;
   quantity: number;
   costBasis: number;
   currency: string;

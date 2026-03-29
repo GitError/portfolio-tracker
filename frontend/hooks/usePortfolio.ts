@@ -98,6 +98,7 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
         cells[columnIndex('name')] || (assetType === 'cash' ? `${currency} Cash` : rawSymbol) || '',
       assetType,
       account: rawAccount || (assetType === 'cash' ? 'cash' : 'taxable'),
+      accountId: null,
       quantity: Number(cells[columnIndex('quantity')]),
       costBasis: Number(cells[columnIndex('cost_basis')]),
       currency,

@@ -307,6 +307,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         name: form.name,
         assetType: form.assetType,
         account: form.account,
+        accountId: null,
         quantity: parseFloat(form.quantity),
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
