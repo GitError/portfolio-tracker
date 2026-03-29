@@ -9,6 +9,7 @@ use tauri::{Manager, State};
 use crate::analytics::compute_realized_gains_grouped;
 use crate::csv::{build_holdings_csv, parse_import_rows};
 use crate::db;
+use crate::error::AppError;
 use crate::fx::fetch_all_fx_rates;
 use crate::portfolio::build_portfolio_snapshot;
 use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
@@ -35,9 +36,12 @@ async fn get_base_currency(pool: &SqlitePool) -> String {
 }
 
 #[tauri::command]
-pub async fn get_config_cmd(db: State<'_, DbState>, key: String) -> Result<Option<String>, String> {
+pub async fn get_config_cmd(
+    db: State<'_, DbState>,
+    key: String,
+) -> Result<Option<String>, AppError> {
     let pool = &db.0;
-    db::get_config(pool, &key).await
+    db::get_config(pool, &key).await.map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -45,7 +49,7 @@ pub async fn set_config_cmd(
     db: State<'_, DbState>,
     key: String,
     value: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     const ALLOWED_CONFIG_KEYS: &[&str] = &[
         "base_currency",
         "app_language",
@@ -56,7 +60,7 @@ pub async fn set_config_cmd(
         "notifications_enabled",
     ];
     if !ALLOWED_CONFIG_KEYS.contains(&key.as_str()) {
-        return Err(format!("Unknown config key: {key}"));
+        return Err(AppError::Validation(format!("Unknown config key: {key}")));
     }
     let pool = &db.0;
     let value = if key == "cost_basis_method" {
@@ -64,7 +68,9 @@ pub async fn set_config_cmd(
     } else {
         value
     };
-    db::set_config(pool, &key, &value).await
+    db::set_config(pool, &key, &value)
+        .await
+        .map_err(AppError::from)
 }
 
 pub(crate) struct SearchCacheEntry {
@@ -116,7 +122,7 @@ async fn validate_symbol(
     db: &State<'_, DbState>,
     client: &State<'_, HttpClient>,
     symbol: &str,
-) -> Result<Option<SymbolResult>, String> {
+) -> Result<Option<SymbolResult>, AppError> {
     let pool = &db.0;
     if let Some(cached) = db::get_symbol_cache_exact(pool, symbol).await? {
         return Ok(Some(cached));
@@ -140,7 +146,7 @@ async fn validate_symbol(
 pub async fn get_portfolio(
     db: State<'_, DbState>,
     _client: State<'_, HttpClient>,
-) -> Result<PortfolioSnapshot, String> {
+) -> Result<PortfolioSnapshot, AppError> {
     let pool = &db.0;
     let base_currency = get_base_currency(pool).await;
 
@@ -162,7 +168,7 @@ pub async fn get_portfolio(
                     cost_basis_method,
                     e
                 );
-                return Err(e);
+                return Err(AppError::from(e));
             }
         }
     };
@@ -183,76 +189,95 @@ pub async fn get_portfolio(
 }
 
 #[tauri::command]
-pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, String> {
+pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, AppError> {
     let pool = &db.0;
-    db::get_all_holdings(pool).await
+    db::get_all_holdings(pool).await.map_err(AppError::from)
 }
 
 const WEIGHT_EPSILON: f64 = 0.001;
 
 #[tauri::command]
-pub async fn add_holding(db: State<'_, DbState>, holding: HoldingInput) -> Result<Holding, String> {
+pub async fn add_holding(
+    db: State<'_, DbState>,
+    holding: HoldingInput,
+) -> Result<Holding, AppError> {
     if holding.quantity <= 0.0 || !holding.quantity.is_finite() {
-        return Err("quantity must be a positive finite number".to_string());
+        return Err(AppError::Validation(
+            "quantity must be a positive finite number".to_string(),
+        ));
     }
     if holding.cost_basis < 0.0 || !holding.cost_basis.is_finite() {
-        return Err("costBasis must be a non-negative finite number".to_string());
+        return Err(AppError::Validation(
+            "costBasis must be a non-negative finite number".to_string(),
+        ));
     }
     let currency = holding.currency.trim().to_uppercase();
     if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
-        return Err("currency must be a 3-letter ISO currency code".to_string());
+        return Err(AppError::Validation(
+            "currency must be a 3-letter ISO currency code".to_string(),
+        ));
     }
     let pool = &db.0;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(pool, None).await?;
         let new_total = current_sum + holding.target_weight;
         if new_total > 100.0 + WEIGHT_EPSILON {
-            return Err(format!(
+            return Err(AppError::Validation(format!(
                 "Total target weight would exceed 100% (currently {:.1}%). Adjust existing allocations before adding this holding.",
                 current_sum
-            ));
+            )));
         }
     }
-    db::insert_holding(pool, holding).await
+    db::insert_holding(pool, holding)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, String> {
+pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, AppError> {
     if holding.quantity <= 0.0 || !holding.quantity.is_finite() {
-        return Err("quantity must be a positive finite number".to_string());
+        return Err(AppError::Validation(
+            "quantity must be a positive finite number".to_string(),
+        ));
     }
     if holding.cost_basis < 0.0 || !holding.cost_basis.is_finite() {
-        return Err("costBasis must be a non-negative finite number".to_string());
+        return Err(AppError::Validation(
+            "costBasis must be a non-negative finite number".to_string(),
+        ));
     }
     let currency = holding.currency.trim().to_uppercase();
     if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
-        return Err("currency must be a 3-letter ISO currency code".to_string());
+        return Err(AppError::Validation(
+            "currency must be a 3-letter ISO currency code".to_string(),
+        ));
     }
     let pool = &db.0;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(pool, Some(&holding.id)).await?;
         let new_total = current_sum + holding.target_weight;
         if new_total > 100.0 + WEIGHT_EPSILON {
-            return Err(format!(
+            return Err(AppError::Validation(format!(
                 "Total target weight would exceed 100% (currently {:.1}% across other holdings). Adjust existing allocations before saving.",
                 current_sum
-            ));
+            )));
         }
     }
-    db::update_holding(pool, holding).await
+    db::update_holding(pool, holding)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn delete_holding(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+pub async fn delete_holding(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::delete_holding(pool, &id).await
+    db::delete_holding(pool, &id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn export_holdings_csv(db: State<'_, DbState>) -> Result<String, String> {
+pub async fn export_holdings_csv(db: State<'_, DbState>) -> Result<String, AppError> {
     let pool = &db.0;
     let holdings = db::get_all_holdings(pool).await?;
-    build_holdings_csv(&holdings)
+    build_holdings_csv(&holdings).map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -260,7 +285,7 @@ pub async fn import_holdings_csv(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
     csv_content: String,
-) -> Result<ImportResult, String> {
+) -> Result<ImportResult, AppError> {
     let parsed_rows = parse_import_rows(&csv_content)?;
 
     let existing_keys: HashSet<(String, String)> = {
@@ -385,37 +410,37 @@ pub async fn import_holdings_csv(
     // All pending inputs (cash and non-cash alike) are included in this sum.
     let import_weight_sum: f64 = pending_inputs.iter().map(|h| h.target_weight).sum();
     if import_weight_sum > 100.0 + WEIGHT_EPSILON {
-        return Err(format!(
+        return Err(AppError::Validation(format!(
             "Combined target weights ({:.2}%) exceed 100%",
             import_weight_sum
-        ));
+        )));
     }
     let existing_weight_sum = {
         let pool = &db.0;
         db::sum_target_weights(pool, None).await?
     };
     if existing_weight_sum + import_weight_sum > 100.0 + WEIGHT_EPSILON {
-        return Err(format!(
+        return Err(AppError::Validation(format!(
             "Import failed: total target weight would reach {:.1}% (existing portfolio is already {:.1}%). Adjust weights before re-importing.",
             existing_weight_sum + import_weight_sum,
             existing_weight_sum
-        ));
+        )));
     }
 
     let mut imported = Vec::new();
     {
         let pool = &db.0;
-        let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+        let mut tx = pool.begin().await.map_err(AppError::from)?;
         for input in pending_inputs {
             match db::insert_holding_in_tx(&mut tx, input).await {
                 Ok(holding) => imported.push(holding),
                 Err(e) => {
-                    tx.rollback().await.map_err(|re| re.to_string())?;
-                    return Err(e);
+                    tx.rollback().await.map_err(AppError::from)?;
+                    return Err(AppError::from(e));
                 }
             }
         }
-        tx.commit().await.map_err(|e| e.to_string())?;
+        tx.commit().await.map_err(AppError::from)?;
     }
 
     Ok(ImportResult {
@@ -430,7 +455,7 @@ pub async fn preview_import_csv(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
     csv_content: String,
-) -> Result<PreviewImportResult, String> {
+) -> Result<PreviewImportResult, AppError> {
     let parsed_rows = parse_import_rows(&csv_content)?;
     let existing_keys: HashSet<(String, String)> = {
         let pool = &db.0;
@@ -557,7 +582,7 @@ pub async fn preview_import_csv(
 pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
-) -> Result<RefreshResult, String> {
+) -> Result<RefreshResult, AppError> {
     let base_currency = get_base_currency(&db.0).await;
 
     let holdings = {
@@ -678,7 +703,7 @@ pub async fn run_stress_test_cmd(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
     scenario: StressScenario,
-) -> Result<StressResult, String> {
+) -> Result<StressResult, AppError> {
     let snapshot = get_portfolio(db, client).await?;
     Ok(run_stress_test(&snapshot, &scenario))
 }
@@ -689,7 +714,7 @@ pub async fn search_symbols(
     client: State<'_, HttpClient>,
     cache: State<'_, SearchCacheState>,
     db: State<'_, DbState>,
-) -> Result<Vec<SymbolResult>, String> {
+) -> Result<Vec<SymbolResult>, AppError> {
     if query.trim().len() < 2 {
         return Ok(vec![]);
     }
@@ -736,21 +761,23 @@ pub async fn search_symbols(
 pub async fn get_symbol_price(
     symbol: String,
     client: State<'_, HttpClient>,
-) -> Result<PriceData, String> {
-    fetch_price(&client.0, &symbol).await
+) -> Result<PriceData, AppError> {
+    fetch_price(&client.0, &symbol)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn get_cached_prices(db: State<'_, DbState>) -> Result<Vec<PriceData>, String> {
+pub async fn get_cached_prices(db: State<'_, DbState>) -> Result<Vec<PriceData>, AppError> {
     let pool = &db.0;
-    db::get_cached_prices(pool).await
+    db::get_cached_prices(pool).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_performance(
     db: State<'_, DbState>,
     range: String,
-) -> Result<Vec<PerformancePoint>, String> {
+) -> Result<Vec<PerformancePoint>, AppError> {
     let now = Utc::now();
     let end = now.to_rfc3339();
 
@@ -791,16 +818,16 @@ pub async fn get_performance(
 // ── Dividend Commands ─────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_dividends(db: State<'_, DbState>) -> Result<Vec<Dividend>, String> {
+pub async fn get_dividends(db: State<'_, DbState>) -> Result<Vec<Dividend>, AppError> {
     let pool = &db.0;
-    db::get_dividends(pool).await
+    db::get_dividends(pool).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn add_dividend(
     db: State<'_, DbState>,
     dividend: DividendInput,
-) -> Result<Dividend, String> {
+) -> Result<Dividend, AppError> {
     let pool = &db.0;
     // Look up the symbol and currency for the holding with a targeted query (avoids N+1)
     let row: Option<(String, String)> =
@@ -808,7 +835,7 @@ pub async fn add_dividend(
             .bind(&dividend.holding_id)
             .fetch_optional(pool)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(AppError::from)?;
     let (symbol, holding_currency) = match row {
         Some((s, c)) => (s, c),
         None => (String::new(), String::new()),
@@ -817,50 +844,54 @@ pub async fn add_dividend(
     if !holding_currency.is_empty()
         && holding_currency.to_uppercase() != dividend.currency.to_uppercase()
     {
-        return Err(format!(
+        return Err(AppError::Validation(format!(
             "Dividend currency {} does not match holding currency {}",
             dividend.currency, holding_currency
-        ));
+        )));
     }
-    db::insert_dividend(pool, dividend, &symbol).await
+    db::insert_dividend(pool, dividend, &symbol)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn delete_dividend(db: State<'_, DbState>, id: i64) -> Result<bool, String> {
+pub async fn delete_dividend(db: State<'_, DbState>, id: i64) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::delete_dividend(pool, id).await
+    db::delete_dividend(pool, id).await.map_err(AppError::from)
 }
 
 // ── Price Alert Commands ───────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn get_alerts(db: State<'_, DbState>) -> Result<Vec<PriceAlert>, String> {
+pub async fn get_alerts(db: State<'_, DbState>) -> Result<Vec<PriceAlert>, AppError> {
     let pool = &db.0;
-    db::get_alerts(pool).await
+    db::get_alerts(pool).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn add_alert(
     db: State<'_, DbState>,
     alert: PriceAlertInput,
-) -> Result<PriceAlert, String> {
+) -> Result<PriceAlert, AppError> {
     if !alert.threshold.is_finite() || alert.threshold <= 0.0 {
-        return Err("threshold must be a positive finite number".to_string());
+        return Err(AppError::Validation(
+            "threshold must be a positive finite number".to_string(),
+        ));
     }
     let pool = &db.0;
-    db::insert_alert(pool, alert).await
+    db::insert_alert(pool, alert).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn delete_alert(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+pub async fn delete_alert(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::delete_alert(pool, &id).await
+    db::delete_alert(pool, &id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::reset_alert(pool, &id).await
+    db::reset_alert(pool, &id).await.map_err(AppError::from)
 }
 
 /// SQLite magic bytes: first 16 bytes of a valid SQLite database file.
@@ -871,7 +902,7 @@ pub async fn backup_database(
     app: tauri::AppHandle,
     state: tauri::State<'_, DbState>,
     destination_path: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     // Flush WAL to ensure the file on disk is complete before we copy it.
     {
         let pool = &state.0;
@@ -888,7 +919,9 @@ pub async fn backup_database(
         .join(crate::config::DB_FILE_NAME);
 
     if !source.exists() {
-        return Err("Database file does not exist".to_string());
+        return Err(AppError::Validation(
+            "Database file does not exist".to_string(),
+        ));
     }
 
     let app_data_dir = app
@@ -923,10 +956,10 @@ pub async fn backup_database(
         }
     });
     if !canonical_dest.starts_with(&canonical_app_dir) {
-        return Err(format!(
+        return Err(AppError::Validation(format!(
             "Backup destination must be inside the app data directory ({})",
             app_data_dir.display()
-        ));
+        )));
     }
 
     if let Some(parent) = dest.parent() {
@@ -946,12 +979,14 @@ pub async fn restore_database(
     app: tauri::AppHandle,
     state: tauri::State<'_, DbState>,
     source_path: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     // Verify the source file is a valid SQLite database.
     let src = std::fs::canonicalize(&source_path)
         .map_err(|e| format!("Cannot resolve backup path: {e}"))?;
     if !src.is_file() {
-        return Err("Backup path must point to a regular file".to_string());
+        return Err(AppError::Validation(
+            "Backup path must point to a regular file".to_string(),
+        ));
     }
 
     // Check SQLite magic bytes.
@@ -964,7 +999,9 @@ pub async fn restore_database(
             .map_err(|_| "File is too small to be a valid SQLite database".to_string())?;
     }
     if header != SQLITE_MAGIC {
-        return Err("The selected file is not a valid SQLite database".to_string());
+        return Err(AppError::Validation(
+            "The selected file is not a valid SQLite database".to_string(),
+        ));
     }
 
     // Open the source file with sqlx to verify it has a holdings table.
@@ -982,10 +1019,10 @@ pub async fn restore_database(
         let integrity_result: String = integrity_row.get(0);
         if integrity_result != "ok" {
             verify_pool.close().await;
-            return Err(format!(
+            return Err(AppError::Validation(format!(
                 "Integrity check failed on backup: {}",
                 integrity_result
-            ));
+            )));
         }
 
         let count_row = sqlx::query(
@@ -998,10 +1035,10 @@ pub async fn restore_database(
         verify_pool.close().await;
 
         if !has_holdings {
-            return Err(
+            return Err(AppError::Validation(
                 "Backup file does not appear to be a portfolio database (no holdings table)"
                     .to_string(),
-            );
+            ));
         }
     }
 
@@ -1050,7 +1087,7 @@ pub async fn restore_database(
 pub async fn get_rebalance_suggestions(
     db: State<'_, DbState>,
     drift_threshold: f64,
-) -> Result<Vec<RebalanceSuggestion>, String> {
+) -> Result<Vec<RebalanceSuggestion>, AppError> {
     let base_currency = get_base_currency(&db.0).await;
 
     let pool = &db.0;
@@ -1178,7 +1215,7 @@ pub(crate) async fn get_symbol_metadata_with_cache(
     client: &reqwest::Client,
     symbols: &[String],
     pool: Option<&sqlx::SqlitePool>,
-) -> Result<Vec<SymbolMetadata>, String> {
+) -> Result<Vec<SymbolMetadata>, AppError> {
     if symbols.is_empty() {
         return Ok(vec![]);
     }
@@ -1459,7 +1496,7 @@ fn compute_portfolio_analytics(
 pub async fn get_portfolio_analytics(
     db: State<'_, DbState>,
     http: State<'_, HttpClient>,
-) -> Result<PortfolioAnalytics, String> {
+) -> Result<PortfolioAnalytics, AppError> {
     let base_currency = get_base_currency(&db.0).await;
 
     let pool = &db.0;
@@ -1500,7 +1537,7 @@ pub async fn get_portfolio_analytics(
 pub async fn get_realized_gains(
     db: State<'_, DbState>,
     holding_id: Option<String>,
-) -> Result<RealizedGainsSummary, String> {
+) -> Result<RealizedGainsSummary, AppError> {
     let pool = &db.0;
     let cost_basis_method = db::get_config(pool, "cost_basis_method")
         .await?
@@ -1511,7 +1548,7 @@ pub async fn get_realized_gains(
         None => db::get_all_transactions(pool).await?,
     };
 
-    compute_realized_gains_grouped(&transactions, &cost_basis_method)
+    compute_realized_gains_grouped(&transactions, &cost_basis_method).map_err(AppError::from)
 }
 
 #[cfg(test)]
@@ -2015,33 +2052,43 @@ mod tests {
 pub async fn add_transaction(
     db: State<'_, DbState>,
     input: TransactionInput,
-) -> Result<Transaction, String> {
+) -> Result<Transaction, AppError> {
     if input.quantity <= 0.0 {
-        return Err("Transaction quantity must be positive".to_string());
+        return Err(AppError::Validation(
+            "Transaction quantity must be positive".to_string(),
+        ));
     }
     if input.price < 0.0 {
-        return Err("Transaction price must be non-negative".to_string());
+        return Err(AppError::Validation(
+            "Transaction price must be non-negative".to_string(),
+        ));
     }
     let pool = &db.0;
-    db::insert_transaction(pool, input).await
+    db::insert_transaction(pool, input)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn get_transactions(
     db: State<'_, DbState>,
     holding_id: Option<String>,
-) -> Result<Vec<Transaction>, String> {
+) -> Result<Vec<Transaction>, AppError> {
     let pool = &db.0;
     match holding_id {
-        Some(id) => db::get_transactions_for_holding(pool, &id).await,
-        None => db::get_all_transactions(pool).await,
+        Some(id) => db::get_transactions_for_holding(pool, &id)
+            .await
+            .map_err(AppError::from),
+        None => db::get_all_transactions(pool).await.map_err(AppError::from),
     }
 }
 
 #[tauri::command]
-pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bool, String> {
+pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::delete_transaction(pool, &id).await
+    db::delete_transaction(pool, &id)
+        .await
+        .map_err(AppError::from)
 }
 
 // ── Account Commands ──────────────────────────────────────────────────────────
@@ -2050,22 +2097,27 @@ const VALID_ACCOUNT_TYPES: &[&str] =
     &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"];
 
 #[tauri::command]
-pub async fn get_accounts(state: tauri::State<'_, DbState>) -> Result<Vec<Account>, String> {
+pub async fn get_accounts(state: tauri::State<'_, DbState>) -> Result<Vec<Account>, AppError> {
     let pool = &state.0;
-    db::get_accounts(pool).await
+    db::get_accounts(pool).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn add_account(
     state: tauri::State<'_, DbState>,
     account: CreateAccountRequest,
-) -> Result<Account, String> {
+) -> Result<Account, AppError> {
     let name = account.name.trim().to_string();
     if name.is_empty() {
-        return Err("Account name cannot be empty".to_string());
+        return Err(AppError::Validation(
+            "Account name cannot be empty".to_string(),
+        ));
     }
     if !VALID_ACCOUNT_TYPES.contains(&account.account_type.as_str()) {
-        return Err(format!("Invalid account type: {}", account.account_type));
+        return Err(AppError::Validation(format!(
+            "Invalid account type: {}",
+            account.account_type
+        )));
     }
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -2090,13 +2142,18 @@ pub async fn update_account(
     state: tauri::State<'_, DbState>,
     id: String,
     account: CreateAccountRequest,
-) -> Result<Account, String> {
+) -> Result<Account, AppError> {
     let name = account.name.trim().to_string();
     if name.is_empty() {
-        return Err("Account name cannot be empty".to_string());
+        return Err(AppError::Validation(
+            "Account name cannot be empty".to_string(),
+        ));
     }
     if !VALID_ACCOUNT_TYPES.contains(&account.account_type.as_str()) {
-        return Err(format!("Invalid account type: {}", account.account_type));
+        return Err(AppError::Validation(format!(
+            "Invalid account type: {}",
+            account.account_type
+        )));
     }
 
     let institution = account.institution.clone();
@@ -2109,7 +2166,7 @@ pub async fn update_account(
             .bind(&id)
             .fetch_optional(pool)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(AppError::from)?;
     let created_at = created_at.ok_or_else(|| format!("Account {} not found", id))?;
 
     db::update_account(pool, &id, &name, &account_type, institution.as_deref()).await?;
@@ -2124,7 +2181,10 @@ pub async fn update_account(
 }
 
 #[tauri::command]
-pub async fn delete_account(state: tauri::State<'_, DbState>, id: String) -> Result<bool, String> {
+pub async fn delete_account(
+    state: tauri::State<'_, DbState>,
+    id: String,
+) -> Result<bool, AppError> {
     let pool = &state.0;
     db::delete_account(pool, &id).await?;
     Ok(true)
@@ -2137,15 +2197,19 @@ pub async fn get_holdings_paginated(
     db: State<'_, DbState>,
     page: i64,
     page_size: i64,
-) -> Result<PaginatedResult<Holding>, String> {
+) -> Result<PaginatedResult<Holding>, AppError> {
     if page < 1 {
-        return Err("page must be >= 1".to_string());
+        return Err(AppError::Validation("page must be >= 1".to_string()));
     }
     if !(1..=500).contains(&page_size) {
-        return Err("page_size must be between 1 and 500".to_string());
+        return Err(AppError::Validation(
+            "page_size must be between 1 and 500".to_string(),
+        ));
     }
     let pool = &db.0;
-    db::get_holdings_paginated(pool, page, page_size).await
+    db::get_holdings_paginated(pool, page, page_size)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -2154,15 +2218,19 @@ pub async fn get_transactions_paginated(
     holding_id: Option<String>,
     page: i64,
     page_size: i64,
-) -> Result<PaginatedResult<Transaction>, String> {
+) -> Result<PaginatedResult<Transaction>, AppError> {
     if page < 1 {
-        return Err("page must be >= 1".to_string());
+        return Err(AppError::Validation("page must be >= 1".to_string()));
     }
     if !(1..=500).contains(&page_size) {
-        return Err("page_size must be between 1 and 500".to_string());
+        return Err(AppError::Validation(
+            "page_size must be between 1 and 500".to_string(),
+        ));
     }
     let pool = &db.0;
-    db::get_transactions_paginated(pool, holding_id.as_deref(), page, page_size).await
+    db::get_transactions_paginated(pool, holding_id.as_deref(), page, page_size)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -2170,15 +2238,19 @@ pub async fn get_alerts_paginated(
     db: State<'_, DbState>,
     page: i64,
     page_size: i64,
-) -> Result<PaginatedResult<PriceAlert>, String> {
+) -> Result<PaginatedResult<PriceAlert>, AppError> {
     if page < 1 {
-        return Err("page must be >= 1".to_string());
+        return Err(AppError::Validation("page must be >= 1".to_string()));
     }
     if !(1..=500).contains(&page_size) {
-        return Err("page_size must be between 1 and 500".to_string());
+        return Err(AppError::Validation(
+            "page_size must be between 1 and 500".to_string(),
+        ));
     }
     let pool = &db.0;
-    db::get_alerts_paginated(pool, page, page_size).await
+    db::get_alerts_paginated(pool, page, page_size)
+        .await
+        .map_err(AppError::from)
 }
 
 #[tauri::command]
@@ -2186,13 +2258,17 @@ pub async fn get_dividends_paginated(
     db: State<'_, DbState>,
     page: i64,
     page_size: i64,
-) -> Result<PaginatedResult<Dividend>, String> {
+) -> Result<PaginatedResult<Dividend>, AppError> {
     if page < 1 {
-        return Err("page must be >= 1".to_string());
+        return Err(AppError::Validation("page must be >= 1".to_string()));
     }
     if !(1..=500).contains(&page_size) {
-        return Err("page_size must be between 1 and 500".to_string());
+        return Err(AppError::Validation(
+            "page_size must be between 1 and 500".to_string(),
+        ));
     }
     let pool = &db.0;
-    db::get_dividends_paginated(pool, page, page_size).await
+    db::get_dividends_paginated(pool, page, page_size)
+        .await
+        .map_err(AppError::from)
 }

@@ -356,6 +356,13 @@ export interface PaginatedResult<T> {
   totalPages: number;
 }
 
+// ── Error types ──
+
+export interface AppError {
+  type: 'validation' | 'database' | 'network' | 'not_found' | 'conflict';
+  message: string;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot
