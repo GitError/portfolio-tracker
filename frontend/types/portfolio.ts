@@ -62,6 +62,8 @@ export interface HoldingWithPrice extends Holding {
   targetDeltaValue: number; // targetValue - marketValueCad
   targetDeltaPercent: number; // targetWeight - weight
   dailyChangePercent: number;
+  /** True when the FX rate for this holding's currency was unavailable; values are shown in source currency. */
+  fxStale: boolean;
   // Inherited from Holding: indicatedAnnualDividend, indicatedAnnualDividendCurrency,
   // dividendFrequency, maturityDate
 }

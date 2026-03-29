@@ -11,6 +11,7 @@ import {
   Download,
   Clock,
   Layers,
+  AlertTriangle,
 } from 'lucide-react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useConfig } from '../hooks/useConfig';
@@ -1702,7 +1703,17 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                             fontWeight: 600,
                           }}
                         >
-                          {formatCurrency(h.marketValueCad, baseCurrency)}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {h.fxStale && (
+                              <span
+                                title="FX rate unavailable — value shown in source currency"
+                                style={{ color: 'var(--color-warning)', lineHeight: 1 }}
+                              >
+                                <AlertTriangle size={12} />
+                              </span>
+                            )}
+                            {formatCurrency(h.marketValueCad, baseCurrency)}
+                          </span>
                         </td>
                         {!hiddenColumns.has('weight') && (
                           <td

@@ -128,6 +128,7 @@ function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
       targetDeltaValue: 0,
       targetDeltaPercent: 0,
       dailyChangePercent: 0,
+      fxStale: false,
     })),
     totalValue,
     totalCost: totalValue,
