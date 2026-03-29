@@ -1,3 +1,7 @@
+// This file is the source of truth for TypeScript types.
+// Types are validated against Rust bindings in frontend/types/bindings/.
+// When Rust types change, run: npm run generate:types
+
 export type AssetType = 'stock' | 'etf' | 'crypto' | 'cash';
 export type AccountType = 'tfsa' | 'rrsp' | 'fhsa' | 'taxable' | 'crypto' | 'cash' | 'other';
 

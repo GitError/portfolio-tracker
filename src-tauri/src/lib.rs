@@ -10,6 +10,65 @@ mod search;
 mod stress;
 mod types;
 
+#[cfg(test)]
+mod ts_binding_tests {
+    use ts_rs::TS as _;
+
+    use crate::types::{
+        Account, AccountType, AlertDirection, AssetType, CountryWeight, CreateAccountRequest,
+        Dividend, DividendInput, ExportPayload, FxRate, Holding, HoldingInput, HoldingWithPrice,
+        ImportError, ImportResult, PerformancePoint, PortfolioAnalytics, PortfolioRiskMetrics,
+        PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData,
+        RealizedGainsSummary, RealizedLot, RebalanceSuggestion, RefreshResult, SectorWeight,
+        StressHoldingResult, StressResult, StressScenario, SymbolMetadata, SymbolResult,
+        Transaction, TransactionInput, TransactionType,
+    };
+
+    #[test]
+    fn export_typescript_bindings() {
+        let out_dir = "../frontend/types/bindings";
+        std::fs::create_dir_all(out_dir).expect("Failed to create bindings directory");
+
+        Account::export_all_to(out_dir).expect("Account");
+        AccountType::export_all_to(out_dir).expect("AccountType");
+        AlertDirection::export_all_to(out_dir).expect("AlertDirection");
+        AssetType::export_all_to(out_dir).expect("AssetType");
+        CountryWeight::export_all_to(out_dir).expect("CountryWeight");
+        CreateAccountRequest::export_all_to(out_dir).expect("CreateAccountRequest");
+        Dividend::export_all_to(out_dir).expect("Dividend");
+        DividendInput::export_all_to(out_dir).expect("DividendInput");
+        ExportPayload::export_all_to(out_dir).expect("ExportPayload");
+        FxRate::export_all_to(out_dir).expect("FxRate");
+        Holding::export_all_to(out_dir).expect("Holding");
+        HoldingInput::export_all_to(out_dir).expect("HoldingInput");
+        HoldingWithPrice::export_all_to(out_dir).expect("HoldingWithPrice");
+        ImportError::export_all_to(out_dir).expect("ImportError");
+        ImportResult::export_all_to(out_dir).expect("ImportResult");
+        PerformancePoint::export_all_to(out_dir).expect("PerformancePoint");
+        PortfolioAnalytics::export_all_to(out_dir).expect("PortfolioAnalytics");
+        PortfolioRiskMetrics::export_all_to(out_dir).expect("PortfolioRiskMetrics");
+        PortfolioSnapshot::export_all_to(out_dir).expect("PortfolioSnapshot");
+        PreviewImportResult::export_all_to(out_dir).expect("PreviewImportResult");
+        PreviewRow::export_all_to(out_dir).expect("PreviewRow");
+        PriceAlert::export_all_to(out_dir).expect("PriceAlert");
+        PriceAlertInput::export_all_to(out_dir).expect("PriceAlertInput");
+        PriceData::export_all_to(out_dir).expect("PriceData");
+        RealizedGainsSummary::export_all_to(out_dir).expect("RealizedGainsSummary");
+        RealizedLot::export_all_to(out_dir).expect("RealizedLot");
+        RebalanceSuggestion::export_all_to(out_dir).expect("RebalanceSuggestion");
+        RefreshResult::export_all_to(out_dir).expect("RefreshResult");
+        SectorWeight::export_all_to(out_dir).expect("SectorWeight");
+        StressHoldingResult::export_all_to(out_dir).expect("StressHoldingResult");
+        StressResult::export_all_to(out_dir).expect("StressResult");
+        StressScenario::export_all_to(out_dir).expect("StressScenario");
+        SymbolMetadata::export_all_to(out_dir).expect("SymbolMetadata");
+        SymbolResult::export_all_to(out_dir).expect("SymbolResult");
+        Transaction::export_all_to(out_dir).expect("Transaction");
+        TransactionInput::export_all_to(out_dir).expect("TransactionInput");
+        TransactionType::export_all_to(out_dir).expect("TransactionType");
+    }
+}
+
 use commands::{DbState, HttpClient, SearchCacheState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;

@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use ts_rs::TS;
 
 // ── Transaction types ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
     Buy,
@@ -32,7 +34,8 @@ impl std::str::FromStr for TransactionType {
 }
 
 /// A single buy or sell transaction for a holding.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub id: String,
@@ -47,7 +50,8 @@ pub struct Transaction {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
     pub holding_id: String,
@@ -60,7 +64,8 @@ pub struct TransactionInput {
 // ── Realized gains types ──────────────────────────────────────────────────────
 
 /// One matched lot that was sold.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RealizedLot {
     /// ISO date of the sell transaction (YYYY-MM-DD).
@@ -74,7 +79,8 @@ pub struct RealizedLot {
     pub gain_loss: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RealizedGainsSummary {
     pub total_realized_gain: f64,
@@ -83,7 +89,8 @@ pub struct RealizedGainsSummary {
     pub lots: Vec<RealizedLot>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum AssetType {
     Stock,
@@ -117,7 +124,8 @@ impl std::str::FromStr for AssetType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum AccountType {
     Tfsa,
@@ -160,7 +168,8 @@ impl std::str::FromStr for AccountType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     pub id: String,
@@ -170,7 +179,8 @@ pub struct Account {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAccountRequest {
     pub name: String,
@@ -178,7 +188,8 @@ pub struct CreateAccountRequest {
     pub institution: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Holding {
     pub id: String,
@@ -201,7 +212,8 @@ pub struct Holding {
     pub maturity_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct HoldingInput {
     pub symbol: String,
@@ -220,7 +232,8 @@ pub struct HoldingInput {
     pub maturity_date: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceData {
     pub symbol: String,
@@ -234,7 +247,8 @@ pub struct PriceData {
     pub volume: Option<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct FxRate {
     pub pair: String,
@@ -242,7 +256,8 @@ pub struct FxRate {
     pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct HoldingWithPrice {
     pub id: String,
@@ -279,7 +294,8 @@ pub struct HoldingWithPrice {
     pub fx_stale: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioSnapshot {
     pub holdings: Vec<HoldingWithPrice>,
@@ -299,14 +315,16 @@ pub struct PortfolioSnapshot {
     pub annual_dividend_income: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct StressScenario {
     pub name: String,
     pub shocks: HashMap<String, f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct StressHoldingResult {
     pub holding_id: String,
@@ -318,7 +336,8 @@ pub struct StressHoldingResult {
     pub shock_applied: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolResult {
     pub symbol: String,
@@ -328,7 +347,8 @@ pub struct SymbolResult {
     pub currency: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportError {
     pub row: usize,
@@ -336,7 +356,8 @@ pub struct ImportError {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub imported: Vec<Holding>,
@@ -344,7 +365,8 @@ pub struct ImportResult {
     pub total_rows: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct StressResult {
     pub scenario: String,
@@ -355,7 +377,8 @@ pub struct StressResult {
     pub holding_breakdown: Vec<StressHoldingResult>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewRow {
     pub row: usize,
@@ -374,7 +397,8 @@ pub struct PreviewRow {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewImportResult {
     pub rows: Vec<PreviewRow>,
@@ -382,14 +406,16 @@ pub struct PreviewImportResult {
     pub skip_count: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformancePoint {
     pub date: String,
     pub value: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Dividend {
     pub id: i64,
@@ -402,7 +428,8 @@ pub struct Dividend {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DividendInput {
     pub holding_id: String,
@@ -413,7 +440,8 @@ pub struct DividendInput {
 }
 
 /// Direction for a price alert threshold.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertDirection {
     Above,
@@ -441,7 +469,8 @@ impl std::str::FromStr for AlertDirection {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlert {
     pub id: String,
@@ -454,7 +483,8 @@ pub struct PriceAlert {
     pub created_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertInput {
     pub symbol: String,
@@ -466,7 +496,8 @@ pub struct PriceAlertInput {
 
 /// Returned by the `refresh_prices` command.
 /// Separates successfully refreshed prices from symbols that failed.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshResult {
     pub prices: Vec<PriceData>,
@@ -481,7 +512,8 @@ pub struct RefreshResult {
 
 /// Full data export payload — includes all user data for backup/restore.
 #[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportPayload {
     pub holdings: Vec<Holding>,
@@ -493,7 +525,8 @@ pub struct ExportPayload {
     pub dividends: Vec<Dividend>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolMetadata {
     pub symbol: String,
@@ -507,21 +540,24 @@ pub struct SymbolMetadata {
     pub eps: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SectorWeight {
     pub sector: String,
     pub weight_percent: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CountryWeight {
     pub country: String,
     pub weight_percent: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioRiskMetrics {
     pub weighted_beta: Option<f64>,
@@ -531,7 +567,8 @@ pub struct PortfolioRiskMetrics {
     pub concentration_hhi: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioAnalytics {
     pub metadata: Vec<SymbolMetadata>,
@@ -540,7 +577,8 @@ pub struct PortfolioAnalytics {
     pub country_breakdown: Vec<CountryWeight>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RebalanceSuggestion {
     pub holding_id: String,
