@@ -186,7 +186,7 @@ pub fn compute_realized_gains_grouped(
     method: &str,
 ) -> Result<RealizedGainsSummary, String> {
     // Group by holding_id (transactions are already sorted by transacted_at)
-    let mut by_holding: HashMap<&str, Vec<&Transaction>> = HashMap::new();
+    let mut by_holding: HashMap<&crate::types::HoldingId, Vec<&Transaction>> = HashMap::new();
     for tx in transactions {
         by_holding.entry(&tx.holding_id).or_default().push(tx);
     }
@@ -211,12 +211,12 @@ fn date_part(ts: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::TransactionType;
+    use crate::types::{HoldingId, TransactionId, TransactionType};
 
     fn buy(quantity: f64, price: f64, date: &str) -> Transaction {
         Transaction {
-            id: uuid::Uuid::new_v4().to_string(),
-            holding_id: "h1".to_string(),
+            id: TransactionId(uuid::Uuid::new_v4().to_string()),
+            holding_id: HoldingId("h1".to_string()),
             transaction_type: TransactionType::Buy,
             quantity,
             price,
@@ -227,8 +227,8 @@ mod tests {
 
     fn sell(quantity: f64, price: f64, date: &str) -> Transaction {
         Transaction {
-            id: uuid::Uuid::new_v4().to_string(),
-            holding_id: "h1".to_string(),
+            id: TransactionId(uuid::Uuid::new_v4().to_string()),
+            holding_id: HoldingId("h1".to_string()),
             transaction_type: TransactionType::Sell,
             quantity,
             price,

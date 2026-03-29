@@ -4,9 +4,9 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    Account, AccountType, AlertDirection, AssetType, Dividend, DividendInput, FxRate, Holding,
-    HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput, PriceData, SymbolMetadata,
-    SymbolResult, Transaction, TransactionInput, TransactionType,
+    Account, AccountType, AlertDirection, AlertId, AssetType, Dividend, DividendInput, FxRate,
+    Holding, HoldingId, HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput, PriceData,
+    SymbolMetadata, SymbolResult, Transaction, TransactionId, TransactionInput, TransactionType,
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
     .map_err(|e| e.to_string())?;
 
     Ok(Holding {
-        id,
+        id: HoldingId(id),
         symbol: input.symbol,
         name: input.name,
         asset_type: input.asset_type,
@@ -168,7 +168,7 @@ pub async fn insert_holding_in_tx(
     .map_err(|e| e.to_string())?;
 
     Ok(Holding {
-        id,
+        id: HoldingId(id),
         symbol: input.symbol,
         name: input.name,
         asset_type: input.asset_type,
@@ -240,7 +240,7 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
     .bind(&holding.indicated_annual_dividend_currency)
     .bind(&holding.dividend_frequency)
     .bind(&holding.maturity_date)
-    .bind(&holding.id)
+    .bind(holding.id.0.as_str())
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -256,9 +256,9 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
     })
 }
 
-pub async fn delete_holding(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+pub async fn delete_holding(pool: &SqlitePool, id: &HoldingId) -> Result<bool, String> {
     let result = sqlx::query("DELETE FROM holdings WHERE id = $1")
-        .bind(id)
+        .bind(id.0.as_str())
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -303,7 +303,7 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
             let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
             let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
             Holding {
-                id: r.get(0),
+                id: HoldingId(r.get(0)),
                 symbol: r.get(1),
                 name: r.get(2),
                 asset_type,
@@ -724,7 +724,7 @@ pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<P
     .map_err(|e| e.to_string())?;
 
     Ok(PriceAlert {
-        id,
+        id: AlertId(id),
         symbol: input.symbol,
         direction: input.direction,
         threshold: input.threshold,
@@ -752,7 +752,7 @@ pub async fn get_alerts(pool: &SqlitePool) -> Result<Vec<PriceAlert>, String> {
             let direction = dir_str.parse::<AlertDirection>().ok()?;
             let triggered: bool = r.get(6);
             Some(PriceAlert {
-                id: r.get(0),
+                id: AlertId(r.get(0)),
                 symbol: r.get(1),
                 direction,
                 threshold: r.get(3),
@@ -767,9 +767,9 @@ pub async fn get_alerts(pool: &SqlitePool) -> Result<Vec<PriceAlert>, String> {
     Ok(alerts)
 }
 
-pub async fn delete_alert(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+pub async fn delete_alert(pool: &SqlitePool, id: &AlertId) -> Result<bool, String> {
     let result = sqlx::query("DELETE FROM price_alerts WHERE id = $1")
-        .bind(id)
+        .bind(id.0.as_str())
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -831,9 +831,9 @@ pub async fn check_and_trigger_alerts(
     Ok(triggered)
 }
 
-pub async fn reset_alert(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+pub async fn reset_alert(pool: &SqlitePool, id: &AlertId) -> Result<bool, String> {
     let result = sqlx::query("UPDATE price_alerts SET triggered = 0 WHERE id = $1")
-        .bind(id)
+        .bind(id.0.as_str())
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -854,7 +854,7 @@ pub async fn insert_transaction(
          VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
     .bind(&id)
-    .bind(&input.holding_id)
+    .bind(input.holding_id.0.as_str())
     .bind(input.transaction_type.as_str())
     .bind(input.quantity)
     .bind(input.price)
@@ -865,7 +865,7 @@ pub async fn insert_transaction(
     .map_err(|e| e.to_string())?;
 
     Ok(Transaction {
-        id,
+        id: TransactionId(id),
         holding_id: input.holding_id,
         transaction_type: input.transaction_type,
         quantity: input.quantity,
@@ -877,13 +877,13 @@ pub async fn insert_transaction(
 
 pub async fn get_transactions_for_holding(
     pool: &SqlitePool,
-    holding_id: &str,
+    holding_id: &HoldingId,
 ) -> Result<Vec<Transaction>, String> {
     let rows = sqlx::query(
         "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
          FROM transactions WHERE holding_id = $1 ORDER BY transacted_at ASC",
     )
-    .bind(holding_id)
+    .bind(holding_id.0.as_str())
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -908,8 +908,8 @@ fn row_to_transaction(row: &sqlx::sqlite::SqliteRow) -> Result<Transaction, Stri
     let type_str: String = row.get(2);
     let transaction_type = type_str.parse::<TransactionType>()?;
     Ok(Transaction {
-        id: row.get(0),
-        holding_id: row.get(1),
+        id: TransactionId(row.get(0)),
+        holding_id: HoldingId(row.get(1)),
         transaction_type,
         quantity: row.get(3),
         price: row.get(4),
@@ -918,9 +918,9 @@ fn row_to_transaction(row: &sqlx::sqlite::SqliteRow) -> Result<Transaction, Stri
     })
 }
 
-pub async fn delete_transaction(pool: &SqlitePool, id: &str) -> Result<bool, String> {
+pub async fn delete_transaction(pool: &SqlitePool, id: &TransactionId) -> Result<bool, String> {
     let result = sqlx::query("DELETE FROM transactions WHERE id = $1")
-        .bind(id)
+        .bind(id.0.as_str())
         .execute(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -939,7 +939,7 @@ pub async fn insert_dividend(
         "INSERT INTO dividends (holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
-    .bind(&input.holding_id)
+    .bind(input.holding_id.0.as_str())
     .bind(input.amount_per_unit)
     .bind(&input.currency)
     .bind(&input.ex_date)
@@ -979,7 +979,7 @@ pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
         .into_iter()
         .map(|r| Dividend {
             id: r.get(0),
-            holding_id: r.get(1),
+            holding_id: HoldingId(r.get(1)),
             symbol: r.get(2),
             amount_per_unit: r.get(3),
             currency: r.get(4),
@@ -1224,7 +1224,7 @@ pub async fn get_holdings_paginated(
             let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
             let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
             Holding {
-                id: r.get(0),
+                id: HoldingId(r.get(0)),
                 symbol: r.get(1),
                 name: r.get(2),
                 asset_type,
@@ -1357,7 +1357,7 @@ pub async fn get_alerts_paginated(
             let direction = dir_str.parse::<AlertDirection>().ok()?;
             let triggered: bool = r.get(6);
             Some(PriceAlert {
-                id: r.get(0),
+                id: AlertId(r.get(0)),
                 symbol: r.get(1),
                 direction,
                 threshold: r.get(3),
@@ -1410,7 +1410,7 @@ pub async fn get_dividends_paginated(
         .into_iter()
         .map(|r| Dividend {
             id: r.get(0),
-            holding_id: r.get(1),
+            holding_id: HoldingId(r.get(1)),
             symbol: r.get(2),
             amount_per_unit: r.get(3),
             currency: r.get(4),
@@ -1431,20 +1431,23 @@ pub async fn get_dividends_paginated(
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+/// Create an in-memory SQLite pool with all migrations applied.
+/// Accessible from other test modules within the crate.
+#[cfg(test)]
+pub(crate) async fn open_test_db() -> SqlitePool {
+    let pool = SqlitePool::connect("sqlite::memory:")
+        .await
+        .expect("in-memory db");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("migrations");
+    pool
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    async fn open_test_db() -> SqlitePool {
-        let pool = SqlitePool::connect("sqlite::memory:")
-            .await
-            .expect("in-memory db");
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .expect("migrations");
-        pool
-    }
 
     fn make_input(symbol: &str) -> HoldingInput {
         HoldingInput {
@@ -1515,8 +1518,9 @@ mod tests {
 
     #[tokio::test]
     async fn delete_nonexistent_holding_returns_false() {
+        use crate::types::HoldingId;
         let pool = open_test_db().await;
-        let deleted = delete_holding(&pool, "nonexistent-id")
+        let deleted = delete_holding(&pool, &HoldingId("nonexistent-id".to_string()))
             .await
             .expect("delete");
         assert!(!deleted);
@@ -1677,7 +1681,7 @@ mod tests {
         input_b.target_weight = 35.0;
         let holding_a = insert_holding(&pool, input_a).await.expect("insert a");
         insert_holding(&pool, input_b).await.expect("insert b");
-        let sum = sum_target_weights(&pool, Some(&holding_a.id))
+        let sum = sum_target_weights(&pool, Some(holding_a.id.0.as_str()))
             .await
             .expect("sum excluding a");
         assert!((sum - 35.0).abs() < 0.001);
@@ -1777,7 +1781,7 @@ mod tests {
         )
         .await
         .expect("insert tx");
-        assert!(!tx.id.is_empty());
+        assert!(!tx.id.0.is_empty());
         let txs = get_transactions_for_holding(&pool, &holding.id)
             .await
             .expect("get txs");
