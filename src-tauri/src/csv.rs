@@ -639,4 +639,142 @@ mod tests {
             existing_weight_sum + csv_sum
         );
     }
+
+    // ── New tests for #377 ────────────────────────────────────────────────────
+
+    /// A well-formed CSV row with valid fields parses successfully (ready path).
+    #[test]
+    fn parse_import_rows_valid_stock_row_succeeds() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency\n\
+                   AAPL,Apple Inc.,stock,10,150.0,USD\n";
+        let rows = parse_import_rows(csv).expect("valid row should parse");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].symbol, "AAPL");
+        assert!(matches!(rows[0].asset_type, AssetType::Stock));
+        assert!((rows[0].quantity - 10.0).abs() < 0.001);
+        assert!((rows[0].cost_basis - 150.0).abs() < 0.001);
+        assert_eq!(rows[0].currency, "USD");
+    }
+
+    /// A cash row is parsed and the symbol is derived from currency.
+    #[test]
+    fn parse_import_rows_cash_row_produces_cash_symbol() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency\n\
+                   ,,cash,5000,1,CAD\n";
+        let rows = parse_import_rows(csv).expect("cash row should parse");
+        assert_eq!(rows.len(), 1);
+        assert!(matches!(rows[0].asset_type, AssetType::Cash));
+        assert_eq!(rows[0].symbol, "CAD-CASH");
+    }
+
+    /// Two rows with the same symbol+account are both returned by parse_import_rows;
+    /// duplicate detection is the responsibility of the command layer.
+    #[test]
+    fn parse_import_rows_two_identical_symbol_account_rows_both_parsed() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency\n\
+                   AAPL,Apple Inc.,stock,10,150,USD\n\
+                   AAPL,Apple Inc.,stock,5,160,USD\n";
+        let rows = parse_import_rows(csv).expect("both rows should parse");
+        assert_eq!(
+            rows.len(),
+            2,
+            "parse layer returns both rows before deduplication"
+        );
+        // Both rows share the same symbol (duplicate detection is command-level)
+        assert_eq!(rows[0].symbol, rows[1].symbol);
+    }
+
+    /// A row with a missing quantity field returns an error.
+    #[test]
+    fn parse_import_rows_missing_quantity_returns_error() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency\n\
+                   AAPL,Apple Inc.,stock,,150,USD\n";
+        let err = parse_import_rows(csv).expect_err("missing quantity should fail");
+        assert!(
+            err.contains("missing_quantity") || err.contains("invalid_quantity"),
+            "error should mention quantity, got: {}",
+            err
+        );
+    }
+
+    /// A row with a missing symbol (non-cash) returns an error.
+    #[test]
+    fn parse_import_rows_missing_symbol_returns_error() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency\n\
+                   ,Apple Inc.,stock,10,150,USD\n";
+        let err = parse_import_rows(csv).expect_err("missing symbol should fail");
+        assert!(
+            err.contains("missing_symbol") || err.contains("symbol"),
+            "error should mention symbol, got: {}",
+            err
+        );
+    }
+
+    /// A row with a negative quantity is rejected.
+    #[test]
+    fn parse_import_rows_negative_quantity_returns_error() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency\n\
+                   AAPL,Apple Inc.,stock,-10,150,USD\n";
+        let err = parse_import_rows(csv).expect_err("negative quantity should fail");
+        assert!(
+            err.contains("invalid_quantity"),
+            "error should mention invalid_quantity, got: {}",
+            err
+        );
+    }
+
+    /// maturity_date must be in YYYY-MM-DD format; non-ISO dates are rejected at the parse layer.
+    #[test]
+    fn parse_import_rows_non_iso_maturity_date_returns_error() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,maturity_date\n\
+                   GIC,GIC Bond,stock,1,1000,CAD,31/12/2030\n";
+        let err = parse_import_rows(csv)
+            .expect_err("non-ISO maturity_date should be rejected at parse layer");
+        assert!(
+            err.contains("maturity_date"),
+            "error should mention maturity_date, got: {err}"
+        );
+    }
+
+    /// dividend_frequency must be one of the known enum values; unrecognised values are rejected.
+    #[test]
+    fn parse_import_rows_invalid_dividend_frequency_returns_error() {
+        let csv = "symbol,name,type,quantity,cost_basis,currency,dividend_frequency\n\
+                   AAPL,Apple Inc.,stock,10,150,USD,fortnightly\n";
+        let err = parse_import_rows(csv)
+            .expect_err("unknown dividend_frequency should be rejected at parse layer");
+        assert!(
+            err.contains("dividend_frequency"),
+            "error should mention dividend_frequency, got: {err}"
+        );
+    }
+
+    /// A field that exceeds MAX_FIELD_LEN (500 bytes) causes a parse error.
+    #[test]
+    fn parse_import_rows_name_exceeding_max_field_len_returns_error() {
+        let long_name = "A".repeat(crate::config::MAX_FIELD_LEN + 1);
+        let csv = format!(
+            "symbol,name,type,quantity,cost_basis,currency\nAAPL,{},stock,10,150,USD\n",
+            long_name
+        );
+        let err = parse_import_rows(&csv).expect_err("oversized name should fail");
+        assert!(
+            err.contains("name exceeds maximum length"),
+            "error should mention name length, got: {}",
+            err
+        );
+    }
+
+    /// A CSV that starts with a UTF-8 BOM (\xEF\xBB\xBF) is parsed correctly.
+    #[test]
+    fn parse_import_rows_bom_prefixed_csv_is_handled_gracefully() {
+        let bom = "\u{feff}";
+        let csv = format!(
+            "{}symbol,name,type,quantity,cost_basis,currency\nAAPL,Apple Inc.,stock,10,150,USD\n",
+            bom
+        );
+        let rows = parse_import_rows(&csv).expect("BOM-prefixed CSV should parse without error");
+        assert_eq!(rows.len(), 1, "BOM should be stripped transparently");
+        assert_eq!(rows[0].symbol, "AAPL");
+    }
 }
