@@ -177,6 +177,10 @@ pub fn run() {
             commands::add_account,
             commands::update_account,
             commands::delete_account,
+            commands::get_holdings_paginated,
+            commands::get_transactions_paginated,
+            commands::get_alerts_paginated,
+            commands::get_dividends_paginated,
         ])
         .run(tauri::generate_context!());
 

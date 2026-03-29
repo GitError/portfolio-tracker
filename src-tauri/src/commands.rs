@@ -16,7 +16,7 @@ use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
     Account, AssetType, CountryWeight, CreateAccountRequest, Dividend, DividendInput, Holding,
-    HoldingInput, ImportError, ImportResult, PerformancePoint, PortfolioAnalytics,
+    HoldingInput, ImportError, ImportResult, PaginatedResult, PerformancePoint, PortfolioAnalytics,
     PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
     PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion, RefreshResult,
     SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction,
@@ -2128,4 +2128,71 @@ pub async fn delete_account(state: tauri::State<'_, DbState>, id: String) -> Res
     let pool = &state.0;
     db::delete_account(pool, &id).await?;
     Ok(true)
+}
+
+// ── Paginated commands ────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn get_holdings_paginated(
+    db: State<'_, DbState>,
+    page: i64,
+    page_size: i64,
+) -> Result<PaginatedResult<Holding>, String> {
+    if page < 1 {
+        return Err("page must be >= 1".to_string());
+    }
+    if page_size < 1 || page_size > 500 {
+        return Err("page_size must be between 1 and 500".to_string());
+    }
+    let pool = &db.0;
+    db::get_holdings_paginated(pool, page, page_size).await
+}
+
+#[tauri::command]
+pub async fn get_transactions_paginated(
+    db: State<'_, DbState>,
+    holding_id: Option<String>,
+    page: i64,
+    page_size: i64,
+) -> Result<PaginatedResult<Transaction>, String> {
+    if page < 1 {
+        return Err("page must be >= 1".to_string());
+    }
+    if page_size < 1 || page_size > 500 {
+        return Err("page_size must be between 1 and 500".to_string());
+    }
+    let pool = &db.0;
+    db::get_transactions_paginated(pool, holding_id.as_deref(), page, page_size).await
+}
+
+#[tauri::command]
+pub async fn get_alerts_paginated(
+    db: State<'_, DbState>,
+    page: i64,
+    page_size: i64,
+) -> Result<PaginatedResult<PriceAlert>, String> {
+    if page < 1 {
+        return Err("page must be >= 1".to_string());
+    }
+    if page_size < 1 || page_size > 500 {
+        return Err("page_size must be between 1 and 500".to_string());
+    }
+    let pool = &db.0;
+    db::get_alerts_paginated(pool, page, page_size).await
+}
+
+#[tauri::command]
+pub async fn get_dividends_paginated(
+    db: State<'_, DbState>,
+    page: i64,
+    page_size: i64,
+) -> Result<PaginatedResult<Dividend>, String> {
+    if page < 1 {
+        return Err("page must be >= 1".to_string());
+    }
+    if page_size < 1 || page_size > 500 {
+        return Err("page_size must be between 1 and 500".to_string());
+    }
+    let pool = &db.0;
+    db::get_dividends_paginated(pool, page, page_size).await
 }

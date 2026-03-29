@@ -3,4 +3,4 @@
 /**
  * Direction for a price alert threshold.
  */
-export type AlertDirection = 'above' | 'below';
+export type AlertDirection = "above" | "below";

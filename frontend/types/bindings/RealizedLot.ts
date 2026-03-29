@@ -3,22 +3,20 @@
 /**
  * One matched lot that was sold.
  */
-export type RealizedLot = {
-  /**
-   * ISO date of the sell transaction (YYYY-MM-DD).
-   */
-  soldAt: string;
-  quantity: number;
-  /**
-   * quantity × sell_price
-   */
-  proceeds: number;
-  /**
-   * quantity × cost_per_unit (method-dependent)
-   */
-  costBasis: number;
-  /**
-   * proceeds − cost_basis
-   */
-  gainLoss: number;
-};
+export type RealizedLot = { 
+/**
+ * ISO date of the sell transaction (YYYY-MM-DD).
+ */
+soldAt: string, quantity: number, 
+/**
+ * quantity × sell_price
+ */
+proceeds: number, 
+/**
+ * quantity × cost_per_unit (method-dependent)
+ */
+costBasis: number, 
+/**
+ * proceeds − cost_basis
+ */
+gainLoss: number, };

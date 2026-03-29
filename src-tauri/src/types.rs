@@ -593,3 +593,16 @@ pub struct RebalanceSuggestion {
     pub suggested_units: f64,     // positive = sell, negative = buy
     pub current_price_cad: f64,
 }
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+
+/// Generic paginated response wrapper for any list type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedResult<T> {
+    pub items: Vec<T>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_pages: i64,
+}

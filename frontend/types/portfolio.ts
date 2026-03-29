@@ -346,6 +346,16 @@ export interface ActionInsight {
   linkTo?: string; // route path like '/rebalance', '/holdings'
 }
 
+// ── Pagination ──
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 // ── Tauri Command Signatures ──
 
 // invoke('get_portfolio')           → PortfolioSnapshot

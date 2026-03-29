@@ -117,6 +117,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const sort: SortState = useMemo(() => ({ key: sortKey, dir: sortDir }), [sortKey, sortDir]);
 
   function setSearch(value: string) {
+    setPage(1);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -132,6 +133,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   }
 
   function setAccountFilter(value: 'all' | AccountType) {
+    setPage(1);
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -181,6 +183,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [colPickerOpen, setColPickerOpen] = useState(false);
   const colPickerRef = useRef<HTMLDivElement>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const { value: hiddenColumnsRaw, setValue: setHiddenColumnsRaw } = useConfig(
     'holdings_hidden_columns',
     JSON.stringify([
@@ -273,6 +277,12 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       return sort.dir === 'asc' ? cmp : -cmp;
     });
   }, [portfolio, sort, search, accountFilter]);
+
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safePageSize = pageSize > 0 ? pageSize : 50;
+  const pageStart = (page - 1) * safePageSize;
+  const pagedRows = rows.slice(pageStart, pageStart + safePageSize);
 
   function toggleSort(key: SortKey) {
     setSort((prev) =>
@@ -1518,7 +1528,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                     <th style={{ ...TH, textAlign: 'center', width: 36, cursor: 'default' }}>
                       <input
                         type="checkbox"
-                        checked={selected.size === rows.length && rows.length > 0}
+                        checked={selected.size === totalRows && totalRows > 0}
                         onChange={toggleSelectAll}
                         title="Select all"
                         style={{ accentColor: 'var(--color-accent)', cursor: 'pointer' }}
@@ -1560,7 +1570,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((h, i) => {
+                  {pagedRows.map((h, i) => {
                     const isRowDeleting = deletingId === h.id;
                     const isPending = pendingDelete === h.id;
                     const bg = i % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-alt)';
@@ -2025,7 +2035,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         letterSpacing: '0.06em',
                       }}
                     >
-                      Total ({rows.length} positions)
+                      Total ({totalRows} positions)
                     </td>
                     <td
                       style={{
@@ -2118,6 +2128,88 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                   </tr>
                 </tfoot>
               </table>
+            </div>
+          )}
+
+          {/* Pagination controls */}
+          {!groupByAccount && totalRows > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 16px',
+                borderTop: '1px solid var(--border-primary)',
+                fontSize: 11,
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-secondary)',
+                flexWrap: 'wrap',
+                gap: 8,
+              }}
+            >
+              <span>
+                {pageStart + 1}–{Math.min(pageStart + safePageSize, totalRows)} of {totalRows}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-primary)',
+                    color: 'var(--text-secondary)',
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono)',
+                    padding: '2px 6px',
+                    borderRadius: '2px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {[25, 50, 100, 250].map((n) => (
+                    <option key={n} value={n}>
+                      {n} / page
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--border-primary)',
+                    color: page === 1 ? 'var(--text-muted)' : 'var(--text-secondary)',
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono)',
+                    padding: '2px 8px',
+                    cursor: page === 1 ? 'not-allowed' : 'pointer',
+                    borderRadius: '2px',
+                  }}
+                >
+                  ‹ Prev
+                </button>
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  style={{
+                    background: 'none',
+                    border: '1px solid var(--border-primary)',
+                    color: page === totalPages ? 'var(--text-muted)' : 'var(--text-secondary)',
+                    fontSize: 11,
+                    fontFamily: 'var(--font-mono)',
+                    padding: '2px 8px',
+                    cursor: page === totalPages ? 'not-allowed' : 'pointer',
+                    borderRadius: '2px',
+                  }}
+                >
+                  Next ›
+                </button>
+              </div>
             </div>
           )}
         </>

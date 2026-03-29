@@ -1162,6 +1162,273 @@ pub async fn delete_account(pool: &SqlitePool, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+// ── Pagination helpers ────────────────────────────────────────────────────────
+
+fn total_pages(total: i64, page_size: i64) -> i64 {
+    if page_size <= 0 {
+        return 0;
+    }
+    (total + page_size - 1) / page_size
+}
+
+pub async fn get_holdings_paginated(
+    pool: &SqlitePool,
+    page: i64,
+    page_size: i64,
+) -> Result<crate::types::PaginatedResult<Holding>, String> {
+    use sqlx::Row;
+    let offset = (page - 1).max(0) * page_size;
+
+    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    let total: i64 = count_row.get(0);
+
+    let rows = sqlx::query(
+        "SELECT
+            h.id,
+            h.symbol,
+            h.name,
+            h.asset_type,
+            h.account,
+            h.account_id,
+            a.name AS account_name,
+            h.quantity,
+            h.cost_basis,
+            h.currency,
+            h.exchange,
+            h.target_weight,
+            h.created_at,
+            h.updated_at,
+            h.indicated_annual_dividend,
+            h.indicated_annual_dividend_currency,
+            h.dividend_frequency,
+            h.maturity_date
+         FROM holdings h
+         LEFT JOIN accounts a ON a.id = h.account_id
+         ORDER BY h.created_at ASC
+         LIMIT $1 OFFSET $2",
+    )
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let items = rows
+        .into_iter()
+        .map(|r| {
+            let asset_type_str: String = r.get(3);
+            let account_str: String = r.get(4);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
+            Holding {
+                id: r.get(0),
+                symbol: r.get(1),
+                name: r.get(2),
+                asset_type,
+                account,
+                account_id: r.get(5),
+                account_name: r.get(6),
+                quantity: r.get(7),
+                cost_basis: r.get(8),
+                currency: r.get(9),
+                exchange: r.get(10),
+                target_weight: r.get(11),
+                created_at: r.get(12),
+                updated_at: r.get(13),
+                indicated_annual_dividend: r.get::<Option<f64>, _>(14),
+                indicated_annual_dividend_currency: r.get::<Option<String>, _>(15),
+                dividend_frequency: r.get::<Option<String>, _>(16),
+                maturity_date: r.get::<Option<String>, _>(17),
+            }
+        })
+        .collect();
+
+    Ok(crate::types::PaginatedResult {
+        items,
+        total,
+        page,
+        page_size,
+        total_pages: total_pages(total, page_size),
+    })
+}
+
+pub async fn get_transactions_paginated(
+    pool: &SqlitePool,
+    holding_id: Option<&str>,
+    page: i64,
+    page_size: i64,
+) -> Result<crate::types::PaginatedResult<Transaction>, String> {
+    let offset = (page - 1).max(0) * page_size;
+
+    let (count_sql, items_sql) = if holding_id.is_some() {
+        (
+            "SELECT COUNT(*) FROM transactions WHERE holding_id = $1",
+            "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
+             FROM transactions WHERE holding_id = $1 ORDER BY transacted_at ASC
+             LIMIT $2 OFFSET $3",
+        )
+    } else {
+        (
+            "SELECT COUNT(*) FROM transactions",
+            "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
+             FROM transactions ORDER BY transacted_at ASC
+             LIMIT $1 OFFSET $2",
+        )
+    };
+
+    let total: i64 = if let Some(hid) = holding_id {
+        use sqlx::Row;
+        sqlx::query(count_sql)
+            .bind(hid)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .get(0)
+    } else {
+        use sqlx::Row;
+        sqlx::query(count_sql)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())?
+            .get(0)
+    };
+
+    let rows = if let Some(hid) = holding_id {
+        sqlx::query(items_sql)
+            .bind(hid)
+            .bind(page_size)
+            .bind(offset)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        sqlx::query(items_sql)
+            .bind(page_size)
+            .bind(offset)
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?
+    };
+
+    let items: Result<Vec<Transaction>, String> =
+        rows.into_iter().map(|r| row_to_transaction(&r)).collect();
+
+    Ok(crate::types::PaginatedResult {
+        items: items?,
+        total,
+        page,
+        page_size,
+        total_pages: total_pages(total, page_size),
+    })
+}
+
+pub async fn get_alerts_paginated(
+    pool: &SqlitePool,
+    page: i64,
+    page_size: i64,
+) -> Result<crate::types::PaginatedResult<PriceAlert>, String> {
+    use sqlx::Row;
+    let offset = (page - 1).max(0) * page_size;
+
+    let total: i64 = sqlx::query("SELECT COUNT(*) FROM price_alerts")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .get(0);
+
+    let rows = sqlx::query(
+        "SELECT id, symbol, direction, threshold, currency, note, triggered, created_at
+         FROM price_alerts ORDER BY created_at DESC
+         LIMIT $1 OFFSET $2",
+    )
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let items = rows
+        .into_iter()
+        .filter_map(|r| {
+            let dir_str: String = r.get(2);
+            let direction = dir_str.parse::<AlertDirection>().ok()?;
+            let triggered: bool = r.get(6);
+            Some(PriceAlert {
+                id: r.get(0),
+                symbol: r.get(1),
+                direction,
+                threshold: r.get(3),
+                currency: r.get(4),
+                note: r.get(5),
+                triggered,
+                created_at: r.get(7),
+            })
+        })
+        .collect();
+
+    Ok(crate::types::PaginatedResult {
+        items,
+        total,
+        page,
+        page_size,
+        total_pages: total_pages(total, page_size),
+    })
+}
+
+pub async fn get_dividends_paginated(
+    pool: &SqlitePool,
+    page: i64,
+    page_size: i64,
+) -> Result<crate::types::PaginatedResult<Dividend>, String> {
+    use sqlx::Row;
+    let offset = (page - 1).max(0) * page_size;
+
+    let total: i64 = sqlx::query("SELECT COUNT(*) FROM dividends")
+        .fetch_one(pool)
+        .await
+        .map_err(|e| e.to_string())?
+        .get(0);
+
+    let rows = sqlx::query(
+        "SELECT d.id, d.holding_id, h.symbol, d.amount_per_unit, d.currency,
+                d.ex_date, d.pay_date, d.created_at
+         FROM dividends d
+         JOIN holdings h ON h.id = d.holding_id
+         ORDER BY d.ex_date DESC
+         LIMIT $1 OFFSET $2",
+    )
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let items = rows
+        .into_iter()
+        .map(|r| Dividend {
+            id: r.get(0),
+            holding_id: r.get(1),
+            symbol: r.get(2),
+            amount_per_unit: r.get(3),
+            currency: r.get(4),
+            ex_date: r.get(5),
+            pay_date: r.get(6),
+            created_at: r.get(7),
+        })
+        .collect();
+
+    Ok(crate::types::PaginatedResult {
+        items,
+        total,
+        page,
+        page_size,
+        total_pages: total_pages(total, page_size),
+    })
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
