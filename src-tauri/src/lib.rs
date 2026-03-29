@@ -3,6 +3,7 @@ mod commands;
 mod config;
 mod csv;
 mod db;
+pub mod error;
 mod fx;
 mod portfolio;
 mod price;
