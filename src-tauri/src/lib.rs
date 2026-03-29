@@ -1,5 +1,7 @@
 mod analytics;
 mod commands;
+#[cfg(test)]
+mod commands_tests;
 mod config;
 mod csv;
 mod db;

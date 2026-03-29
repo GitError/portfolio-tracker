@@ -1517,8 +1517,7 @@ pub async fn get_realized_gains(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::csv::{normalize_symbol_for_import, ParsedImportRow};
-    use crate::types::{AccountType, FxRate, HoldingWithPrice};
+    use crate::types::{AccountType, FxRate};
     use chrono::Utc;
 
     // CSV/normalize tests live in csv.rs.
