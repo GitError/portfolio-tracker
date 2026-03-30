@@ -13,7 +13,7 @@ mod types;
 
 #[cfg(test)]
 mod ts_binding_tests {
-    use ts_rs::TS as _;
+    use ts_rs::{Config, TS as _};
 
     use crate::types::{
         Account, AccountType, AlertDirection, AssetType, CountryWeight, CreateAccountRequest,
@@ -29,44 +29,45 @@ mod ts_binding_tests {
     fn export_typescript_bindings() {
         let out_dir = "../frontend/types/bindings";
         std::fs::create_dir_all(out_dir).expect("Failed to create bindings directory");
+        let cfg = Config::new().with_out_dir(out_dir);
 
-        Account::export_all_to(out_dir).expect("Account");
-        AccountType::export_all_to(out_dir).expect("AccountType");
-        AlertDirection::export_all_to(out_dir).expect("AlertDirection");
-        AssetType::export_all_to(out_dir).expect("AssetType");
-        CountryWeight::export_all_to(out_dir).expect("CountryWeight");
-        CreateAccountRequest::export_all_to(out_dir).expect("CreateAccountRequest");
-        Dividend::export_all_to(out_dir).expect("Dividend");
-        DividendInput::export_all_to(out_dir).expect("DividendInput");
-        ExportPayload::export_all_to(out_dir).expect("ExportPayload");
-        FxRate::export_all_to(out_dir).expect("FxRate");
-        Holding::export_all_to(out_dir).expect("Holding");
-        HoldingInput::export_all_to(out_dir).expect("HoldingInput");
-        HoldingWithPrice::export_all_to(out_dir).expect("HoldingWithPrice");
-        ImportError::export_all_to(out_dir).expect("ImportError");
-        ImportResult::export_all_to(out_dir).expect("ImportResult");
-        PerformancePoint::export_all_to(out_dir).expect("PerformancePoint");
-        PortfolioAnalytics::export_all_to(out_dir).expect("PortfolioAnalytics");
-        PortfolioRiskMetrics::export_all_to(out_dir).expect("PortfolioRiskMetrics");
-        PortfolioSnapshot::export_all_to(out_dir).expect("PortfolioSnapshot");
-        PreviewImportResult::export_all_to(out_dir).expect("PreviewImportResult");
-        PreviewRow::export_all_to(out_dir).expect("PreviewRow");
-        PriceAlert::export_all_to(out_dir).expect("PriceAlert");
-        PriceAlertInput::export_all_to(out_dir).expect("PriceAlertInput");
-        PriceData::export_all_to(out_dir).expect("PriceData");
-        RealizedGainsSummary::export_all_to(out_dir).expect("RealizedGainsSummary");
-        RealizedLot::export_all_to(out_dir).expect("RealizedLot");
-        RebalanceSuggestion::export_all_to(out_dir).expect("RebalanceSuggestion");
-        RefreshResult::export_all_to(out_dir).expect("RefreshResult");
-        SectorWeight::export_all_to(out_dir).expect("SectorWeight");
-        StressHoldingResult::export_all_to(out_dir).expect("StressHoldingResult");
-        StressResult::export_all_to(out_dir).expect("StressResult");
-        StressScenario::export_all_to(out_dir).expect("StressScenario");
-        SymbolMetadata::export_all_to(out_dir).expect("SymbolMetadata");
-        SymbolResult::export_all_to(out_dir).expect("SymbolResult");
-        Transaction::export_all_to(out_dir).expect("Transaction");
-        TransactionInput::export_all_to(out_dir).expect("TransactionInput");
-        TransactionType::export_all_to(out_dir).expect("TransactionType");
+        Account::export_all(&cfg).expect("Account");
+        AccountType::export_all(&cfg).expect("AccountType");
+        AlertDirection::export_all(&cfg).expect("AlertDirection");
+        AssetType::export_all(&cfg).expect("AssetType");
+        CountryWeight::export_all(&cfg).expect("CountryWeight");
+        CreateAccountRequest::export_all(&cfg).expect("CreateAccountRequest");
+        Dividend::export_all(&cfg).expect("Dividend");
+        DividendInput::export_all(&cfg).expect("DividendInput");
+        ExportPayload::export_all(&cfg).expect("ExportPayload");
+        FxRate::export_all(&cfg).expect("FxRate");
+        Holding::export_all(&cfg).expect("Holding");
+        HoldingInput::export_all(&cfg).expect("HoldingInput");
+        HoldingWithPrice::export_all(&cfg).expect("HoldingWithPrice");
+        ImportError::export_all(&cfg).expect("ImportError");
+        ImportResult::export_all(&cfg).expect("ImportResult");
+        PerformancePoint::export_all(&cfg).expect("PerformancePoint");
+        PortfolioAnalytics::export_all(&cfg).expect("PortfolioAnalytics");
+        PortfolioRiskMetrics::export_all(&cfg).expect("PortfolioRiskMetrics");
+        PortfolioSnapshot::export_all(&cfg).expect("PortfolioSnapshot");
+        PreviewImportResult::export_all(&cfg).expect("PreviewImportResult");
+        PreviewRow::export_all(&cfg).expect("PreviewRow");
+        PriceAlert::export_all(&cfg).expect("PriceAlert");
+        PriceAlertInput::export_all(&cfg).expect("PriceAlertInput");
+        PriceData::export_all(&cfg).expect("PriceData");
+        RealizedGainsSummary::export_all(&cfg).expect("RealizedGainsSummary");
+        RealizedLot::export_all(&cfg).expect("RealizedLot");
+        RebalanceSuggestion::export_all(&cfg).expect("RebalanceSuggestion");
+        RefreshResult::export_all(&cfg).expect("RefreshResult");
+        SectorWeight::export_all(&cfg).expect("SectorWeight");
+        StressHoldingResult::export_all(&cfg).expect("StressHoldingResult");
+        StressResult::export_all(&cfg).expect("StressResult");
+        StressScenario::export_all(&cfg).expect("StressScenario");
+        SymbolMetadata::export_all(&cfg).expect("SymbolMetadata");
+        SymbolResult::export_all(&cfg).expect("SymbolResult");
+        Transaction::export_all(&cfg).expect("Transaction");
+        TransactionInput::export_all(&cfg).expect("TransactionInput");
+        TransactionType::export_all(&cfg).expect("TransactionType");
     }
 }
 
