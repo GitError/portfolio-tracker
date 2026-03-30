@@ -257,11 +257,13 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
 }
 
 pub async fn delete_holding(pool: &SqlitePool, id: &HoldingId) -> Result<bool, String> {
-    let result = sqlx::query("DELETE FROM holdings WHERE id = $1")
-        .bind(id.0.as_str())
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = sqlx::query(
+        "UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(id.0.as_str())
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -289,6 +291,7 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
             h.maturity_date
          FROM holdings h
          LEFT JOIN accounts a ON a.id = h.account_id
+         WHERE h.deleted_at IS NULL
          ORDER BY h.created_at ASC",
     )
     .fetch_all(pool)
@@ -686,7 +689,7 @@ pub async fn sum_target_weights(
     use sqlx::Row;
     let sum: f64 = match exclude_id {
         Some(id) => {
-            sqlx::query("SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE id != $1")
+            sqlx::query("SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE id != $1 AND deleted_at IS NULL")
                 .bind(id)
                 .fetch_one(pool)
                 .await
@@ -694,7 +697,7 @@ pub async fn sum_target_weights(
                 .map(|r| r.get::<f64, _>(0))?
         }
 
-        None => sqlx::query("SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings")
+        None => sqlx::query("SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE deleted_at IS NULL")
             .fetch_one(pool)
             .await
             .map_err(|e| e.to_string())
@@ -893,7 +896,7 @@ pub async fn get_transactions_for_holding(
 ) -> Result<Vec<Transaction>, String> {
     let rows = sqlx::query(
         "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-         FROM transactions WHERE holding_id = $1 ORDER BY transacted_at ASC",
+         FROM transactions WHERE holding_id = $1 AND deleted_at IS NULL ORDER BY transacted_at ASC",
     )
     .bind(holding_id.0.as_str())
     .fetch_all(pool)
@@ -906,7 +909,7 @@ pub async fn get_transactions_for_holding(
 pub async fn get_all_transactions(pool: &SqlitePool) -> Result<Vec<Transaction>, String> {
     let rows = sqlx::query(
         "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-         FROM transactions ORDER BY transacted_at ASC",
+         FROM transactions WHERE deleted_at IS NULL ORDER BY transacted_at ASC",
     )
     .fetch_all(pool)
     .await
@@ -931,11 +934,13 @@ fn row_to_transaction(row: &sqlx::sqlite::SqliteRow) -> Result<Transaction, Stri
 }
 
 pub async fn delete_transaction(pool: &SqlitePool, id: &TransactionId) -> Result<bool, String> {
-    let result = sqlx::query("DELETE FROM transactions WHERE id = $1")
-        .bind(id.0.as_str())
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = sqlx::query(
+        "UPDATE transactions SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(id.0.as_str())
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -981,6 +986,7 @@ pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
                 d.ex_date, d.pay_date, d.created_at
          FROM dividends d
          JOIN holdings h ON h.id = d.holding_id
+         WHERE d.deleted_at IS NULL AND h.deleted_at IS NULL
          ORDER BY d.ex_date DESC",
     )
     .fetch_all(pool)
@@ -1003,11 +1009,13 @@ pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
 }
 
 pub async fn delete_dividend(pool: &SqlitePool, id: i64) -> Result<bool, String> {
-    let result = sqlx::query("DELETE FROM dividends WHERE id = $1")
-        .bind(id)
-        .execute(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let result = sqlx::query(
+        "UPDATE dividends SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
     Ok(result.rows_affected() > 0)
 }
 
@@ -1027,7 +1035,7 @@ pub async fn get_annual_dividend_income(
         "SELECT d.amount_per_unit * h.quantity, d.currency
          FROM dividends d
          JOIN holdings h ON h.id = d.holding_id
-         WHERE d.pay_date >= $1",
+         WHERE d.pay_date >= $1 AND d.deleted_at IS NULL AND h.deleted_at IS NULL",
     )
     .bind(&cutoff)
     .fetch_all(pool)
@@ -1150,12 +1158,13 @@ pub async fn delete_account(pool: &SqlitePool, id: &str) -> Result<(), String> {
     let name: String = row.get(0);
     let _account_type: String = row.get(1);
 
-    // Guard: refuse deletion when holdings reference this account by id.
-    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings WHERE account_id = $1")
-        .bind(id)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    // Guard: refuse deletion when non-deleted holdings reference this account by id.
+    let count_row =
+        sqlx::query("SELECT COUNT(*) FROM holdings WHERE account_id = $1 AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let count: i64 = count_row.get(0);
     if count > 0 {
@@ -1191,7 +1200,7 @@ pub async fn get_holdings_paginated(
     use sqlx::Row;
     let offset = (page - 1).max(0) * page_size;
 
-    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings")
+    let count_row = sqlx::query("SELECT COUNT(*) FROM holdings WHERE deleted_at IS NULL")
         .fetch_one(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -1219,6 +1228,7 @@ pub async fn get_holdings_paginated(
             h.maturity_date
          FROM holdings h
          LEFT JOIN accounts a ON a.id = h.account_id
+         WHERE h.deleted_at IS NULL
          ORDER BY h.created_at ASC
          LIMIT $1 OFFSET $2",
     )
@@ -1277,16 +1287,16 @@ pub async fn get_transactions_paginated(
 
     let (count_sql, items_sql) = if holding_id.is_some() {
         (
-            "SELECT COUNT(*) FROM transactions WHERE holding_id = $1",
+            "SELECT COUNT(*) FROM transactions WHERE holding_id = $1 AND deleted_at IS NULL",
             "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-             FROM transactions WHERE holding_id = $1 ORDER BY transacted_at ASC
+             FROM transactions WHERE holding_id = $1 AND deleted_at IS NULL ORDER BY transacted_at ASC
              LIMIT $2 OFFSET $3",
         )
     } else {
         (
-            "SELECT COUNT(*) FROM transactions",
+            "SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL",
             "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-             FROM transactions ORDER BY transacted_at ASC
+             FROM transactions WHERE deleted_at IS NULL ORDER BY transacted_at ASC
              LIMIT $1 OFFSET $2",
         )
     };
@@ -1398,7 +1408,7 @@ pub async fn get_dividends_paginated(
     use sqlx::Row;
     let offset = (page - 1).max(0) * page_size;
 
-    let total: i64 = sqlx::query("SELECT COUNT(*) FROM dividends")
+    let total: i64 = sqlx::query("SELECT COUNT(*) FROM dividends WHERE deleted_at IS NULL")
         .fetch_one(pool)
         .await
         .map_err(|e| e.to_string())?
@@ -1409,6 +1419,7 @@ pub async fn get_dividends_paginated(
                 d.ex_date, d.pay_date, d.created_at
          FROM dividends d
          JOIN holdings h ON h.id = d.holding_id
+         WHERE d.deleted_at IS NULL AND h.deleted_at IS NULL
          ORDER BY d.ex_date DESC
          LIMIT $1 OFFSET $2",
     )
@@ -1904,7 +1915,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transactions_cascade_on_holding_delete() {
+    async fn soft_delete_holding_preserves_transactions() {
+        // Soft-delete: holding disappears from queries but its transactions are
+        // retained so cost-basis history can be reconstructed.
         let pool = open_test_db().await;
         let holding = insert_holding(&pool, make_input("NVDA"))
             .await
@@ -1924,10 +1937,14 @@ mod tests {
         delete_holding(&pool, &holding.id)
             .await
             .expect("delete holding");
+        // Holding no longer visible in the active list
+        let all = get_all_holdings(&pool).await.expect("get all");
+        assert!(all.iter().all(|h| h.id != holding.id));
+        // Transactions are still retrievable (history preserved)
         let txs = get_transactions_for_holding(&pool, &holding.id)
             .await
             .expect("get txs");
-        assert_eq!(txs.len(), 0);
+        assert_eq!(txs.len(), 1);
     }
 
     // ── Account CRUD ──────────────────────────────────────────────────────────
