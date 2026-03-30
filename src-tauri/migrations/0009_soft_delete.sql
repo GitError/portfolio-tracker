@@ -1,0 +1,4 @@
+-- Add soft-delete columns
+ALTER TABLE holdings     ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL;
+ALTER TABLE transactions ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL;
+ALTER TABLE dividends    ADD COLUMN deleted_at TIMESTAMP NULL DEFAULT NULL;
