@@ -65,6 +65,7 @@ describe('usePortfolio hook (mock/browser path)', () => {
         name: 'Test Corp',
         assetType: 'stock',
         account: 'taxable',
+        accountId: null,
         quantity: 10,
         costBasis: 100,
         currency: 'USD',

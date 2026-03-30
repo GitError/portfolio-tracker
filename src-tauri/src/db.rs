@@ -777,11 +777,19 @@ pub async fn delete_alert(pool: &SqlitePool, id: &str) -> Result<bool, String> {
 }
 
 /// Mark alerts as triggered for a symbol when threshold is crossed.
+///
+/// Uses bracket logic when `prev_price` is available: an "above" alert fires
+/// only when the price crosses the threshold upward (`prev < threshold <= current`),
+/// and a "below" alert fires only when it crosses downward. This correctly handles
+/// gap openings where the price jumps over the threshold without landing on it.
+/// When `prev_price` is `None` (e.g. first refresh), point-in-time comparison is used.
+///
 /// Returns the IDs of newly-triggered alerts.
 pub async fn check_and_trigger_alerts(
     pool: &SqlitePool,
     symbol: &str,
     price: f64,
+    prev_price: Option<f64>,
 ) -> Result<Vec<String>, String> {
     use sqlx::Row;
     let rows = sqlx::query(
@@ -800,9 +808,13 @@ pub async fn check_and_trigger_alerts(
 
     let mut triggered = Vec::new();
     for (id, dir_str, threshold) in &candidates {
-        let crossed = match dir_str.as_str() {
-            "above" => price >= *threshold,
-            "below" => price <= *threshold,
+        let crossed = match (dir_str.as_str(), prev_price) {
+            // Bracket logic: threshold must be crossed in the correct direction
+            ("above", Some(prev)) => prev < *threshold && price >= *threshold,
+            ("below", Some(prev)) => prev > *threshold && price <= *threshold,
+            // Fallback: point-in-time comparison when no previous price is known
+            ("above", None) => price >= *threshold,
+            ("below", None) => price <= *threshold,
             _ => false,
         };
         if crossed {

@@ -679,7 +679,14 @@ pub async fn refresh_prices(
 
         // Check price alerts — collect newly-triggered IDs and surface errors
         for price in &prices {
-            match db::check_and_trigger_alerts(pool, &price.symbol, price.price).await {
+            match db::check_and_trigger_alerts(
+                pool,
+                &price.symbol,
+                price.price,
+                price.previous_close,
+            )
+            .await
+            {
                 Ok(ids) => triggered_alert_ids.extend(ids),
                 Err(e) => {
                     let msg = format!("Failed to check alerts for {}: {}", price.symbol, e);
