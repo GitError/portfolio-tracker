@@ -26,7 +26,7 @@ futures = "0.3"
 csv = "1.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
-ts-rs = { version = "10", features = ["serde-compat"] }
+ts-rs = { version = "12", features = ["serde-compat"] }
 
 [dev-dependencies]
 mockito = "1"
