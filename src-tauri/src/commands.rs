@@ -16,12 +16,12 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::stress::run_stress_test;
 use crate::types::{
-    Account, AssetType, CountryWeight, CreateAccountRequest, Dividend, DividendInput, Holding,
-    HoldingInput, ImportError, ImportResult, PaginatedResult, PerformancePoint, PortfolioAnalytics,
-    PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert,
-    PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion, RefreshResult,
-    SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction,
-    TransactionInput,
+    Account, AlertId, AssetType, CountryWeight, CreateAccountRequest, Dividend, DividendInput,
+    Holding, HoldingId, HoldingInput, ImportError, ImportResult, PaginatedResult, PerformancePoint,
+    PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult, PreviewRow,
+    PriceAlert, PriceAlertInput, PriceData, RealizedGainsSummary, RebalanceSuggestion,
+    RefreshResult, SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult,
+    Transaction, TransactionId, TransactionInput,
 };
 
 pub struct DbState(pub SqlitePool);
@@ -253,7 +253,7 @@ pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<
     }
     let pool = &db.0;
     if holding.target_weight > 0.0 {
-        let current_sum = db::sum_target_weights(pool, Some(&holding.id)).await?;
+        let current_sum = db::sum_target_weights(pool, Some(holding.id.0.as_str())).await?;
         let new_total = current_sum + holding.target_weight;
         if new_total > 100.0 + WEIGHT_EPSILON {
             return Err(AppError::Validation(format!(
@@ -268,7 +268,7 @@ pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<
 }
 
 #[tauri::command]
-pub async fn delete_holding(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
+pub async fn delete_holding(db: State<'_, DbState>, id: HoldingId) -> Result<bool, AppError> {
     let pool = &db.0;
     db::delete_holding(pool, &id).await.map_err(AppError::from)
 }
@@ -839,7 +839,7 @@ pub async fn add_dividend(
     // Look up the symbol and currency for the holding with a targeted query (avoids N+1)
     let row: Option<(String, String)> =
         sqlx::query_as("SELECT symbol, currency FROM holdings WHERE id = $1")
-            .bind(&dividend.holding_id)
+            .bind(dividend.holding_id.0.as_str())
             .fetch_optional(pool)
             .await
             .map_err(AppError::from)?;
@@ -890,13 +890,13 @@ pub async fn add_alert(
 }
 
 #[tauri::command]
-pub async fn delete_alert(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
+pub async fn delete_alert(db: State<'_, DbState>, id: AlertId) -> Result<bool, AppError> {
     let pool = &db.0;
     db::delete_alert(pool, &id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
-pub async fn reset_alert(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
+pub async fn reset_alert(db: State<'_, DbState>, id: AlertId) -> Result<bool, AppError> {
     let pool = &db.0;
     db::reset_alert(pool, &id).await.map_err(AppError::from)
 }
@@ -1543,7 +1543,7 @@ pub async fn get_portfolio_analytics(
 #[tauri::command]
 pub async fn get_realized_gains(
     db: State<'_, DbState>,
-    holding_id: Option<String>,
+    holding_id: Option<HoldingId>,
 ) -> Result<RealizedGainsSummary, AppError> {
     let pool = &db.0;
     let cost_basis_method = db::get_config(pool, "cost_basis_method")
@@ -1561,8 +1561,7 @@ pub async fn get_realized_gains(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::csv::{normalize_symbol_for_import, ParsedImportRow};
-    use crate::types::{AccountType, FxRate, HoldingWithPrice};
+    use crate::types::{AccountType, FxRate};
     use chrono::Utc;
 
     // CSV/normalize tests live in csv.rs.
@@ -1581,7 +1580,7 @@ mod tests {
         currency: &str,
     ) -> Holding {
         Holding {
-            id: symbol.to_string(),
+            id: HoldingId(symbol.to_string()),
             symbol: symbol.to_string(),
             name: symbol.to_string(),
             asset_type,
@@ -2079,7 +2078,7 @@ pub async fn add_transaction(
 #[tauri::command]
 pub async fn get_transactions(
     db: State<'_, DbState>,
-    holding_id: Option<String>,
+    holding_id: Option<HoldingId>,
 ) -> Result<Vec<Transaction>, AppError> {
     let pool = &db.0;
     match holding_id {
@@ -2091,7 +2090,10 @@ pub async fn get_transactions(
 }
 
 #[tauri::command]
-pub async fn delete_transaction(db: State<'_, DbState>, id: String) -> Result<bool, AppError> {
+pub async fn delete_transaction(
+    db: State<'_, DbState>,
+    id: TransactionId,
+) -> Result<bool, AppError> {
     let pool = &db.0;
     db::delete_transaction(pool, &id)
         .await
@@ -2222,7 +2224,7 @@ pub async fn get_holdings_paginated(
 #[tauri::command]
 pub async fn get_transactions_paginated(
     db: State<'_, DbState>,
-    holding_id: Option<String>,
+    holding_id: Option<HoldingId>,
     page: i64,
     page_size: i64,
 ) -> Result<PaginatedResult<Transaction>, AppError> {
@@ -2235,9 +2237,14 @@ pub async fn get_transactions_paginated(
         ));
     }
     let pool = &db.0;
-    db::get_transactions_paginated(pool, holding_id.as_deref(), page, page_size)
-        .await
-        .map_err(AppError::from)
+    db::get_transactions_paginated(
+        pool,
+        holding_id.as_ref().map(|id| id.0.as_str()),
+        page,
+        page_size,
+    )
+    .await
+    .map_err(AppError::from)
 }
 
 #[tauri::command]

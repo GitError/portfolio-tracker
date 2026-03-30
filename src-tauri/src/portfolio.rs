@@ -195,7 +195,7 @@ pub fn build_portfolio_snapshot(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{AccountType, AssetType, FxRate, Holding, PriceData};
+    use crate::types::{AccountType, AssetType, FxRate, Holding, HoldingId, PriceData};
     use chrono::Utc;
 
     fn make_holding(
@@ -206,7 +206,7 @@ mod tests {
         currency: &str,
     ) -> Holding {
         Holding {
-            id: symbol.to_string(),
+            id: HoldingId(symbol.to_string()),
             symbol: symbol.to_string(),
             name: symbol.to_string(),
             asset_type,

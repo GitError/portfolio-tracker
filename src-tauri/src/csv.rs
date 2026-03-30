@@ -348,7 +348,7 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{AccountType, AssetType, Holding};
+    use crate::types::{AccountType, AssetType, Holding, HoldingId};
 
     fn make_holding(
         symbol: &str,
@@ -358,7 +358,7 @@ mod tests {
         currency: &str,
     ) -> Holding {
         Holding {
-            id: symbol.to_string(),
+            id: HoldingId(symbol.to_string()),
             symbol: symbol.to_string(),
             name: symbol.to_string(),
             asset_type,
