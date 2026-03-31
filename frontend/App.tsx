@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { tauriInvoke } from './lib/tauri';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Holdings } from './components/Holdings';
@@ -125,8 +126,104 @@ function AppRoutes() {
     exportCsvRef.current = handler;
   }, []);
 
+  // Show cost-basis selection modal on first launch when no method is set
+  const [showCostBasisModal, setShowCostBasisModal] = useState(false);
+  useEffect(() => {
+    if (portfolio?.requiresCostBasisSelection) {
+      setShowCostBasisModal(true);
+    }
+  }, [portfolio?.requiresCostBasisSelection]);
+
+  const handleSelectCostBasis = useCallback(
+    async (method: 'avco' | 'fifo') => {
+      await tauriInvoke('set_config_cmd', { key: 'cost_basis_method', value: method });
+      setShowCostBasisModal(false);
+      await refreshPrices();
+    },
+    [refreshPrices]
+  );
+
   return (
     <CurrencyContext.Provider value={{ baseCurrency, setBaseCurrency }}>
+      {showCostBasisModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 1000,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-primary)',
+              padding: 32,
+              maxWidth: 420,
+              width: '100%',
+            }}
+          >
+            <h2
+              style={{
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 12px',
+                fontSize: 16,
+              }}
+            >
+              Choose Cost-Basis Method
+            </h2>
+            <p
+              style={{
+                color: 'var(--text-secondary)',
+                fontSize: 13,
+                fontFamily: 'var(--font-sans)',
+                margin: '0 0 24px',
+              }}
+            >
+              Select how realized gains are calculated. This can be changed later in Settings, but
+              retroactive changes will affect gain history.
+            </p>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <button
+                onClick={() => handleSelectCostBasis('avco')}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  background: 'var(--color-accent)',
+                  border: 'none',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  borderRadius: 2,
+                }}
+              >
+                AVCO (Average Cost)
+              </button>
+              <button
+                onClick={() => handleSelectCostBasis('fifo')}
+                style={{
+                  flex: 1,
+                  padding: '10px 16px',
+                  background: 'var(--bg-surface-hover)',
+                  border: '1px solid var(--border-primary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 13,
+                  borderRadius: 2,
+                }}
+              >
+                FIFO
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <Routes>
         <Route
           element={
