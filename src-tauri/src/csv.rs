@@ -108,7 +108,14 @@ fn parse_required_field(
 /// Strip null bytes and ASCII control characters from a string field.
 /// This prevents control characters from being stored in the database or
 /// causing downstream parsing issues.
+/// Enforces MAX_FIELD_LEN before processing to avoid allocating/scanning
+/// excessively large inputs.
 fn sanitize_str(s: &str) -> String {
+    let s = if s.len() > crate::config::MAX_FIELD_LEN {
+        &s[..crate::config::MAX_FIELD_LEN]
+    } else {
+        s
+    };
     s.chars().filter(|c| !c.is_control()).collect()
 }
 
