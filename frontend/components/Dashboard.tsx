@@ -228,7 +228,7 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
 
   const concentrationStats = useMemo(() => {
     if (concentrationData.length === 0) return null;
-    const largest = concentrationData[0]!.weightPct;
+    const largest = concentrationData[0]?.weightPct ?? 0;
     const top3 = concentrationData.slice(0, 3).reduce((sum, d) => sum + d.weightPct, 0);
     return { largest, top3, hasRisk: largest > 20 };
   }, [concentrationData]);
