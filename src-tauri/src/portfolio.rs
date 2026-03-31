@@ -451,4 +451,173 @@ mod tests {
             snapshot.daily_pnl
         );
     }
+
+    #[test]
+    fn build_portfolio_snapshot_empty_holdings_returns_zero_snapshot() {
+        let snapshot = build_portfolio_snapshot(
+            &[],
+            &[],
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            50.0,
+            10.0,
+        );
+        assert_eq!(snapshot.holdings.len(), 0);
+        assert_eq!(snapshot.total_value, 0.0);
+        assert_eq!(snapshot.total_cost, 0.0);
+        assert_eq!(snapshot.total_gain_loss, 0.0);
+        assert_eq!(snapshot.total_gain_loss_percent, 0.0);
+        assert_eq!(snapshot.daily_pnl, 0.0);
+        // realized_gains and annual_dividend_income are passed through
+        assert!((snapshot.realized_gains - 50.0).abs() < 0.001);
+        assert!((snapshot.annual_dividend_income - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_cash_always_uses_price_1() {
+        // Cash holdings must use price = 1.0 regardless of any cached price entry.
+        let holding = make_holding("CAD-CASH", AssetType::Cash, 1000.0, 1.0, "CAD");
+        // Provide a nonsense price entry — should be ignored for cash.
+        let prices = vec![PriceData {
+            symbol: "CAD-CASH".to_string(),
+            price: 999.0,
+            currency: "CAD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!((snapshot.holdings[0].current_price - 1.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].market_value_cad - 1000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_missing_price_falls_back_to_cost_basis() {
+        let holding = make_holding("UNKNOWN", AssetType::Stock, 10.0, 50.0, "CAD");
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &[],   // no prices
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        // With no price, current_price falls back to cost_basis (50.0)
+        assert!((snapshot.holdings[0].current_price - 50.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].market_value_cad - 500.0).abs() < 0.001);
+        // gain_loss should be zero when price == cost_basis
+        assert!((snapshot.holdings[0].gain_loss).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_missing_fx_marks_holding_as_stale() {
+        // When FX rate is unavailable, fx_stale = true and rate defaults to 1.0.
+        let holding = make_holding("AAPL", AssetType::Stock, 1.0, 100.0, "USD");
+        let prices = vec![PriceData {
+            symbol: "AAPL".to_string(),
+            price: 150.0,
+            currency: "USD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        // No FX rates provided — USDCAD unavailable
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!(
+            snapshot.holdings[0].fx_stale,
+            "fx_stale should be true when FX rate is unavailable"
+        );
+        // Rate defaults to 1.0, so market_value_cad == 150.0 (not converted)
+        assert!((snapshot.holdings[0].market_value_cad - 150.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_weight_sums_to_100() {
+        let holdings = vec![
+            make_holding("A", AssetType::Stock, 1.0, 100.0, "CAD"),
+            make_holding("B", AssetType::Stock, 1.0, 100.0, "CAD"),
+            make_holding("C", AssetType::Stock, 1.0, 100.0, "CAD"),
+        ];
+        let prices = vec![
+            PriceData { symbol: "A".to_string(), price: 100.0, currency: "CAD".to_string(), change: 0.0, change_percent: 0.0, updated_at: Utc::now().to_rfc3339(), open: None, previous_close: None, volume: None },
+            PriceData { symbol: "B".to_string(), price: 200.0, currency: "CAD".to_string(), change: 0.0, change_percent: 0.0, updated_at: Utc::now().to_rfc3339(), open: None, previous_close: None, volume: None },
+            PriceData { symbol: "C".to_string(), price: 300.0, currency: "CAD".to_string(), change: 0.0, change_percent: 0.0, updated_at: Utc::now().to_rfc3339(), open: None, previous_close: None, volume: None },
+        ];
+
+        let snapshot = build_portfolio_snapshot(
+            &holdings,
+            &prices,
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        let total_weight: f64 = snapshot.holdings.iter().map(|h| h.weight).sum();
+        assert!(
+            (total_weight - 100.0).abs() < 0.001,
+            "weights should sum to 100%, got {}",
+            total_weight
+        );
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_zero_cost_basis_gain_loss_percent_is_zero() {
+        let holding = make_holding("FREE", AssetType::Stock, 10.0, 0.0, "CAD");
+        let prices = vec![PriceData {
+            symbol: "FREE".to_string(),
+            price: 50.0,
+            currency: "CAD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        // Division by zero guard: gain_loss_percent should be 0.0 when cost == 0
+        assert_eq!(snapshot.holdings[0].gain_loss_percent, 0.0);
+    }
 }
