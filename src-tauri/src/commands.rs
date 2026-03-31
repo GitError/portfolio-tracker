@@ -194,8 +194,12 @@ pub async fn get_portfolio(
     ))
 }
 
+/// Deprecated: use `get_holdings_paginated` instead.
+/// This command returns all holdings in a single response with no pagination;
+/// it remains registered for backwards compatibility but should not be used in new code.
 #[tauri::command]
 pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, AppError> {
+    tracing::warn!("get_holdings is deprecated; use get_holdings_paginated");
     let pool = &db.0;
     db::get_all_holdings(pool).await.map_err(AppError::from)
 }
@@ -829,8 +833,10 @@ pub async fn get_performance(
 
 // ── Dividend Commands ─────────────────────────────────────────────────────────
 
+/// Deprecated: use `get_dividends_paginated` instead.
 #[tauri::command]
 pub async fn get_dividends(db: State<'_, DbState>) -> Result<Vec<Dividend>, AppError> {
+    tracing::warn!("get_dividends is deprecated; use get_dividends_paginated");
     let pool = &db.0;
     db::get_dividends(pool).await.map_err(AppError::from)
 }
@@ -874,8 +880,10 @@ pub async fn delete_dividend(db: State<'_, DbState>, id: i64) -> Result<bool, Ap
 
 // ── Price Alert Commands ───────────────────────────────────────────────────────
 
+/// Deprecated: use `get_alerts_paginated` instead.
 #[tauri::command]
 pub async fn get_alerts(db: State<'_, DbState>) -> Result<Vec<PriceAlert>, AppError> {
+    tracing::warn!("get_alerts is deprecated; use get_alerts_paginated");
     let pool = &db.0;
     db::get_alerts(pool).await.map_err(AppError::from)
 }
@@ -2086,11 +2094,13 @@ pub async fn add_transaction(
         .map_err(AppError::from)
 }
 
+/// Deprecated: use `get_transactions_paginated` instead.
 #[tauri::command]
 pub async fn get_transactions(
     db: State<'_, DbState>,
     holding_id: Option<HoldingId>,
 ) -> Result<Vec<Transaction>, AppError> {
+    tracing::warn!("get_transactions is deprecated; use get_transactions_paginated");
     let pool = &db.0;
     match holding_id {
         Some(id) => db::get_transactions_for_holding(pool, &id)
