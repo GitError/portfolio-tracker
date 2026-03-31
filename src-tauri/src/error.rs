@@ -29,8 +29,13 @@ impl std::fmt::Display for AppError {
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         match e {
-            sqlx::Error::RowNotFound => AppError::NotFound(e.to_string()),
-            _ => AppError::Database(e.to_string()),
+            sqlx::Error::RowNotFound => AppError::NotFound("Record not found".to_string()),
+            _ => {
+                // Log the full error internally but return a sanitized message to avoid
+                // leaking internal schema details to the frontend.
+                tracing::error!("Database error: {}", e);
+                AppError::Database("A database error occurred".to_string())
+            }
         }
     }
 }
