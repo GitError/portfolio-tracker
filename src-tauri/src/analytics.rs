@@ -203,7 +203,12 @@ pub fn compute_realized_gains_grouped(
 
 /// Extract the YYYY-MM-DD portion from an ISO 8601 timestamp.
 fn date_part(ts: &str) -> String {
-    ts.get(..10).unwrap_or(ts).to_string()
+    // Use safe slicing: if the string is shorter than 10 chars (e.g. invalid
+    // timestamp), return the original string rather than panicking.
+    if ts.len() < 10 {
+        return ts.to_string();
+    }
+    ts[..10].to_string()
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
