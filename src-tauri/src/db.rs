@@ -37,26 +37,11 @@ pub async fn set_config(pool: &SqlitePool, key: &str, value: &str) -> Result<(),
     Ok(())
 }
 
-#[allow(dead_code)]
-pub async fn get_all_config(pool: &SqlitePool) -> Result<Vec<(String, String)>, String> {
-    use sqlx::Row;
-    let rows = sqlx::query("SELECT key, value FROM app_config ORDER BY key")
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(rows
-        .into_iter()
-        .map(|r| (r.get::<String, _>(0), r.get::<String, _>(1)))
-        .collect())
-}
-
 // ── Holdings ──────────────────────────────────────────────────────────────────
 
 pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Holding, String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    let asset_type_str = input.asset_type.as_str().to_string();
 
     let effective_account_id: Option<String> = if let Some(account_id) = input.account_id.clone() {
         Some(account_id)
@@ -78,7 +63,7 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
     .bind(&id)
     .bind(&input.symbol)
     .bind(&input.name)
-    .bind(&asset_type_str)
+    .bind(input.asset_type.as_str())
     .bind(input.account.as_str())
     .bind(&effective_account_id)
     .bind(input.quantity)
@@ -126,7 +111,6 @@ pub async fn insert_holding_in_tx(
 ) -> Result<Holding, String> {
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    let asset_type_str = input.asset_type.as_str().to_string();
 
     // Account ID lookup runs on the same connection so it participates in the tx.
     let effective_account_id: Option<String> = if let Some(account_id) = input.account_id.clone() {
@@ -149,7 +133,7 @@ pub async fn insert_holding_in_tx(
     .bind(&id)
     .bind(&input.symbol)
     .bind(&input.name)
-    .bind(&asset_type_str)
+    .bind(input.asset_type.as_str())
     .bind(input.account.as_str())
     .bind(&effective_account_id)
     .bind(input.quantity)
@@ -191,7 +175,6 @@ pub async fn insert_holding_in_tx(
 
 pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holding, String> {
     let now = Utc::now().to_rfc3339();
-    let asset_type_str = holding.asset_type.as_str().to_string();
 
     let effective_account_id: Option<String> = if let Some(account_id) = holding.account_id.clone()
     {
@@ -227,7 +210,7 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
     )
     .bind(&holding.symbol)
     .bind(&holding.name)
-    .bind(&asset_type_str)
+    .bind(holding.asset_type.as_str())
     .bind(holding.account.as_str())
     .bind(&effective_account_id)
     .bind(holding.quantity)

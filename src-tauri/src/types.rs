@@ -546,10 +546,13 @@ pub struct RefreshResult {
     /// Human-readable errors that occurred while evaluating price alerts.
     /// Non-empty when one or more alert checks failed so the frontend can surface them.
     pub alert_errors: Vec<String>,
+    /// Error message if the portfolio snapshot could not be recorded after the refresh.
+    /// The refresh itself succeeded — this only indicates the performance history entry failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot_error: Option<String>,
 }
 
 /// Full data export payload — includes all user data for backup/restore.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
