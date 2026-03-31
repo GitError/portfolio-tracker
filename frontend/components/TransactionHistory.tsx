@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { usePortfolio } from '../hooks/usePortfolio';
@@ -77,6 +78,7 @@ const TD: React.CSSProperties = {
 export function TransactionHistory() {
   const { portfolio } = usePortfolio();
   const { showToast } = useToast();
+  const { t } = useTranslation();
 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,7 +281,7 @@ export function TransactionHistory() {
         </div>
       ) : filteredTransactions.length === 0 ? (
         <EmptyState
-          message="No transactions recorded yet."
+          message={t('transactions.empty')}
           action={
             holdings.length > 0 ? { label: '+ Add Transaction', onClick: openAddModal } : undefined
           }
@@ -352,12 +354,24 @@ export function TransactionHistory() {
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead>
                       <tr>
-                        <th style={{ ...TH, textAlign: 'left' }}>Date</th>
-                        <th style={{ ...TH, textAlign: 'left' }}>Type</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Quantity</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Price</th>
-                        <th style={{ ...TH, textAlign: 'right' }}>Total Value</th>
-                        <th style={{ ...TH, textAlign: 'center', width: 60 }}>Actions</th>
+                        <th scope="col" style={{ ...TH, textAlign: 'left' }}>
+                          {t('transactions.columns.date')}
+                        </th>
+                        <th scope="col" style={{ ...TH, textAlign: 'left' }}>
+                          {t('transactions.columns.type')}
+                        </th>
+                        <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                          {t('transactions.columns.quantity')}
+                        </th>
+                        <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                          {t('transactions.columns.price')}
+                        </th>
+                        <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                          {t('transactions.columns.total')}
+                        </th>
+                        <th scope="col" style={{ ...TH, textAlign: 'center', width: 60 }}>
+                          {t('transactions.columns.actions')}
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -464,7 +478,8 @@ export function TransactionHistory() {
                               ) : (
                                 <button
                                   onClick={() => setPendingDelete(tx.id)}
-                                  title="Delete"
+                                  title={t('common.delete')}
+                                  aria-label={t('common.delete')}
                                   disabled={isDeleting}
                                   style={{
                                     background: 'none',
