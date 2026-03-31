@@ -1110,8 +1110,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                         }}
                                       >
                                         {formatNumber(h.currentPrice, 2)} {h.currency}
-                                        {isPriceStale(portfolio?.lastUpdated) && (
-                                          <span title="Price may be stale (last refreshed over 2h ago)">
+                                        {h.priceIsStale && (
+                                          <span title="Price may be outdated (>24h old)">
                                             <Clock
                                               size={10}
                                               style={{
@@ -1555,18 +1555,28 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                         </th>
                       ))}
                     {!hiddenColumns.has('prevClose') && (
-                      <th style={{ ...TH, textAlign: 'right' }}>Prev Close</th>
+                      <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                        Prev Close
+                      </th>
                     )}
                     {!hiddenColumns.has('dayOpen') && (
-                      <th style={{ ...TH, textAlign: 'right' }}>Day Open</th>
+                      <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                        Day Open
+                      </th>
                     )}
                     {!hiddenColumns.has('openDate') && (
-                      <th style={{ ...TH, textAlign: 'right' }}>Open Date</th>
+                      <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                        Open Date
+                      </th>
                     )}
                     {!hiddenColumns.has('maturityDate') && (
-                      <th style={{ ...TH, textAlign: 'right' }}>Maturity</th>
+                      <th scope="col" style={{ ...TH, textAlign: 'right' }}>
+                        Maturity
+                      </th>
                     )}
-                    <th style={{ ...TH, textAlign: 'center' }}>Actions</th>
+                    <th scope="col" style={{ ...TH, textAlign: 'center' }}>
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1692,8 +1702,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                 style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
                               >
                                 {formatNumber(h.currentPrice, 2)} {h.currency}
-                                {isPriceStale(portfolio?.lastUpdated) && (
-                                  <span title="Price may be stale (last refreshed over 2h ago)">
+                                {h.priceIsStale && (
+                                  <span title="Price may be outdated (>24h old)">
                                     <Clock
                                       size={10}
                                       style={{ color: 'var(--color-warning)', flexShrink: 0 }}
