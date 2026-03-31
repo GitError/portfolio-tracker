@@ -330,6 +330,9 @@ pub struct HoldingWithPrice {
     /// True when the FX rate for this holding's currency was not available;
     /// values are shown in the source currency as a fallback.
     pub fx_stale: bool,
+    /// True when the cached price for this holding is older than the staleness
+    /// threshold (currently 24 hours). Cash holdings are always false.
+    pub price_is_stale: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -351,6 +354,10 @@ pub struct PortfolioSnapshot {
     pub realized_gains: f64,
     /// Sum of (amount_per_unit × quantity) for all dividends with a pay_date in the last 12 months.
     pub annual_dividend_income: f64,
+    /// True when the user has never explicitly set a cost-basis method.
+    /// The frontend should prompt the user to choose AVCO or FIFO before showing realized gains.
+    #[serde(default)]
+    pub requires_cost_basis_selection: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

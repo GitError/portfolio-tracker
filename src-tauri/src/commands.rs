@@ -161,10 +161,13 @@ pub async fn get_portfolio(
     let cached_prices = db::get_cached_prices(pool).await?;
     let cached_fx = db::get_fx_rates(pool).await?;
 
+    let cost_basis_method_opt = db::get_config(pool, "cost_basis_method").await?;
+    // If the user has never explicitly chosen a method, flag the snapshot so the frontend
+    // can prompt for an explicit selection before displaying realized gains.
+    let requires_cost_basis_selection = cost_basis_method_opt.is_none();
+    let cost_basis_method = cost_basis_method_opt.unwrap_or_else(|| "avco".to_string());
+
     let realized_gains = {
-        let cost_basis_method = db::get_config(pool, "cost_basis_method")
-            .await?
-            .unwrap_or_else(|| "avco".to_string());
         let transactions = db::get_all_transactions(pool).await?;
         match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
             Ok(s) => s.total_realized_gain,
@@ -183,7 +186,7 @@ pub async fn get_portfolio(
         .await
         .unwrap_or(0.0);
 
-    Ok(build_portfolio_snapshot(
+    let mut snapshot = build_portfolio_snapshot(
         &holdings,
         &cached_prices,
         &cached_fx,
@@ -191,7 +194,9 @@ pub async fn get_portfolio(
         Utc::now().to_rfc3339(),
         realized_gains,
         annual_dividend_income,
-    ))
+    );
+    snapshot.requires_cost_basis_selection = requires_cost_basis_selection;
+    Ok(snapshot)
 }
 
 /// Deprecated: use `get_holdings_paginated` instead.
