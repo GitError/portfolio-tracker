@@ -86,7 +86,13 @@ impl SearchCacheState {
     }
 
     fn get(&self, key: &str) -> Option<Vec<SymbolResult>> {
-        let cache = self.0.lock().ok()?;
+        let cache = match self.0.lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                tracing::warn!("Search cache mutex poisoned; cache disabled for this request");
+                return None;
+            }
+        };
         let entry = cache.get(key)?;
         if entry.cached_at.elapsed()
             > Duration::from_secs(crate::config::SEARCH_CACHE_TTL_SECS as u64)
@@ -196,27 +202,34 @@ pub async fn get_holdings(db: State<'_, DbState>) -> Result<Vec<Holding>, AppErr
 
 const WEIGHT_EPSILON: f64 = 0.001;
 
-#[tauri::command]
-pub async fn add_holding(
-    db: State<'_, DbState>,
-    holding: HoldingInput,
-) -> Result<Holding, AppError> {
-    if holding.quantity <= 0.0 || !holding.quantity.is_finite() {
+/// Validate fields common to both add_holding and update_holding.
+/// Returns the normalised (uppercased, trimmed) currency string on success.
+fn validate_holding_fields(quantity: f64, cost_basis: f64, currency: &str) -> Result<String, AppError> {
+    if quantity <= 0.0 || !quantity.is_finite() {
         return Err(AppError::Validation(
             "quantity must be a positive finite number".to_string(),
         ));
     }
-    if holding.cost_basis < 0.0 || !holding.cost_basis.is_finite() {
+    if cost_basis < 0.0 || !cost_basis.is_finite() {
         return Err(AppError::Validation(
             "costBasis must be a non-negative finite number".to_string(),
         ));
     }
-    let currency = holding.currency.trim().to_uppercase();
+    let currency = currency.trim().to_uppercase();
     if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
         return Err(AppError::Validation(
             "currency must be a 3-letter ISO currency code".to_string(),
         ));
     }
+    Ok(currency)
+}
+
+#[tauri::command]
+pub async fn add_holding(
+    db: State<'_, DbState>,
+    holding: HoldingInput,
+) -> Result<Holding, AppError> {
+    validate_holding_fields(holding.quantity, holding.cost_basis, &holding.currency)?;
     let pool = &db.0;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(pool, None).await?;
@@ -235,22 +248,7 @@ pub async fn add_holding(
 
 #[tauri::command]
 pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, AppError> {
-    if holding.quantity <= 0.0 || !holding.quantity.is_finite() {
-        return Err(AppError::Validation(
-            "quantity must be a positive finite number".to_string(),
-        ));
-    }
-    if holding.cost_basis < 0.0 || !holding.cost_basis.is_finite() {
-        return Err(AppError::Validation(
-            "costBasis must be a non-negative finite number".to_string(),
-        ));
-    }
-    let currency = holding.currency.trim().to_uppercase();
-    if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
-        return Err(AppError::Validation(
-            "currency must be a 3-letter ISO currency code".to_string(),
-        ));
-    }
+    validate_holding_fields(holding.quantity, holding.cost_basis, &holding.currency)?;
     let pool = &db.0;
     if holding.target_weight > 0.0 {
         let current_sum = db::sum_target_weights(pool, Some(holding.id.0.as_str())).await?;
@@ -660,10 +658,11 @@ pub async fn refresh_prices(
         (snap.total_value, snap.total_cost, snap.total_gain_loss)
     };
 
-    // Record the snapshot and prune old data; log errors but don't fail the command
-    {
+    // Record the snapshot and prune old data; log errors but don't fail the command.
+    // Surface snapshot insertion failures to the caller via RefreshResult.snapshot_error.
+    let snapshot_error = {
         let pool = &db.0;
-        if let Err(e) = db::insert_snapshot(
+        let err = match db::insert_snapshot(
             pool,
             snapshot_totals.0,
             snapshot_totals.1,
@@ -671,8 +670,12 @@ pub async fn refresh_prices(
         )
         .await
         {
-            tracing::error!("Failed to insert portfolio snapshot: {}", e);
-        }
+            Ok(_) => None,
+            Err(e) => {
+                tracing::error!("Failed to insert portfolio snapshot: {}", e);
+                Some(format!("Performance history could not be recorded: {e}"))
+            }
+        };
         if let Err(e) = db::prune_snapshots(pool).await {
             tracing::warn!("Failed to prune portfolio snapshots: {}", e);
         }
@@ -695,13 +698,15 @@ pub async fn refresh_prices(
                 }
             }
         }
-    }
+        err
+    };
 
     Ok(RefreshResult {
         prices,
         failed_symbols,
         triggered_alerts: triggered_alert_ids,
         alert_errors,
+        snapshot_error,
     })
 }
 
@@ -952,16 +957,22 @@ pub async fn backup_database(
     let canonical_app_dir =
         std::fs::canonicalize(&app_data_dir).map_err(|e| format!("Cannot resolve app dir: {e}"))?;
     // Canonicalize dest — if the file doesn't exist yet, canonicalize its parent
-    // to still resolve any symlinks in the directory component.
-    let canonical_dest = std::fs::canonicalize(&dest).unwrap_or_else(|_| {
-        if let Some(parent) = dest.parent() {
-            std::fs::canonicalize(parent)
-                .unwrap_or_else(|_| parent.to_path_buf())
-                .join(dest.file_name().unwrap_or_default())
+    // directory to resolve any symlinks. If the parent cannot be canonicalized
+    // we return an error rather than falling back to a potentially non-canonical path,
+    // which would defeat the path-traversal check below.
+    let canonical_dest = if dest.exists() {
+        std::fs::canonicalize(&dest)
+            .map_err(|e| format!("Cannot resolve destination path: {e}"))?
+    } else {
+        let parent = dest.parent().ok_or("Destination path has no parent directory")?;
+        let canonical_parent = if parent.as_os_str().is_empty() {
+            canonical_app_dir.clone()
         } else {
-            dest.clone()
-        }
-    });
+            std::fs::canonicalize(parent)
+                .map_err(|e| format!("Cannot resolve destination directory: {e}"))?
+        };
+        canonical_parent.join(dest.file_name().ok_or("Destination path has no filename")?)
+    };
     if !canonical_dest.starts_with(&canonical_app_dir) {
         return Err(AppError::Validation(format!(
             "Backup destination must be inside the app data directory ({})",
