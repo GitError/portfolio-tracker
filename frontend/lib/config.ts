@@ -11,7 +11,7 @@ export const config = {
 
   // ── UI counts ────────────────────────────────────────────────────────────────
   /** Number of top movers shown in the Dashboard panel. */
-  topMoversCount: 5,
+  topMoversCount: 8,
 
   /** Minimum symbol length before SymbolSearch fires a query. */
   symbolSearchMinChars: 2,
