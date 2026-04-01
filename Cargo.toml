@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "src-tauri",
+    "portfolio-mcp",
+]
+resolver = "2"
