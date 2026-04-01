@@ -2033,7 +2033,20 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                   >
                     <td style={TD} />
                     <td
-                      colSpan={8}
+                      colSpan={
+                        1 + // symbol (always visible)
+                        (
+                          [
+                            'name',
+                            'assetType',
+                            'account',
+                            'exchange',
+                            'quantity',
+                            'costBasis',
+                            'currentPrice',
+                          ] as const
+                        ).filter((k) => !hiddenColumns.has(k)).length
+                      }
                       style={{
                         ...TD,
                         fontFamily: 'var(--font-mono)',
@@ -2058,82 +2071,98 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                     >
                       {formatCurrency(totals.marketValueCad, baseCurrency)}
                     </td>
-                    <td
-                      style={{
-                        ...TD,
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        color: 'var(--text-secondary)',
-                        fontSize: 13,
-                      }}
-                    >
-                      100.0%
-                    </td>
-                    <td
-                      style={{
-                        ...TD,
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        color:
-                          totals.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
-                        fontSize: 13,
-                      }}
-                    >
-                      {totals.targetWeight > 0 ? `${totals.targetWeight.toFixed(1)}%` : '—'}
-                    </td>
-                    <td
-                      style={{
-                        ...TD,
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        color: pnlColor(100 - totals.targetWeight),
-                        fontSize: 13,
-                      }}
-                    >
-                      {formatPercent(totals.targetWeight - 100)}
-                    </td>
-                    <td
-                      style={{
-                        ...TD,
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        color: pnlColor(totals.targetDeltaValue),
-                        fontSize: 13,
-                      }}
-                    >
-                      {totals.targetDeltaValue >= 0 ? '+' : ''}
-                      {formatCurrency(totals.targetDeltaValue, baseCurrency)}
-                    </td>
-                    <td
-                      style={{
-                        ...TD,
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        color: pnlColor(totals.gainLoss),
-                        fontSize: 13,
-                      }}
-                    >
-                      {totals.gainLoss >= 0 ? '+' : ''}
-                      {formatCurrency(totals.gainLoss, baseCurrency)}
-                    </td>
-                    <td
-                      style={{
-                        ...TD,
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-mono)',
-                        fontWeight: 700,
-                        color: pnlColor(totals.gainLossPercent),
-                        fontSize: 13,
-                      }}
-                    >
-                      {formatPercent(totals.gainLossPercent)}
-                    </td>
-                    <td colSpan={2} style={TD} />
+                    {!hiddenColumns.has('weight') && (
+                      <td
+                        style={{
+                          ...TD,
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          color: 'var(--text-secondary)',
+                          fontSize: 13,
+                        }}
+                      >
+                        100.0%
+                      </td>
+                    )}
+                    {!hiddenColumns.has('targetWeight') && (
+                      <td
+                        style={{
+                          ...TD,
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          color:
+                            totals.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                          fontSize: 13,
+                        }}
+                      >
+                        {totals.targetWeight > 0 ? `${totals.targetWeight.toFixed(1)}%` : '—'}
+                      </td>
+                    )}
+                    {!hiddenColumns.has('targetDeltaPercent') && (
+                      <td
+                        style={{
+                          ...TD,
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          color: pnlColor(100 - totals.targetWeight),
+                          fontSize: 13,
+                        }}
+                      >
+                        {formatPercent(totals.targetWeight - 100)}
+                      </td>
+                    )}
+                    {!hiddenColumns.has('targetDeltaValue') && (
+                      <td
+                        style={{
+                          ...TD,
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          color: pnlColor(totals.targetDeltaValue),
+                          fontSize: 13,
+                        }}
+                      >
+                        {totals.targetDeltaValue >= 0 ? '+' : ''}
+                        {formatCurrency(totals.targetDeltaValue, baseCurrency)}
+                      </td>
+                    )}
+                    {!hiddenColumns.has('gainLoss') && (
+                      <td
+                        style={{
+                          ...TD,
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          color: pnlColor(totals.gainLoss),
+                          fontSize: 13,
+                        }}
+                      >
+                        {totals.gainLoss >= 0 ? '+' : ''}
+                        {formatCurrency(totals.gainLoss, baseCurrency)}
+                      </td>
+                    )}
+                    {!hiddenColumns.has('gainLossPercent') && (
+                      <td
+                        style={{
+                          ...TD,
+                          textAlign: 'right',
+                          fontFamily: 'var(--font-mono)',
+                          fontWeight: 700,
+                          color: pnlColor(totals.gainLossPercent),
+                          fontSize: 13,
+                        }}
+                      >
+                        {formatPercent(totals.gainLossPercent)}
+                      </td>
+                    )}
+                    {!hiddenColumns.has('prevClose') && <td style={TD} />}
+                    {!hiddenColumns.has('dayOpen') && <td style={TD} />}
+                    {!hiddenColumns.has('openDate') && <td style={TD} />}
+                    {!hiddenColumns.has('maturityDate') && <td style={TD} />}
+                    <td style={TD} />
                   </tr>
                 </tfoot>
               </table>
