@@ -50,6 +50,7 @@ function makeHolding(
     targetDeltaPercent: 0,
     dailyChangePercent: 0,
     fxStale: false,
+    priceIsStale: false,
   };
 }
 

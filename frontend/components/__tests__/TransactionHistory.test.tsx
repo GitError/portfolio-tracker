@@ -68,6 +68,7 @@ const mockHoldings = [
     targetDeltaPercent: 0,
     dailyChangePercent: 0,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: 'h-2',
@@ -98,6 +99,7 @@ const mockHoldings = [
     targetDeltaPercent: 0,
     dailyChangePercent: 0,
     fxStale: false,
+    priceIsStale: false,
   },
 ];
 
