@@ -6,66 +6,96 @@ A macOS desktop portfolio tracker built with Tauri v2 (Rust backend + React/Type
 ## Architecture
 
 ```
-portfolio-tracker/
-├── CLAUDE.md                    ← you are here
-├── src-tauri/
+portfolio-tracker/                          ← Cargo workspace root
+├── Cargo.toml                              ← Workspace members: src-tauri, portfolio-mcp
+├── CLAUDE.md                               ← you are here
+│
+├── src-tauri/                              ← Tauri desktop app (macOS)
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   ├── migrations/              ← SQLx migrations (0001–0006)
+│   ├── migrations/                         ← SQLx migrations (0001–0006)
 │   └── src/
-│       ├── main.rs              ← Tauri entry point
-│       ├── lib.rs               ← App bootstrap, state init, command registration
-│       ├── config.rs            ← App-level constants (DB name, user-agent, TTLs)
-│       ├── types.rs             ← Shared Rust types (Serialize/Deserialize, camelCase)
-│       ├── db.rs                ← SQLite schema, migrations, CRUD (async SQLx)
-│       ├── commands.rs          ← #[tauri::command] thin wrappers
-│       ├── portfolio.rs         ← build_portfolio_snapshot + helpers
-│       ├── csv.rs               ← CSV import/export helpers
-│       ├── price.rs             ← Yahoo Finance price fetching
-│       ├── fx.rs                ← FX rate fetching + conversion helpers
-│       ├── search.rs            ← Symbol search via Yahoo Finance
-│       ├── analytics.rs         ← Realized gains + portfolio analytics
-│       └── stress.rs            ← Stress test engine
-├── frontend/
-│   ├── App.tsx                  ← Router, providers, keyboard shortcut wiring
-│   ├── main.tsx                 ← React entry
-│   ├── index.css                ← Tailwind + global styles + design tokens
+│       ├── main.rs                         ← Tauri entry point
+│       ├── lib.rs                          ← App bootstrap, state init, command registration
+│       ├── config.rs                       ← App-level constants (DB name, user-agent, TTLs)
+│       ├── types.rs                        ← Shared Rust types (Serialize/Deserialize, camelCase)
+│       ├── db.rs                           ← SQLite schema, migrations, CRUD (async SQLx)
+│       ├── commands.rs                     ← #[tauri::command] thin wrappers
+│       ├── portfolio.rs                    ← build_portfolio_snapshot + helpers
+│       ├── csv.rs                          ← CSV import/export helpers
+│       ├── price.rs                        ← Yahoo Finance price fetching
+│       ├── fx.rs                           ← FX rate fetching + conversion helpers
+│       ├── search.rs                       ← Symbol search via Yahoo Finance
+│       ├── analytics.rs                    ← Realized gains + portfolio analytics
+│       └── stress.rs                       ← Stress test engine
+│
+├── portfolio-mcp/                          ← Standalone MCP server binary
+│   ├── Cargo.toml
+│   ├── src/
+│   │   ├── main.rs                         ← MCP server entry (stdio transport)
+│   │   ├── db.rs                           ← SQLite access via SQLx
+│   │   ├── snapshot.rs                     ← Portfolio snapshot calculation
+│   │   ├── stress.rs                       ← Stress test execution
+│   │   ├── types.rs                        ← MCP-specific types
+│   │   └── tools/
+│   │       ├── mod.rs                      ← Tool registry
+│   │       ├── holdings.rs                 ← list_holdings, add_holding, delete_holding
+│   │       ├── transactions.rs             ← list_transactions, add_transaction, delete_transaction
+│   │       ├── alerts.rs                   ← list_alerts, add_alert, delete_alert, reset_alert
+│   │       ├── portfolio.rs                ← get_portfolio_snapshot
+│   │       ├── stress.rs                   ← run_stress_test
+│   │       └── config.rs                   ← get_config, set_config
+│   └── README.md                           ← MCP setup and tool documentation
+│
+├── frontend/                               ← React + TypeScript + Vite
+│   ├── App.tsx                             ← Router, providers, keyboard shortcut wiring
+│   ├── main.tsx                            ← React entry
+│   ├── index.css                           ← Tailwind + global styles + design tokens
 │   ├── types/
-│   │   └── portfolio.ts         ← TypeScript types (mirrors Rust types exactly)
+│   │   └── portfolio.ts                    ← TypeScript types (mirrors Rust types exactly)
 │   ├── hooks/
-│   │   ├── usePortfolio.ts      ← Tauri invoke wrapper + shared portfolio state
-│   │   ├── useStressTest.ts     ← Stress test invocation + state
-│   │   ├── useConfig.ts         ← Persistent key/value config via Tauri
-│   │   ├── useAutoRefresh.ts    ← Interval-based auto price refresh + countdown
-│   │   └── useKeyboardShortcuts.ts ← Global keyboard shortcut handler
+│   │   ├── usePortfolio.ts                 ← Tauri invoke wrapper + shared portfolio state
+│   │   ├── useStressTest.ts                ← Stress test invocation + state
+│   │   ├── useConfig.ts                    ← Persistent key/value config via Tauri
+│   │   ├── useAutoRefresh.ts               ← Interval-based auto price refresh + countdown
+│   │   ├── useKeyboardShortcuts.ts         ← Global keyboard shortcut handler
+│   │   ├── useTheme.ts                     ← Dark mode theme context
+│   │   ├── useLanguage.ts                  ← i18next internationalization hook
+│   │   └── useActionInsights.ts            ← Portfolio action recommendations
 │   ├── lib/
-│   │   ├── format.ts            ← Currency/number/percent formatters
-│   │   ├── colors.ts            ← PnL color helpers
-│   │   ├── constants.ts         ← Preset scenarios, asset/account type configs
-│   │   └── currencyContext.tsx  ← Base currency React context
+│   │   ├── format.ts                       ← Currency/number/percent formatters
+│   │   ├── colors.ts                       ← PnL color helpers
+│   │   ├── constants.ts                    ← Preset scenarios, asset/account type configs
+│   │   ├── currencyContext.tsx             ← Base currency React context
+│   │   ├── tauri.ts                        ← tauriInvoke wrapper (with isTauri guard)
+│   │   └── mockData.ts                     ← Mock data for browser dev mode
 │   └── components/
-│       ├── Layout.tsx            ← App shell: sidebar + topbar + content area
-│       ├── Sidebar.tsx           ← Icon nav, mini portfolio value
-│       ├── TopBar.tsx            ← Refresh, base currency picker, daily P&L, countdown
-│       ├── Dashboard.tsx         ← Dashboard view (route: /)
-│       ├── Holdings.tsx          ← Holdings table view (route: /holdings)
-│       ├── Performance.tsx       ← Performance charts (route: /performance)
-│       ├── StressTest.tsx        ← Stress test panel (route: /stress)
-│       ├── Rebalance.tsx         ← Rebalancing view (route: /rebalance)
-│       ├── Alerts.tsx            ← Price alerts view (route: /alerts)
-│       ├── Dividends.tsx         ← Dividend tracking view (route: /dividends)
-│       ├── Settings.tsx          ← Settings panel (route: /settings)
-│       ├── AddHoldingModal.tsx   ← Add/edit holding modal
-│       ├── ImportHoldingsModal.tsx ← CSV import with preview
+│       ├── Layout.tsx                      ← App shell: sidebar + topbar + content area
+│       ├── Sidebar.tsx                     ← Icon nav, mini portfolio value
+│       ├── TopBar.tsx                      ← Refresh, base currency picker, daily P&L, countdown
+│       ├── Dashboard.tsx                   ← Dashboard view (route: /)
+│       ├── Holdings.tsx                    ← Holdings table view (route: /holdings) [paginated]
+│       ├── Performance.tsx                 ← Performance charts (route: /performance)
+│       ├── StressTest.tsx                  ← Stress test panel (route: /stress)
+│       ├── Rebalance.tsx                   ← Rebalancing view (route: /rebalance)
+│       ├── Alerts.tsx                      ← Price alerts view (route: /alerts)
+│       ├── Dividends.tsx                   ← Dividend tracking view (route: /dividends)
+│       ├── Settings.tsx                    ← Settings panel (route: /settings)
+│       ├── TransactionHistory.tsx          ← Transaction table view [paginated]
+│       ├── AddHoldingModal.tsx             ← Add/edit holding modal
+│       ├── ImportHoldingsModal.tsx         ← CSV import with preview
+│       ├── CostBasisModal.tsx              ← Cost-basis selection modal (AVCO, FIFO, ACB)
 │       └── ui/
-│           ├── Toast.tsx         ← Notification toast
-│           ├── Badge.tsx         ← Asset type badge
-│           ├── Spinner.tsx       ← Loading spinner
-│           ├── EmptyState.tsx    ← No-data placeholder
-│           ├── Select.tsx        ← Custom select component
-│           ├── SymbolSearch.tsx  ← Symbol search autocomplete
+│           ├── Toast.tsx                   ← Notification toast
+│           ├── Badge.tsx                   ← Asset type badge
+│           ├── Spinner.tsx                 ← Loading spinner
+│           ├── EmptyState.tsx              ← No-data placeholder
+│           ├── Select.tsx                  ← Custom select component
+│           ├── SymbolSearch.tsx            ← Symbol search autocomplete
 │           └── KeyboardShortcutsOverlay.tsx ← `?` help overlay
+│
+├── e2e/                                    ← Playwright E2E tests
 ├── public/
 ├── index.html
 ├── package.json
@@ -85,6 +115,73 @@ portfolio-tracker/
 | Charts    | Recharts                          |
 | Icons     | lucide-react                      |
 | Router    | react-router-dom v7               |
+
+---
+
+## MCP Server
+
+**portfolio-mcp** is a standalone binary that exposes the Portfolio Tracker database over the Model Context Protocol (MCP), allowing AI assistants to read and write portfolio data via stdio transport. This enables AI agents to provide real-time portfolio analysis, recommendations, and automated trading insights.
+
+### Tools Exposed
+
+| Tool | Input | Output | Description |
+|------|-------|--------|-------------|
+| `list_holdings` | none | `Holding[]` | All current holdings |
+| `add_holding` | holding data | `Holding` | Add a new holding |
+| `delete_holding` | UUID | boolean | Soft-delete a holding |
+| `list_transactions` | filters | `Transaction[]` | Buy/sell transactions (optional filter by holdingId) |
+| `add_transaction` | tx data | `Transaction` | Record a new transaction |
+| `delete_transaction` | UUID | boolean | Soft-delete a transaction |
+| `list_alerts` | none | `PriceAlert[]` | All price alerts |
+| `add_alert` | alert data | `PriceAlert` | Create a price alert |
+| `delete_alert` | UUID | boolean | Delete an alert |
+| `reset_alert` | UUID | `PriceAlert` | Reset a triggered alert |
+| `get_portfolio_snapshot` | none | `PortfolioSnapshot` | Full snapshot with live prices, G/L, weights |
+| `run_stress_test` | scenario | `StressResult` | Apply asset/FX shocks to portfolio |
+| `get_config` | key | `string \| null` | Read a config value |
+| `set_config` | key, value | void | Write a config value |
+
+### Build & Deployment
+
+```bash
+. ~/.cargo/env
+cargo build -p portfolio-mcp --release
+```
+
+Binary location: `target/release/portfolio-mcp`
+
+### Configuration in Claude Code
+
+Add to `~/.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "portfolio": {
+      "command": "/absolute/path/to/target/release/portfolio-mcp",
+      "env": {
+        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.portfolio-tracker.app/portfolio.db"
+      }
+    }
+  }
+}
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORTFOLIO_DB_PATH` | `~/Library/Application Support/com.portfolio-tracker.app/portfolio.db` | Path to the SQLite database |
+| `RUST_LOG` | `portfolio_mcp=info` | Log level filter (logs to stderr) |
+
+### Implementation Notes
+
+- The MCP server connects to the **existing** database created by the Tauri app; it does not create a new database.
+- Prices and FX rates are cached and populated by the Tauri app's refresh cycle. The MCP server does not fetch live prices independently.
+- `realized_gains` and `annual_dividend_income` in `get_portfolio_snapshot` report as `0` in MCP context; use the Tauri app directly for authoritative figures.
+- For full documentation, see `portfolio-mcp/README.md`.
+
+---
 
 ## Conventions
 
@@ -142,6 +239,10 @@ export interface HoldingWithPrice extends Holding {
   costValueCad: number; gainLoss: number; gainLossPercent: number;
   weight: number; targetValue: number; targetDeltaValue: number;
   targetDeltaPercent: number; dailyChangePercent: number;
+  /** True when the FX rate was unavailable; values shown in source currency. */
+  fxStale: boolean;
+  /** True when the cached price is older than 24 hours. Always false for cash holdings. */
+  priceIsStale: boolean;
 }
 
 export interface PortfolioSnapshot {
@@ -151,6 +252,9 @@ export interface PortfolioSnapshot {
   lastUpdated: string; baseCurrency: string;
   totalTargetWeight: number; targetCashDelta: number;
   realizedGains: number; annualDividendIncome: number;
+  /** When true, the user has never explicitly set a cost-basis method.
+   * The app should prompt for a choice before displaying realized gains. */
+  requiresCostBasisSelection?: boolean;
 }
 
 export interface RefreshResult {
@@ -176,7 +280,8 @@ export interface PreviewRow {
 
 ```
 tauriInvoke('get_portfolio')                          → PortfolioSnapshot
-tauriInvoke('get_holdings')                           → Holding[]
+tauriInvoke('get_holdings')                           → Holding[] [Deprecated: use get_holdings_paginated]
+tauriInvoke('get_holdings_paginated', { offset, limit })  → PaginatedResponse<Holding>
 tauriInvoke('add_holding', { holding })               → Holding
 tauriInvoke('update_holding', { holding })            → Holding
 tauriInvoke('delete_holding', { id })                 → boolean
@@ -188,7 +293,8 @@ tauriInvoke('add_account', { account })               → Account
 tauriInvoke('update_account', { id, account })        → Account
 tauriInvoke('delete_account', { id })                 → boolean
 tauriInvoke('search_symbols', { query })              → SymbolResult[]
-tauriInvoke('get_transactions', { holdingId? })       → Transaction[]
+tauriInvoke('get_transactions', { holdingId? })       → Transaction[] [Deprecated: use get_transactions_paginated]
+tauriInvoke('get_transactions_paginated', { offset, limit, holdingId? }) → PaginatedResponse<Transaction>
 tauriInvoke('add_transaction', { input })             → Transaction
 tauriInvoke('delete_transaction', { id })             → boolean
 tauriInvoke('get_realized_gains', { holdingId? })     → RealizedGainsSummary
@@ -301,14 +407,26 @@ export const PRESET_SCENARIOS: StressScenario[] = [
 ---
 
 ## Notes for Agents
+
+### Frontend
 - **Always use `tauriInvoke()` from `frontend/lib/tauri.ts`** for Tauri commands, never raw `invoke()` from `@tauri-apps/api/core`. The wrapper includes an `isTauri()` guard so browser dev mode works.
 - Check `isTauri()` to detect browser vs Tauri context — use realistic mock data from `frontend/lib/mockData.ts` in browser mode.
 - All components must handle: loading state, error state, and empty state.
+- Use `get_holdings_paginated` and `get_transactions_paginated` for large data sets; non-paginated endpoints are deprecated.
+- The `requiresCostBasisSelection` field in `PortfolioSnapshot` indicates the user has never chosen a cost-basis method (AVCO, FIFO, or ACB). Prompt with `CostBasisModal.tsx` before displaying realized gains.
+- Check `priceIsStale` and `fxStale` fields on holdings to show visual indicators when data is stale (>24h for prices).
+
+### Backend (Rust)
 - Yahoo Finance requests MUST include a User-Agent header or they will 403.
 - The SQLite DB file lives in Tauri's app data directory (`app_data_dir`), NOT in the project folder.
 - All timestamps are ISO 8601 UTC strings.
 - Logging: use `tracing::error!/warn!/info!` macros in Rust — never `eprintln!`.
 - DB access: use `SqlitePool` (async SQLx), not `rusqlite`. All DB functions are `async fn` in `db.rs`.
+- All types in `types.rs`, re-exported from other modules as needed. Use `serde(rename_all = "camelCase")` on all structs exposed to Tauri/frontend.
+
+### Type Safety
+- The `Account` type now tracks which accounts holdings belong to. `account` field on `Holding` refers to the account type (TFSA, RRSP, etc.) as a fallback; `accountId` maps to the specific `Account`.
+- Types in `frontend/types/portfolio.ts` must mirror Rust types exactly (camelCase). Run `npm run generate:types` after Rust type changes.
 
 ## Testing
 - Rust: `cargo test` (unit tests in each module)
