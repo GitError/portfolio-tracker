@@ -28,7 +28,6 @@ import {
   formatNumber,
   formatPercent,
   formatShortDate,
-  isPriceStale,
 } from '../lib/format';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ACCOUNT_TYPE_CONFIG } from '../lib/constants';

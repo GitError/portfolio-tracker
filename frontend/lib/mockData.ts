@@ -35,6 +35,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '2',
@@ -61,6 +62,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '3',
@@ -87,6 +89,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '4',
@@ -113,6 +116,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '5',
@@ -139,6 +143,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   // ETFs
   {
@@ -166,6 +171,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '7',
@@ -192,6 +198,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   // Crypto
   {
@@ -219,6 +226,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '9',
@@ -245,6 +253,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   // Cash
   {
@@ -272,6 +281,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '11',
@@ -298,6 +308,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
   {
     id: '12',
@@ -324,6 +335,7 @@ const RAW_HOLDINGS: MockHolding[] = [
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+    priceIsStale: false,
   },
 ];
 

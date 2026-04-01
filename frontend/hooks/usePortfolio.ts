@@ -134,6 +134,7 @@ function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
       targetDeltaPercent: 0,
       dailyChangePercent: 0,
       fxStale: false,
+      priceIsStale: false,
     })),
     totalValue,
     totalCost: totalValue,
@@ -170,7 +171,6 @@ function loadCachedPortfolio(): PortfolioCache | null {
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isValidPortfolioCache(parsed)) {
-      console.warn('Portfolio cache failed validation; discarding stale or corrupt data');
       localStorage.removeItem(CACHE_KEY);
       return null;
     }

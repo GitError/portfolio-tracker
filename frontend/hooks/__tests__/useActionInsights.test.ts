@@ -34,6 +34,7 @@ function makeHolding(overrides: Partial<HoldingWithPrice> = {}): HoldingWithPric
     dividendFrequency: null,
     maturityDate: null,
     fxStale: false,
+      priceIsStale: false,
     ...overrides,
   };
 }
