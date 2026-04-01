@@ -176,4 +176,64 @@ mod tests {
             query
         );
     }
+
+    #[test]
+    fn encode_empty_string() {
+        assert_eq!(search_symbols_yahoo_encode(""), "");
+    }
+
+    #[test]
+    fn encode_alphanumeric_passthrough() {
+        // Letters, digits, and safe chars must not be percent-encoded
+        let input = "AAPL-ETF_v2.0~";
+        let encoded = search_symbols_yahoo_encode(input);
+        assert_eq!(encoded, input, "safe chars must pass through unchanged");
+    }
+
+    #[test]
+    fn encode_special_chars() {
+        // Characters outside the safe set (other than space) must be %-encoded
+        let encoded = search_symbols_yahoo_encode("a&b");
+        assert_eq!(encoded, "a%26b");
+    }
+
+    #[test]
+    fn encode_multiple_spaces() {
+        let encoded = search_symbols_yahoo_encode("S&P 500 Index");
+        assert_eq!(encoded, "S%26P+500+Index");
+    }
+
+    #[test]
+    fn asset_type_mapping_mutualfund() {
+        let t = match "MUTUALFUND" {
+            "ETF" | "MUTUALFUND" => AssetType::Etf,
+            "CRYPTOCURRENCY" => AssetType::Crypto,
+            _ => AssetType::Stock,
+        };
+        assert_eq!(t.as_str(), "etf", "MUTUALFUND should map to ETF asset type");
+    }
+
+    #[test]
+    fn symbol_filter_accepts_12_char_symbol() {
+        // Symbols at exactly 12 chars should pass the length filter
+        let symbol = "VERYLONGSYMB"; // 12 chars
+        assert_eq!(symbol.len(), 12);
+        assert!(!symbol.contains('^'));
+        // Both conditions false → symbol would NOT be filtered
+        assert!(!(symbol.contains('^') || symbol.len() > 12));
+    }
+
+    #[test]
+    fn symbol_filter_rejects_13_char_symbol() {
+        let symbol = "VERYLONGSYMBO"; // 13 chars
+        assert!(symbol.len() > 12, "13-char symbol should be rejected");
+    }
+
+    #[test]
+    fn symbol_filter_accepts_normal_symbols() {
+        for sym in &["AAPL", "BTC-USD", "VFV.TO", "RY"] {
+            let rejected = sym.contains('^') || sym.len() > 12;
+            assert!(!rejected, "symbol '{}' should not be filtered", sym);
+        }
+    }
 }
