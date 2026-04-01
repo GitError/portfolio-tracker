@@ -27,8 +27,6 @@ function makeHolding(
     name: symbol,
     assetType,
     account: 'taxable',
-    accountId: null,
-    accountName: null,
     quantity: 1,
     costBasis: value,
     currency,
@@ -52,7 +50,6 @@ function makeHolding(
     targetDeltaPercent: 0,
     dailyChangePercent: 0,
     fxStale: false,
-    priceIsStale: false,
   };
 }
 
@@ -184,8 +181,18 @@ describe('StressResultsTable', () => {
 describe('PresetScenarioSelector', () => {
   const presetNames = ['Bear Market', 'Crypto Winter', 'Custom'];
   const scenarioInfo = [
-    { name: 'Bear Market', description: 'A severe market downturn.' },
-    { name: 'Crypto Winter', description: 'Crypto markets collapse.' },
+    {
+      name: 'Bear Market',
+      description: 'A severe market downturn.',
+      historicalParallel: '2008',
+      shocks: { stock: -0.2 },
+    },
+    {
+      name: 'Crypto Winter',
+      description: 'Crypto markets collapse.',
+      historicalParallel: '2022',
+      shocks: { crypto: -0.5 },
+    },
   ];
 
   it('renders the preset scenario label', () => {

@@ -511,7 +511,7 @@ mod tests {
 
         let snapshot = build_portfolio_snapshot(
             &[holding],
-            &[],   // no prices
+            &[], // no prices
             &[],
             "CAD",
             "2024-01-01T00:00:00Z".to_string(),
@@ -569,9 +569,39 @@ mod tests {
             make_holding("C", AssetType::Stock, 1.0, 100.0, "CAD"),
         ];
         let prices = vec![
-            PriceData { symbol: "A".to_string(), price: 100.0, currency: "CAD".to_string(), change: 0.0, change_percent: 0.0, updated_at: Utc::now().to_rfc3339(), open: None, previous_close: None, volume: None },
-            PriceData { symbol: "B".to_string(), price: 200.0, currency: "CAD".to_string(), change: 0.0, change_percent: 0.0, updated_at: Utc::now().to_rfc3339(), open: None, previous_close: None, volume: None },
-            PriceData { symbol: "C".to_string(), price: 300.0, currency: "CAD".to_string(), change: 0.0, change_percent: 0.0, updated_at: Utc::now().to_rfc3339(), open: None, previous_close: None, volume: None },
+            PriceData {
+                symbol: "A".to_string(),
+                price: 100.0,
+                currency: "CAD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
+            },
+            PriceData {
+                symbol: "B".to_string(),
+                price: 200.0,
+                currency: "CAD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
+            },
+            PriceData {
+                symbol: "C".to_string(),
+                price: 300.0,
+                currency: "CAD".to_string(),
+                change: 0.0,
+                change_percent: 0.0,
+                updated_at: Utc::now().to_rfc3339(),
+                open: None,
+                previous_close: None,
+                volume: None,
+            },
         ];
 
         let snapshot = build_portfolio_snapshot(

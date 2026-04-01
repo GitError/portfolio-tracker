@@ -45,8 +45,6 @@ const mockHoldings = [
     name: 'Apple Inc',
     assetType: 'stock',
     account: 'taxable',
-    accountId: null,
-    accountName: null,
     quantity: 5,
     costBasis: 150,
     currency: 'CAD',
@@ -70,7 +68,6 @@ const mockHoldings = [
     targetDeltaPercent: 0,
     dailyChangePercent: 0,
     fxStale: false,
-    priceIsStale: false,
   },
   {
     id: 'h-2',
@@ -78,8 +75,6 @@ const mockHoldings = [
     name: 'Bitcoin',
     assetType: 'crypto',
     account: 'crypto',
-    accountId: null,
-    accountName: null,
     quantity: 1,
     costBasis: 30000,
     currency: 'USD',
@@ -103,7 +98,6 @@ const mockHoldings = [
     targetDeltaPercent: 0,
     dailyChangePercent: 0,
     fxStale: false,
-    priceIsStale: false,
   },
 ];
 

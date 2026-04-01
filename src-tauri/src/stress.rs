@@ -299,8 +299,16 @@ mod tests {
 
         let result = run_stress_test(&snapshot, &scenario);
 
-        let stock = result.holding_breakdown.iter().find(|h| h.symbol == "AAPL").unwrap();
-        let etf = result.holding_breakdown.iter().find(|h| h.symbol == "VFV").unwrap();
+        let stock = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "AAPL")
+            .unwrap();
+        let etf = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "VFV")
+            .unwrap();
         assert!((stock.stressed_value - 4_500.0).abs() < 0.001);
         assert!((etf.stressed_value - 4_750.0).abs() < 0.001);
     }
@@ -319,7 +327,10 @@ mod tests {
 
         let result = run_stress_test(&snapshot, &scenario);
 
-        assert!(result.stressed_value >= 0.0, "stressed_value should not be negative");
+        assert!(
+            result.stressed_value >= 0.0,
+            "stressed_value should not be negative"
+        );
         assert!((result.stressed_value - 0.0).abs() < 0.001);
         assert!((result.total_impact - (-value)).abs() < 0.001);
     }
