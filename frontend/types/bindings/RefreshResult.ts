@@ -18,4 +18,9 @@ triggeredAlerts: Array<string>,
  * Human-readable errors that occurred while evaluating price alerts.
  * Non-empty when one or more alert checks failed so the frontend can surface them.
  */
-alertErrors: Array<string>, };
+alertErrors: Array<string>, 
+/**
+ * Error message if the portfolio snapshot could not be recorded after the refresh.
+ * The refresh itself succeeded — this only indicates the performance history entry failed.
+ */
+snapshotError: string | null, };

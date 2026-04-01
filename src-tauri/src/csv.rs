@@ -108,7 +108,14 @@ fn parse_required_field(
 /// Strip null bytes and ASCII control characters from a string field.
 /// This prevents control characters from being stored in the database or
 /// causing downstream parsing issues.
+/// Enforces MAX_FIELD_LEN before processing to avoid allocating/scanning
+/// excessively large inputs.
 fn sanitize_str(s: &str) -> String {
+    let s = if s.len() > crate::config::MAX_FIELD_LEN {
+        &s[..crate::config::MAX_FIELD_LEN]
+    } else {
+        s
+    };
     s.chars().filter(|c| !c.is_control()).collect()
 }
 
@@ -263,17 +270,20 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
             parsed
         };
 
-        let name = sanitize_str(&parse_optional_field(&record, name_index));
-        let exchange = sanitize_str(&parse_optional_field(&record, exchange_index)).to_uppercase();
-
-        if name.len() > crate::config::MAX_FIELD_LEN {
+        let raw_name = parse_optional_field(&record, name_index);
+        if raw_name.len() > crate::config::MAX_FIELD_LEN {
             return Err(format!("Row {}: name exceeds maximum length", row));
         }
+        let name = sanitize_str(&raw_name);
+
+        let raw_exchange = parse_optional_field(&record, exchange_index);
+        if raw_exchange.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: exchange exceeds maximum length", row));
+        }
+        let exchange = sanitize_str(&raw_exchange).to_uppercase();
+
         if currency.len() > crate::config::MAX_FIELD_LEN {
             return Err(format!("Row {}: currency exceeds maximum length", row));
-        }
-        if exchange.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: exchange exceeds maximum length", row));
         }
 
         let iad_str = parse_optional_field(&record, indicated_annual_dividend_index);

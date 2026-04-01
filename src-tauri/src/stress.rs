@@ -16,13 +16,13 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
     let mut total_stressed = 0.0;
 
     for holding in &snapshot.holdings {
-        let asset_type_key = holding.asset_type.as_str().to_string();
+        let asset_type_key = holding.asset_type.as_str();
 
         // Asset-level shock: cash is excluded — only FX shocks may affect cash positions
         let asset_shock = if asset_type_key == "cash" {
             0.0
         } else {
-            scenario.shocks.get(&asset_type_key).copied().unwrap_or(0.0)
+            scenario.shocks.get(asset_type_key).copied().unwrap_or(0.0)
         };
 
         // FX shock: apply if holding is not in the portfolio base currency.
@@ -120,6 +120,7 @@ mod tests {
             dividend_frequency: None,
             maturity_date: None,
             fx_stale: false,
+            price_is_stale: false,
         }
     }
 
@@ -138,6 +139,7 @@ mod tests {
             target_cash_delta: 0.0,
             realized_gains: 0.0,
             annual_dividend_income: 0.0,
+            requires_cost_basis_selection: false,
         }
     }
 
