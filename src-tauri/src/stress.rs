@@ -120,6 +120,7 @@ mod tests {
             dividend_frequency: None,
             maturity_date: None,
             fx_stale: false,
+            price_is_stale: false,
         }
     }
 
@@ -138,6 +139,7 @@ mod tests {
             target_cash_delta: 0.0,
             realized_gains: 0.0,
             annual_dividend_income: 0.0,
+            requires_cost_basis_selection: false,
         }
     }
 

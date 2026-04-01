@@ -171,7 +171,7 @@ pub fn run() {
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 // Signal the WAL checkpoint background task to shut down cleanly.
-                if let Ok(state) = _window.try_state::<WalShutdown>() {
+                if let Some(state) = _window.try_state::<WalShutdown>() {
                     let _ = state.0.send(true);
                 }
             }
