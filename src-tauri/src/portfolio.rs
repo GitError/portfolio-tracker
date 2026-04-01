@@ -61,7 +61,9 @@ pub fn build_portfolio_snapshot(
                     let stale = DateTime::parse_from_rfc3339(&p.updated_at)
                         .ok()
                         .map(|t| {
-                            Utc::now().signed_duration_since(t.with_timezone(&Utc)).num_seconds()
+                            Utc::now()
+                                .signed_duration_since(t.with_timezone(&Utc))
+                                .num_seconds()
                                 > PRICE_STALE_SECS
                         })
                         .unwrap_or(true); // if timestamp unparseable, treat as stale

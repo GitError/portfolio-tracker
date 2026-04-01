@@ -213,7 +213,11 @@ const WEIGHT_EPSILON: f64 = 0.001;
 
 /// Validate fields common to both add_holding and update_holding.
 /// Returns the normalised (uppercased, trimmed) currency string on success.
-fn validate_holding_fields(quantity: f64, cost_basis: f64, currency: &str) -> Result<String, AppError> {
+fn validate_holding_fields(
+    quantity: f64,
+    cost_basis: f64,
+    currency: &str,
+) -> Result<String, AppError> {
     if quantity <= 0.0 || !quantity.is_finite() {
         return Err(AppError::Validation(
             "quantity must be a positive finite number".to_string(),
@@ -974,10 +978,11 @@ pub async fn backup_database(
     // we return an error rather than falling back to a potentially non-canonical path,
     // which would defeat the path-traversal check below.
     let canonical_dest = if dest.exists() {
-        std::fs::canonicalize(&dest)
-            .map_err(|e| format!("Cannot resolve destination path: {e}"))?
+        std::fs::canonicalize(&dest).map_err(|e| format!("Cannot resolve destination path: {e}"))?
     } else {
-        let parent = dest.parent().ok_or("Destination path has no parent directory")?;
+        let parent = dest
+            .parent()
+            .ok_or("Destination path has no parent directory")?;
         let canonical_parent = if parent.as_os_str().is_empty() {
             canonical_app_dir.clone()
         } else {
