@@ -487,7 +487,7 @@ pub async fn preview_import_csv(
             preview_rows.push(PreviewRow {
                 row: row.row,
                 original_symbol: row.symbol.clone(),
-                resolved_symbol: row.symbol.clone(),
+                resolved_symbol: row.symbol,
                 name: row.name,
                 asset_type: row.asset_type.as_str().to_string(),
                 currency: row.currency,
@@ -505,7 +505,7 @@ pub async fn preview_import_csv(
             preview_rows.push(PreviewRow {
                 row: row.row,
                 original_symbol: row.symbol.clone(),
-                resolved_symbol: row.symbol.clone(),
+                resolved_symbol: row.symbol,
                 name: if row.name.is_empty() {
                     format!("{} Cash", row.currency)
                 } else {
@@ -549,7 +549,7 @@ pub async fn preview_import_csv(
             Ok(None) => {
                 preview_rows.push(PreviewRow {
                     row: row.row,
-                    original_symbol: row.symbol.clone(),
+                    original_symbol: row.symbol,
                     resolved_symbol: String::new(),
                     name: row.name,
                     asset_type: row.asset_type.as_str().to_string(),
@@ -564,7 +564,7 @@ pub async fn preview_import_csv(
             Err(_) => {
                 preview_rows.push(PreviewRow {
                     row: row.row,
-                    original_symbol: row.symbol.clone(),
+                    original_symbol: row.symbol,
                     resolved_symbol: String::new(),
                     name: row.name,
                     asset_type: row.asset_type.as_str().to_string(),
