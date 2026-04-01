@@ -265,5 +265,14 @@
   "costBasis.avco.label": "Average Cost (AVCO)",
   "costBasis.avco.description": "Uses the average purchase price across all lots.",
   "costBasis.fifo.label": "First In, First Out (FIFO)",
-  "costBasis.fifo.description": "Oldest shares are considered sold first."
+  "costBasis.fifo.description": "Oldest shares are considered sold first.",
+  "alerts.resetAlert": "Reset alert",
+  "alerts.emptyActive": "No active alerts. Click 'New Alert' to create one.",
+  "transactions.empty": "No transactions recorded yet.",
+  "transactions.columns.date": "Date",
+  "transactions.columns.type": "Type",
+  "transactions.columns.quantity": "Quantity",
+  "transactions.columns.price": "Price",
+  "transactions.columns.total": "Total Value",
+  "transactions.columns.actions": "Actions"
 }

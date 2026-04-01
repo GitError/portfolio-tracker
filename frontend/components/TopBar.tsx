@@ -349,6 +349,27 @@ export function TopBar({
           </button>
         </div>
       )}
+
+      {/* Stale price warning banner — shown when any holding has a price older than 24h */}
+      {!isOffline && !isRefreshing && portfolio?.holdings.some((h) => h.priceIsStale) && (
+        <div
+          style={{
+            background: 'rgba(251,191,36,0.06)',
+            borderBottom: '1px solid var(--border-primary)',
+            borderTop: '1px solid rgba(251,191,36,0.2)',
+            padding: '5px 24px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 11,
+            fontFamily: 'var(--font-mono)',
+            color: 'var(--color-warning)',
+          }}
+        >
+          <AlertTriangle size={12} />
+          <span>Some prices may be outdated (&gt;24h old) — click Refresh to update</span>
+        </div>
+      )}
     </div>
   );
 }

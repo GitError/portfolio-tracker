@@ -69,6 +69,8 @@ export interface HoldingWithPrice extends Holding {
   dailyChangePercent: number;
   /** True when the FX rate for this holding's currency was unavailable; values are shown in source currency. */
   fxStale: boolean;
+  /** True when the cached price is older than 24 hours. Always false for cash holdings. */
+  priceIsStale: boolean;
   // Inherited from Holding: indicatedAnnualDividend, indicatedAnnualDividendCurrency,
   // dividendFrequency, maturityDate
 }
@@ -89,6 +91,9 @@ export interface PortfolioSnapshot {
   realizedGains: number;
   /** Sum of (amountPerUnit × quantity) for dividends paid in the last 365 days. */
   annualDividendIncome: number;
+  /** When true the user has never explicitly set a cost-basis method.
+   * The app should prompt for a choice before displaying realized gains. */
+  requiresCostBasisSelection?: boolean;
 }
 
 // ── Transaction types ──────────────────────────────────────────────────────────

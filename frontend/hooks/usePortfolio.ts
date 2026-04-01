@@ -134,6 +134,7 @@ function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
       targetDeltaPercent: 0,
       dailyChangePercent: 0,
       fxStale: false,
+      priceIsStale: false,
     })),
     totalValue,
     totalCost: totalValue,
@@ -151,11 +152,29 @@ interface PortfolioCache {
   holdings: Holding[];
 }
 
+/** Lightweight schema validation for the localStorage cache to prevent loading corrupt data. */
+function isValidPortfolioCache(value: unknown): value is PortfolioCache {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  if (!obj.snapshot || typeof obj.snapshot !== 'object') return false;
+  const snap = obj.snapshot as Record<string, unknown>;
+  if (!Array.isArray(snap.holdings)) return false;
+  if (typeof snap.totalValue !== 'number') return false;
+  if (typeof snap.lastUpdated !== 'string') return false;
+  if (!Array.isArray(obj.holdings)) return false;
+  return true;
+}
+
 function loadCachedPortfolio(): PortfolioCache | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as PortfolioCache;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isValidPortfolioCache(parsed)) {
+      localStorage.removeItem(CACHE_KEY);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }

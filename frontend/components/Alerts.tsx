@@ -418,7 +418,7 @@ export function Alerts() {
       </div>
 
       {active.length === 0 && !showForm ? (
-        <EmptyState message="No active alerts. Click 'New Alert' to create one." />
+        <EmptyState message={t('alerts.emptyActive')} />
       ) : (
         <div
           style={{
@@ -531,7 +531,8 @@ function AlertRow({
         {alert.triggered && (
           <button
             onClick={() => onReset(alert.id)}
-            title="Reset alert"
+            title={t('alerts.resetAlert')}
+            aria-label={t('alerts.resetAlert')}
             style={{
               background: 'transparent',
               border: '1px solid var(--border-primary)',
@@ -548,7 +549,8 @@ function AlertRow({
         )}
         <button
           onClick={() => onDelete(alert.id)}
-          title="Delete alert"
+          title={t('alerts.deleteAlert')}
+          aria-label={t('alerts.deleteAlert')}
           style={{
             background: 'transparent',
             border: '1px solid var(--border-primary)',
