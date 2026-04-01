@@ -3195,7 +3195,7 @@ dependencies = [
 
 [[package]]
 name = "portfolio-mcp"
-version = "0.1.0"
+version = "0.1.0-7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3213,7 +3213,7 @@ dependencies = [
 
 [[package]]
 name = "portfolio-tracker"
-version = "0.1.0-4"
+version = "0.1.0-7"
 dependencies = [
  "chrono",
  "csv",

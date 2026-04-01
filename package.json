@@ -1,7 +1,7 @@
 {
   "name": "portfolio-tracker",
   "private": true,
-  "version": "0.1.0-6",
+  "version": "0.1.0-7",
   "type": "module",
   "engines": {
     "node": ">=22.0.0",
