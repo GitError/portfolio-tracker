@@ -1,8 +1,11 @@
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 
 use crate::fx::convert_to_base;
 use crate::types::{FxRate, Holding, HoldingWithPrice, PortfolioSnapshot, PriceData};
+
+/// Prices older than this are flagged as stale.
+const PRICE_STALE_SECS: i64 = 24 * 3600;
 
 /// Build a `PortfolioSnapshot` from raw holdings, cached prices, and FX rates.
 ///
@@ -32,6 +35,7 @@ pub fn build_portfolio_snapshot(
             target_cash_delta: 0.0,
             realized_gains,
             annual_dividend_income,
+            requires_cost_basis_selection: false,
         };
     }
 
@@ -48,13 +52,25 @@ pub fn build_portfolio_snapshot(
     let mut daily_pnl = 0.0f64;
 
     for holding in holdings {
-        let (current_price, change_percent) = if holding.asset_type.as_str() == "cash" {
-            (1.0f64, 0.0f64)
+        let is_cash = holding.asset_type.as_str() == "cash";
+        let (current_price, change_percent, price_is_stale) = if is_cash {
+            (1.0f64, 0.0f64, false)
         } else {
-            price_map
-                .get(&holding.symbol)
-                .map(|p| (p.price, p.change_percent))
-                .unwrap_or((holding.cost_basis, 0.0))
+            match price_map.get(&holding.symbol) {
+                Some(p) => {
+                    let stale = DateTime::parse_from_rfc3339(&p.updated_at)
+                        .ok()
+                        .map(|t| {
+                            Utc::now()
+                                .signed_duration_since(t.with_timezone(&Utc))
+                                .num_seconds()
+                                > PRICE_STALE_SECS
+                        })
+                        .unwrap_or(true); // if timestamp unparseable, treat as stale
+                    (p.price, p.change_percent, stale)
+                }
+                None => (holding.cost_basis, 0.0, true),
+            }
         };
 
         let fx_pair = format!(
@@ -148,6 +164,7 @@ pub fn build_portfolio_snapshot(
             target_delta_percent: 0.0,
             daily_change_percent: change_percent,
             fx_stale,
+            price_is_stale,
         });
     }
 
@@ -189,6 +206,9 @@ pub fn build_portfolio_snapshot(
         target_cash_delta,
         realized_gains,
         annual_dividend_income,
+        // Callers (commands.rs) set this after calling build_portfolio_snapshot
+        // because config access is not available here. Defaults to false.
+        requires_cost_basis_selection: false,
     }
 }
 

@@ -13,4 +13,9 @@ realizedGains: number,
 /**
  * Sum of (amount_per_unit × quantity) for all dividends with a pay_date in the last 12 months.
  */
-annualDividendIncome: number, };
+annualDividendIncome: number, 
+/**
+ * True when the user has never explicitly set a cost-basis method.
+ * The frontend should prompt the user to choose AVCO or FIFO before showing realized gains.
+ */
+requiresCostBasisSelection: boolean, };

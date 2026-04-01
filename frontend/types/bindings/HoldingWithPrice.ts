@@ -8,4 +8,9 @@ export type HoldingWithPrice = { id: HoldingId, symbol: string, name: string, as
  * True when the FX rate for this holding's currency was not available;
  * values are shown in the source currency as a fallback.
  */
-fxStale: boolean, };
+fxStale: boolean, 
+/**
+ * True when the cached price for this holding is older than the staleness
+ * threshold (currently 24 hours). Cash holdings are always false.
+ */
+priceIsStale: boolean, };

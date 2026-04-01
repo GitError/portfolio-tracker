@@ -76,6 +76,10 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 use tauri::Manager;
 
+/// Holds the sender half of the WAL checkpoint shutdown channel.
+/// Managed as Tauri app state so the window-destroyed event can signal the background task.
+struct WalShutdown(tokio::sync::watch::Sender<bool>);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = tracing_subscriber::fmt()
@@ -102,6 +106,11 @@ pub fn run() {
                 .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
                 .busy_timeout(std::time::Duration::from_millis(5000));
 
+            // `block_on` is intentional here: Tauri's setup callback is synchronous but
+            // we need async DB operations (pool creation + migrations) to complete before
+            // the app state is registered. Using block_on on the Tauri async runtime
+            // avoids spawning a separate thread and is the recommended pattern for
+            // one-time async init inside `setup`.
             let pool = tauri::async_runtime::block_on(async {
                 SqlitePoolOptions::new()
                     .max_connections(5)
@@ -117,22 +126,36 @@ pub fn run() {
 
             let http_client = reqwest::Client::builder()
                 .user_agent(config::USER_AGENT)
+                // Prevent indefinite hangs when Yahoo Finance is slow or unreachable.
+                .timeout(std::time::Duration::from_secs(15))
                 .build()
                 .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
             // Spawn background WAL checkpoint task to prevent unbounded WAL growth.
+            // A watch channel provides a graceful shutdown signal: the sender is stored in
+            // app state so the on_window_event handler can signal shutdown on app exit.
+            let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
             let wal_pool = pool.clone();
             tauri::async_runtime::spawn(async move {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
                 interval.tick().await; // skip immediate first tick
                 loop {
-                    interval.tick().await;
-                    match sqlx::query("PRAGMA wal_checkpoint(RESTART)")
-                        .execute(&wal_pool)
-                        .await
-                    {
-                        Ok(_) => tracing::debug!("WAL checkpoint complete"),
-                        Err(e) => tracing::warn!("WAL checkpoint failed: {}", e),
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            match sqlx::query("PRAGMA wal_checkpoint(RESTART)")
+                                .execute(&wal_pool)
+                                .await
+                            {
+                                Ok(_) => tracing::debug!("WAL checkpoint complete"),
+                                Err(e) => tracing::warn!("WAL checkpoint failed: {}", e),
+                            }
+                        }
+                        _ = shutdown_rx.changed() => {
+                            if *shutdown_rx.borrow() {
+                                tracing::info!("WAL checkpoint task shutting down");
+                                break;
+                            }
+                        }
                     }
                 }
             });
@@ -140,8 +163,18 @@ pub fn run() {
             app.manage(DbState(pool));
             app.manage(HttpClient(http_client));
             app.manage(SearchCacheState::new());
+            // Store the WAL shutdown sender so on_window_event can signal the task to exit.
+            app.manage(WalShutdown(shutdown_tx));
 
             Ok(())
+        })
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                // Signal the WAL checkpoint background task to shut down cleanly.
+                if let Some(state) = _window.try_state::<WalShutdown>() {
+                    let _ = state.0.send(true);
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_portfolio,
