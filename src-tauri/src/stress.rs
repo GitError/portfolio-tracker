@@ -284,4 +284,92 @@ mod tests {
         assert_eq!(result.total_impact, 0.0);
         assert_eq!(result.total_impact_percent, 0.0);
     }
+
+    #[test]
+    fn etf_shock_applies_separately_from_stock_shock() {
+        let snapshot = make_snapshot(vec![
+            make_holding("AAPL", AssetType::Stock, "CAD", 5_000.0),
+            make_holding("VFV", AssetType::Etf, "CAD", 5_000.0),
+        ]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.10);
+        shocks.insert("etf".to_string(), -0.05);
+        let scenario = StressScenario {
+            name: "Mixed assets".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        let stock = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "AAPL")
+            .unwrap();
+        let etf = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "VFV")
+            .unwrap();
+        assert!((stock.stressed_value - 4_500.0).abs() < 0.001);
+        assert!((etf.stressed_value - 4_750.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn total_loss_scenario_does_not_go_negative() {
+        // A -100% shock wipes out the holding; stressed value should be 0, not negative.
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![make_holding("BTC", AssetType::Crypto, "CAD", value)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), -1.0);
+        let scenario = StressScenario {
+            name: "Crypto gone".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!(
+            result.stressed_value >= 0.0,
+            "stressed_value should not be negative"
+        );
+        assert!((result.stressed_value - 0.0).abs() < 0.001);
+        assert!((result.total_impact - (-value)).abs() < 0.001);
+    }
+
+    #[test]
+    fn multi_asset_portfolio_sums_all_shocks_correctly() {
+        let snapshot = make_snapshot(vec![
+            make_holding("AAPL", AssetType::Stock, "CAD", 10_000.0),
+            make_holding("VFV", AssetType::Etf, "CAD", 5_000.0),
+            make_holding("BTC", AssetType::Crypto, "CAD", 2_000.0),
+            make_holding("USD-CASH", AssetType::Cash, "CAD", 3_000.0),
+        ]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.20);
+        shocks.insert("etf".to_string(), -0.20);
+        shocks.insert("crypto".to_string(), -0.50);
+        let scenario = StressScenario {
+            name: "Bear + crypto winter".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        // stock: 8000, etf: 4000, crypto: 1000, cash: 3000 = 16000
+        let expected_stressed = 8_000.0 + 4_000.0 + 1_000.0 + 3_000.0;
+        assert!((result.stressed_value - expected_stressed).abs() < 0.01);
+        assert_eq!(result.holding_breakdown.len(), 4);
+    }
+
+    #[test]
+    fn scenario_name_is_preserved_in_result() {
+        let snapshot = make_snapshot(vec![make_holding("AAPL", AssetType::Stock, "CAD", 1_000.0)]);
+        let scenario = StressScenario {
+            name: "My Custom Scenario".to_string(),
+            shocks: HashMap::new(),
+        };
+        let result = run_stress_test(&snapshot, &scenario);
+        assert_eq!(result.scenario, "My Custom Scenario");
+    }
 }
