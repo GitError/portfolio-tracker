@@ -13,6 +13,7 @@ import type {
   Holding,
   HoldingInput,
   ImportResult,
+  PaginatedResult,
   PortfolioSnapshot,
   PreviewImportResult,
   PriceAlert,
@@ -214,7 +215,11 @@ function usePortfolioState(): UsePortfolioReturn {
   const refreshAlerts = useCallback(async () => {
     if (!isTauri()) return;
     try {
-      const fresh = await tauriInvoke<PriceAlert[]>('get_alerts');
+      const result = await tauriInvoke<PaginatedResult<PriceAlert>>('get_alerts_paginated', {
+        page: 1,
+        pageSize: 500,
+      });
+      const fresh = result.items;
       setAlerts(fresh);
     } catch {
       /* best-effort */
@@ -231,14 +236,17 @@ function usePortfolioState(): UsePortfolioReturn {
     setError(null);
     try {
       if (isTauri()) {
-        const [snap, rawHoldings] = await Promise.all([
+        const [snap, holdingsPage] = await Promise.all([
           tauriInvoke<PortfolioSnapshot>('get_portfolio'),
-          tauriInvoke<Holding[]>('get_holdings'),
+          tauriInvoke<PaginatedResult<Holding>>('get_holdings_paginated', {
+            page: 1,
+            pageSize: 500,
+          }),
         ]);
         setPortfolio(snap);
-        setHoldings(rawHoldings);
+        setHoldings(holdingsPage.items);
         setIsOffline(false);
-        saveCachedPortfolio(snap, rawHoldings);
+        saveCachedPortfolio(snap, holdingsPage.items);
       } else {
         await new Promise((r) => setTimeout(r, 500));
         setPortfolio(MOCK_SNAPSHOT);
@@ -265,14 +273,17 @@ function usePortfolioState(): UsePortfolioReturn {
     setError(null);
     try {
       if (isTauri()) {
-        const [snap, rawHoldings] = await Promise.all([
+        const [snap, holdingsPage] = await Promise.all([
           tauriInvoke<PortfolioSnapshot>('get_portfolio'),
-          tauriInvoke<Holding[]>('get_holdings'),
+          tauriInvoke<PaginatedResult<Holding>>('get_holdings_paginated', {
+            page: 1,
+            pageSize: 500,
+          }),
         ]);
         setPortfolio(snap);
-        setHoldings(rawHoldings);
+        setHoldings(holdingsPage.items);
         setIsOffline(false);
-        saveCachedPortfolio(snap, rawHoldings);
+        saveCachedPortfolio(snap, holdingsPage.items);
       } else {
         await new Promise((r) => setTimeout(r, 500));
         setPortfolio(MOCK_SNAPSHOT);

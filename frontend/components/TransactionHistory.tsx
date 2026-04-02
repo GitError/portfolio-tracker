@@ -9,7 +9,7 @@ import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
 import { formatNumber } from '../lib/format';
-import type { Transaction, Holding } from '../types/portfolio';
+import type { Transaction, Holding, PaginatedResult } from '../types/portfolio';
 
 const TX_TYPE_COLORS: Record<string, string> = {
   buy: 'var(--color-gain)',
@@ -102,8 +102,11 @@ export function TransactionHistory() {
     setError(null);
     try {
       if (isTauri()) {
-        const txs = await tauriInvoke<Transaction[]>('get_transactions', {});
-        setTransactions(txs);
+        const result = await tauriInvoke<PaginatedResult<Transaction>>(
+          'get_transactions_paginated',
+          { page: 1, pageSize: 500 }
+        );
+        setTransactions(result.items);
       } else {
         // Browser dev mode: no transactions available without Tauri
         setTransactions([]);

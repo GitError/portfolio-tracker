@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DollarSign, Plus, Trash2, TrendingUp } from 'lucide-react';
-import type { Dividend, DividendInput, Holding, HoldingWithPrice } from '../types/portfolio';
+import type {
+  Dividend,
+  DividendInput,
+  Holding,
+  HoldingWithPrice,
+  PaginatedResult,
+} from '../types/portfolio';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { formatCurrency, formatNumber } from '../lib/format';
 import { MOCK_DIVIDENDS, MOCK_HOLDINGS } from '../lib/mockData';
@@ -180,12 +186,15 @@ export function Dividends() {
   const loadData = useCallback(async () => {
     try {
       if (isTauri()) {
-        const [divs, holds] = await Promise.all([
+        const [divs, holdingsPage] = await Promise.all([
           tauriInvoke<Dividend[]>('get_dividends'),
-          tauriInvoke<Holding[]>('get_holdings'),
+          tauriInvoke<PaginatedResult<Holding>>('get_holdings_paginated', {
+            page: 1,
+            pageSize: 500,
+          }),
         ]);
         setDividends(divs);
-        setHoldings(holds);
+        setHoldings(holdingsPage.items);
       } else {
         setDividends(MOCK_DIVIDENDS);
         setHoldings(MOCK_HOLDINGS);

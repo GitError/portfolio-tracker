@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, BellOff, Plus, Trash2, RefreshCw } from 'lucide-react';
-import type { AlertDirection, Holding, PriceAlert, PriceAlertInput } from '../types/portfolio';
+import type {
+  AlertDirection,
+  Holding,
+  PaginatedResult,
+  PriceAlert,
+  PriceAlertInput,
+} from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
 import { EmptyState } from './ui/EmptyState';
@@ -223,8 +229,11 @@ export function Alerts() {
   const loadAlerts = useCallback(async () => {
     try {
       if (isTauri()) {
-        const data = await tauriInvoke<PriceAlert[]>('get_alerts');
-        setAlerts(data);
+        const result = await tauriInvoke<PaginatedResult<PriceAlert>>('get_alerts_paginated', {
+          page: 1,
+          pageSize: 500,
+        });
+        setAlerts(result.items);
       } else {
         setAlerts(MOCK_ALERTS);
       }

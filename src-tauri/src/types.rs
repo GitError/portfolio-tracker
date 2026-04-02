@@ -5,8 +5,7 @@ use ts_rs::TS;
 // ── ID newtypes ───────────────────────────────────────────────────────────────
 
 /// Typed wrapper for a holding's UUID string.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 pub struct HoldingId(pub String);
 
@@ -16,9 +15,23 @@ impl std::fmt::Display for HoldingId {
     }
 }
 
+// Manual TS impl avoids the ts-rs serde-compat proc-macro warning on #[serde(transparent)].
+impl TS for HoldingId {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String { "HoldingId".to_string() }
+    fn inline(_: &ts_rs::Config) -> String { "string".to_string() }
+    fn decl(_: &ts_rs::Config) -> String { "type HoldingId = string;".to_string() }
+    fn decl_concrete(_: &ts_rs::Config) -> String { "type HoldingId = string;".to_string() }
+    fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
+    fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("HoldingId.ts"))
+    }
+}
+
 /// Typed wrapper for a price-alert's UUID string.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 pub struct AlertId(pub String);
 
@@ -28,15 +41,42 @@ impl std::fmt::Display for AlertId {
     }
 }
 
+impl TS for AlertId {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String { "AlertId".to_string() }
+    fn inline(_: &ts_rs::Config) -> String { "string".to_string() }
+    fn decl(_: &ts_rs::Config) -> String { "type AlertId = string;".to_string() }
+    fn decl_concrete(_: &ts_rs::Config) -> String { "type AlertId = string;".to_string() }
+    fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
+    fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("AlertId.ts"))
+    }
+}
+
 /// Typed wrapper for a transaction's UUID string.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
-#[ts(export)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(transparent)]
 pub struct TransactionId(pub String);
 
 impl std::fmt::Display for TransactionId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+impl TS for TransactionId {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String { "TransactionId".to_string() }
+    fn inline(_: &ts_rs::Config) -> String { "string".to_string() }
+    fn decl(_: &ts_rs::Config) -> String { "type TransactionId = string;".to_string() }
+    fn decl_concrete(_: &ts_rs::Config) -> String { "type TransactionId = string;".to_string() }
+    fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
+    fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("TransactionId.ts"))
     }
 }
 
