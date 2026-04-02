@@ -106,7 +106,14 @@ const mockHoldings = [
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => true,
   tauriInvoke: vi.fn((cmd: string) => {
-    if (cmd === 'get_transactions') return Promise.resolve(mockTransactions);
+    if (cmd === 'get_transactions_paginated')
+      return Promise.resolve({
+        items: mockTransactions,
+        total: mockTransactions.length,
+        page: 1,
+        pageSize: 500,
+        totalPages: 1,
+      });
     if (cmd === 'delete_transaction') return Promise.resolve(true);
     return Promise.resolve(null);
   }),
