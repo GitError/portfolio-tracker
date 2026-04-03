@@ -4,6 +4,15 @@
  * Runtime/tunable settings live here. Static domain data (preset scenarios,
  * asset type metadata, chart range options) stays in constants.ts.
  */
+
+/**
+ * Page size used when the caller needs to load the full data set in one request
+ * (e.g. holdings list, alerts list). Set high enough that it acts as a practical
+ * "fetch all", but kept in one place so it can be tuned or replaced with true
+ * cursor-based pagination in the future.
+ */
+export const PAGINATION_FETCH_ALL_SIZE = 500;
+
 export const config = {
   // ── Currency ────────────────────────────────────────────────────────────────
   /** Fallback base currency when no user preference is stored. */
