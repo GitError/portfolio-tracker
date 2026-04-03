@@ -73,6 +73,10 @@ pub fn convert_to_base(
     // Try the direct pair first: e.g. USDCAD when converting USD → CAD
     let direct_pair = format!("{}{}", from_upper, base_upper);
     if let Some(rate) = rates.iter().find(|r| r.pair == direct_pair) {
+        if rate.rate == 0.0 {
+            tracing::warn!(pair = %rate.pair, "FX rate is zero; returning amount with fxStale=true");
+            return None;
+        }
         return Some(amount * rate.rate);
     }
 
@@ -141,6 +145,28 @@ mod tests {
         let result = convert_to_base(100.0, "CAD", "USD", &rates).unwrap();
         // 100 CAD / 1.36 ≈ 73.529
         assert!((result - (100.0_f64 / 1.36)).abs() < 0.001);
+    }
+
+    #[test]
+    fn direct_pair_zero_rate_returns_none() {
+        // A cached direct pair with rate == 0.0 must return None (fx_stale), not 0.
+        let rates = vec![make_rate("USDCAD", 0.0)];
+        let result = convert_to_base(100.0, "USD", "CAD", &rates);
+        assert_eq!(
+            result, None,
+            "zero direct-pair rate should return None to trigger fx_stale, not Some(0)"
+        );
+    }
+
+    #[test]
+    fn inverted_pair_zero_rate_returns_none() {
+        // An inverted pair with rate == 0.0 must also return None (existing guard).
+        let rates = vec![make_rate("CADUSD", 0.0)];
+        let result = convert_to_base(100.0, "CAD", "USD", &rates);
+        assert_eq!(
+            result, None,
+            "zero inverted-pair rate should return None to trigger fx_stale, not a divide-by-zero"
+        );
     }
 
     #[test]
