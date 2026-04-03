@@ -19,10 +19,18 @@ impl std::fmt::Display for HoldingId {
 impl TS for HoldingId {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
-    fn name(_: &ts_rs::Config) -> String { "HoldingId".to_string() }
-    fn inline(_: &ts_rs::Config) -> String { "string".to_string() }
-    fn decl(_: &ts_rs::Config) -> String { "type HoldingId = string;".to_string() }
-    fn decl_concrete(_: &ts_rs::Config) -> String { "type HoldingId = string;".to_string() }
+    fn name(_: &ts_rs::Config) -> String {
+        "HoldingId".to_string()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_string()
+    }
+    fn decl(_: &ts_rs::Config) -> String {
+        "type HoldingId = string;".to_string()
+    }
+    fn decl_concrete(_: &ts_rs::Config) -> String {
+        "type HoldingId = string;".to_string()
+    }
     fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
     fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
     fn output_path() -> Option<std::path::PathBuf> {
@@ -44,10 +52,18 @@ impl std::fmt::Display for AlertId {
 impl TS for AlertId {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
-    fn name(_: &ts_rs::Config) -> String { "AlertId".to_string() }
-    fn inline(_: &ts_rs::Config) -> String { "string".to_string() }
-    fn decl(_: &ts_rs::Config) -> String { "type AlertId = string;".to_string() }
-    fn decl_concrete(_: &ts_rs::Config) -> String { "type AlertId = string;".to_string() }
+    fn name(_: &ts_rs::Config) -> String {
+        "AlertId".to_string()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_string()
+    }
+    fn decl(_: &ts_rs::Config) -> String {
+        "type AlertId = string;".to_string()
+    }
+    fn decl_concrete(_: &ts_rs::Config) -> String {
+        "type AlertId = string;".to_string()
+    }
     fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
     fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
     fn output_path() -> Option<std::path::PathBuf> {
@@ -69,10 +85,18 @@ impl std::fmt::Display for TransactionId {
 impl TS for TransactionId {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
-    fn name(_: &ts_rs::Config) -> String { "TransactionId".to_string() }
-    fn inline(_: &ts_rs::Config) -> String { "string".to_string() }
-    fn decl(_: &ts_rs::Config) -> String { "type TransactionId = string;".to_string() }
-    fn decl_concrete(_: &ts_rs::Config) -> String { "type TransactionId = string;".to_string() }
+    fn name(_: &ts_rs::Config) -> String {
+        "TransactionId".to_string()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_string()
+    }
+    fn decl(_: &ts_rs::Config) -> String {
+        "type TransactionId = string;".to_string()
+    }
+    fn decl_concrete(_: &ts_rs::Config) -> String {
+        "type TransactionId = string;".to_string()
+    }
     fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
     fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
     fn output_path() -> Option<std::path::PathBuf> {
