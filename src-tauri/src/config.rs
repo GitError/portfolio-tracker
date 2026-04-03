@@ -39,8 +39,14 @@ pub const MAX_FIELD_LEN: usize = 500;
 
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 
-/// How long (seconds) a symbol search result is cached.
+/// How long (seconds) a symbol search result is cached in memory and SQLite.
+/// Symbol names and exchange listings change rarely; 5 minutes balances freshness with performance.
 pub const SEARCH_CACHE_TTL_SECS: i64 = 300; // 5 minutes
 
 /// Maximum number of entries to keep in the in-memory search cache.
+/// 200 entries covers typical portfolios (10–50 symbols) with generous room for exploratory searches.
 pub const SEARCH_CACHE_MAX_ENTRIES: usize = 200;
+
+/// Maximum length (in characters) for a symbol search query string.
+/// Queries longer than this are rejected without hitting the network or cache.
+pub const MAX_SEARCH_QUERY_LEN: usize = 100;

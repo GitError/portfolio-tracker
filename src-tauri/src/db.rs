@@ -55,6 +55,13 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
             .map(|r| r.get::<String, _>(0))
     };
 
+    if effective_account_id.is_none() {
+        tracing::warn!(
+            "No account of type '{}' found; holding inserted without account assignment",
+            input.account.as_str()
+        );
+    }
+
     sqlx::query(
         "INSERT INTO holdings
          (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
@@ -125,6 +132,13 @@ pub async fn insert_holding_in_tx(
             .map(|r| r.get::<String, _>(0))
     };
 
+    if effective_account_id.is_none() {
+        tracing::warn!(
+            "No account of type '{}' found; holding inserted without account assignment",
+            input.account.as_str()
+        );
+    }
+
     sqlx::query(
         "INSERT INTO holdings
          (id, symbol, name, asset_type, account, account_id, quantity, cost_basis, currency, exchange, target_weight, created_at, updated_at, indicated_annual_dividend, indicated_annual_dividend_currency, dividend_frequency, maturity_date)
@@ -188,6 +202,13 @@ pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> Result<Holdi
             .map_err(|e| format!("Account lookup failed: {e}"))?
             .map(|r| r.get::<String, _>(0))
     };
+
+    if effective_account_id.is_none() {
+        tracing::warn!(
+            "No account of type '{}' found; holding updated without account assignment",
+            holding.account.as_str()
+        );
+    }
 
     let result = sqlx::query(
         "UPDATE holdings SET

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::fx::convert_to_base;
 use crate::types::{FxRate, Holding, HoldingWithPrice, PortfolioSnapshot, PriceData};
 
-/// Prices older than this are flagged as stale.
+/// Price is considered stale after 24 h — covers overnight/weekend gaps when markets are closed.
 const PRICE_STALE_SECS: i64 = 24 * 3600;
 
 /// Build a `PortfolioSnapshot` from raw holdings, cached prices, and FX rates.
@@ -115,18 +115,19 @@ pub fn build_portfolio_snapshot(
         // Compute daily PnL contribution for this holding.
         // Use a consistent UTC date boundary to avoid off-by-one errors at midnight.
         let today_utc = Utc::now().date_naive().to_string(); // "YYYY-MM-DD"
-        let created_date_utc = holding
-            .created_at
-            .get(..10)
-            .and_then(|s| {
-                // Only treat as a valid date if it parses; skip bad rows safely.
-                if s.len() == 10 {
-                    Some(s)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or("");
+        let mut price_is_stale = price_is_stale;
+        let created_date_utc = match holding.created_at.get(..10) {
+            Some(d) => d,
+            None => {
+                tracing::warn!(
+                    holding_id = %holding.id,
+                    created_at = %holding.created_at,
+                    "Corrupted created_at; holding excluded from daily PnL"
+                );
+                price_is_stale = true;
+                ""
+            }
+        };
         if !created_date_utc.is_empty() && created_date_utc < today_utc.as_str() {
             // Prior-day holding: use Yahoo's day-over-day change_percent against current market value.
             daily_pnl += market_value_cad * (change_percent / 100.0);
