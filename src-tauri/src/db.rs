@@ -771,71 +771,39 @@ pub async fn delete_alert(pool: &SqlitePool, id: &AlertId) -> Result<bool, Strin
     Ok(result.rows_affected() > 0)
 }
 
-/// Mark alerts as triggered for a symbol when threshold is crossed.
+/// Fetch all non-triggered alerts in a single query.
 ///
-/// Uses bracket logic when `prev_price` is available: an "above" alert fires
-/// only when the price crosses the threshold upward (`prev < threshold <= current`),
-/// and a "below" alert fires only when it crosses downward. This correctly handles
-/// gap openings where the price jumps over the threshold without landing on it.
-/// When `prev_price` is `None` (e.g. first refresh), point-in-time comparison is used.
-///
-/// Returns the IDs of newly-triggered alerts.
-pub async fn check_and_trigger_alerts(
+/// Returns a `Vec<(id, symbol_uppercase, direction_str, threshold)>` suitable
+/// for building an in-memory lookup map, avoiding one DB round-trip per symbol
+/// in the price-refresh hot path.
+pub async fn get_all_active_alerts(
     pool: &SqlitePool,
-    symbol: &str,
-    price: f64,
-    prev_price: Option<f64>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<(String, String, String, f64)>, String> {
     use sqlx::Row;
     let rows = sqlx::query(
-        "SELECT id, direction, threshold FROM price_alerts
-         WHERE symbol = UPPER($1) AND triggered = 0",
+        "SELECT id, UPPER(symbol), direction, threshold FROM price_alerts WHERE triggered = 0",
     )
-    .bind(symbol)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let candidates: Vec<(String, String, f64)> = rows
+    Ok(rows
         .into_iter()
-        .map(|r| (r.get(0), r.get(1), r.get(2)))
-        .collect();
+        .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
+        .collect())
+}
 
-    let mut triggered = Vec::new();
-    for (id, dir_str, threshold) in &candidates {
-        let crossed = match (dir_str.as_str(), prev_price) {
-            // Bracket logic: threshold must be crossed in the correct direction
-            ("above", Some(prev)) => prev < *threshold && price >= *threshold,
-            ("below", Some(prev)) => prev > *threshold && price <= *threshold,
-            // Fallback: point-in-time comparison when no previous price is known
-            ("above", None) => price >= *threshold,
-            ("below", None) => price <= *threshold,
-            _ => false,
-        };
-        if crossed {
-            triggered.push(id.clone());
-        }
-    }
-
-    if !triggered.is_empty() {
-        let placeholders = triggered
-            .iter()
-            .enumerate()
-            .map(|(i, _)| format!("${}", i + 1))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let sql = format!(
-            "UPDATE price_alerts SET triggered = 1 WHERE id IN ({})",
-            placeholders
-        );
-        let mut query = sqlx::query(&sql);
-        for id in &triggered {
-            query = query.bind(id);
-        }
-        query.execute(pool).await.map_err(|e| e.to_string())?;
-    }
-
-    Ok(triggered)
+/// Mark a single alert as triggered by its ID.
+///
+/// Called once per triggered alert after the in-memory check in the price-refresh
+/// hot path; replaces the per-symbol `check_and_trigger_alerts` DB round-trip.
+pub async fn mark_alert_triggered(pool: &SqlitePool, id: &str) -> Result<(), String> {
+    sqlx::query("UPDATE price_alerts SET triggered = 1 WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub async fn reset_alert(pool: &SqlitePool, id: &AlertId) -> Result<bool, String> {
