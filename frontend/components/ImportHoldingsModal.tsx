@@ -19,12 +19,40 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   duplicate: { label: 'Duplicate', color: 'var(--color-warning)' },
   invalid_symbol: { label: 'Invalid symbol', color: 'var(--color-loss)' },
   validation_failed: { label: 'Check failed', color: 'var(--color-loss)' },
+  currency_mismatch: { label: 'Currency mismatch', color: 'var(--color-warning)' },
 };
 
-function statusCell(
-  status: 'ready' | 'cash' | 'duplicate' | 'invalid_symbol' | 'validation_failed'
-) {
-  const s = STATUS_LABEL[status] ?? { label: status, color: 'var(--text-muted)' };
+/**
+ * Normalise raw backend PreviewRows: the Rust side encodes currency_mismatch as
+ * the compound string `"currency_mismatch:USD_expected_CAD"`. Split it out into
+ * the typed `status` + `currencyMismatchDetail` fields that the UI expects.
+ */
+function normalisePreviewRows(rows: PreviewRow[]): PreviewRow[] {
+  return rows.map((row) => {
+    if (typeof row.status === 'string' && row.status.startsWith('currency_mismatch:')) {
+      const payload = row.status.slice('currency_mismatch:'.length);
+      // Backend format: "{actual}_expected_{expected}"  →  detail: "{actual}:{expected}"
+      const detail = payload.replace('_expected_', ':');
+      return { ...row, status: 'currency_mismatch' as const, currencyMismatchDetail: detail };
+    }
+    return row;
+  });
+}
+
+function statusCell(row: PreviewRow) {
+  if (row.status === 'currency_mismatch') {
+    let label = 'Currency mismatch';
+    if (row.currencyMismatchDetail) {
+      const [actual, expected] = row.currencyMismatchDetail.split(':');
+      label = `Currency mismatch — file: ${actual}, holding: ${expected}`;
+    }
+    return (
+      <span style={{ ...MONO, fontSize: 11, color: 'var(--color-warning)', fontWeight: 600 }}>
+        {label}
+      </span>
+    );
+  }
+  const s = STATUS_LABEL[row.status] ?? { label: row.status, color: 'var(--text-muted)' };
   return <span style={{ ...MONO, fontSize: 11, color: s.color, fontWeight: 600 }}>{s.label}</span>;
 }
 
@@ -105,7 +133,8 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
                 opacity:
                   r.status === 'duplicate' ||
                   r.status === 'invalid_symbol' ||
-                  r.status === 'validation_failed'
+                  r.status === 'validation_failed' ||
+                  r.status === 'currency_mismatch'
                     ? 0.65
                     : 1,
               }}
@@ -142,7 +171,7 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
                 {formatNumber(r.targetWeight, 1)}%
               </td>
-              <td style={TD}>{statusCell(r.status)}</td>
+              <td style={TD}>{statusCell(r)}</td>
             </tr>
           ))}
         </tbody>
@@ -170,7 +199,8 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
 
     setPreviewing(true);
     try {
-      setPreview(await onPreview(text));
+      const raw = await onPreview(text);
+      setPreview({ ...raw, rows: normalisePreviewRows(raw.rows) });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
