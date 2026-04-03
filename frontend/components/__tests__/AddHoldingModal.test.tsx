@@ -148,14 +148,14 @@ describe('AddHoldingModal', () => {
 
   it('Advanced section is hidden by default', () => {
     renderModal();
-    expect(screen.queryByText(/indicated annual div/i)).toBeNull();
+    expect(screen.queryByText(/ann\. div/i)).toBeNull();
   });
 
   it('toggles Advanced section when the toggle button is clicked', () => {
     renderModal();
     const toggleBtn = screen.getByText(/advanced/i);
     fireEvent.click(toggleBtn);
-    expect(screen.getByText(/indicated annual div/i)).toBeTruthy();
+    expect(screen.getByText(/ann\. div/i)).toBeTruthy();
   });
 
   it('backdrop click triggers onClose', () => {
