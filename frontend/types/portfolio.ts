@@ -273,7 +273,15 @@ export interface PreviewRow {
   quantity: number;
   costBasis: number;
   targetWeight: number;
-  status: 'ready' | 'cash' | 'duplicate' | 'invalid_symbol' | 'validation_failed';
+  status:
+    | 'ready'
+    | 'cash'
+    | 'duplicate'
+    | 'invalid_symbol'
+    | 'validation_failed'
+    | 'currency_mismatch';
+  /** Present when status is 'currency_mismatch'. Format: '{actual}:{expected}', e.g. 'USD:CAD'. */
+  currencyMismatchDetail?: string;
 }
 
 export interface PreviewImportResult {

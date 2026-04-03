@@ -22,6 +22,7 @@ import type {
 } from '../types/portfolio';
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 import { isTauri, tauriInvoke } from '../lib/tauri';
+import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
 
 export interface UsePortfolioReturn {
   portfolio: PortfolioSnapshot | null;
@@ -221,7 +222,7 @@ function usePortfolioState(): UsePortfolioReturn {
     try {
       const result = await tauriInvoke<PaginatedResult<PriceAlert>>('get_alerts_paginated', {
         page: 1,
-        pageSize: 500,
+        pageSize: PAGINATION_FETCH_ALL_SIZE,
       });
       const fresh = result.items;
       setAlerts(fresh);
@@ -244,7 +245,7 @@ function usePortfolioState(): UsePortfolioReturn {
           tauriInvoke<PortfolioSnapshot>('get_portfolio'),
           tauriInvoke<PaginatedResult<Holding>>('get_holdings_paginated', {
             page: 1,
-            pageSize: 500,
+            pageSize: PAGINATION_FETCH_ALL_SIZE,
           }),
         ]);
         setPortfolio(snap);
@@ -281,7 +282,7 @@ function usePortfolioState(): UsePortfolioReturn {
           tauriInvoke<PortfolioSnapshot>('get_portfolio'),
           tauriInvoke<PaginatedResult<Holding>>('get_holdings_paginated', {
             page: 1,
-            pageSize: 500,
+            pageSize: PAGINATION_FETCH_ALL_SIZE,
           }),
         ]);
         setPortfolio(snap);
