@@ -6,6 +6,8 @@ node_modules/
 dist/
 
 # Rust / Cargo
+target/
+src-tauri/bindings/
 src-tauri/target/
 
 # Tauri generated
