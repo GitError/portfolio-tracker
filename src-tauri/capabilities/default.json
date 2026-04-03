@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window. Custom commands (search_symbols, refresh_prices) are internal-only and rate-limited to prevent external API abuse.",
   "windows": ["main"],
   "permissions": [
     "core:default",

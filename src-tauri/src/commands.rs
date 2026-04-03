@@ -47,6 +47,7 @@ pub async fn get_config_cmd(
 #[tauri::command]
 pub async fn set_config_cmd(
     db: State<'_, DbState>,
+    gains_cache: State<'_, RealizedGainsCacheState>,
     key: String,
     value: String,
 ) -> Result<(), AppError> {
@@ -70,15 +71,72 @@ pub async fn set_config_cmd(
     };
     db::set_config(pool, &key, &value)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // Changing the cost-basis method invalidates any previously cached realized gains
+    // because the same transaction history produces a different result under AVCO vs FIFO.
+    if key == "cost_basis_method" {
+        gains_cache.invalidate();
+    }
+    Ok(())
 }
 
 pub(crate) struct SearchCacheEntry {
     results: Vec<SymbolResult>,
     cached_at: Instant,
+    last_accessed_at: Instant,
 }
 
 pub struct SearchCacheState(pub Mutex<HashMap<String, SearchCacheEntry>>);
+
+/// In-memory cache for the aggregate `RealizedGainsSummary` (all holdings, all transactions).
+/// Invalidated whenever a transaction is added or deleted, or when the cost-basis method changes.
+pub struct RealizedGainsCacheState(pub Mutex<Option<RealizedGainsSummary>>);
+
+impl RealizedGainsCacheState {
+    pub fn new() -> Self {
+        RealizedGainsCacheState(Mutex::new(None))
+    }
+
+    /// Return the cached summary if present, or `None` if the cache is cold/poisoned.
+    pub fn get(&self) -> Option<RealizedGainsSummary> {
+        match self.0.lock() {
+            Ok(guard) => guard.clone(),
+            Err(_) => {
+                tracing::warn!("RealizedGainsCache mutex poisoned; recomputing");
+                None
+            }
+        }
+    }
+
+    /// Store a freshly-computed summary in the cache.
+    pub fn set(&self, summary: RealizedGainsSummary) {
+        if let Ok(mut guard) = self.0.lock() {
+            *guard = Some(summary);
+        }
+    }
+
+    /// Clear the cache so the next read triggers a recompute.
+    pub fn invalidate(&self) {
+        if let Ok(mut guard) = self.0.lock() {
+            *guard = None;
+        }
+    }
+}
+
+/// Simple per-command rate limiter to prevent API abuse.
+pub struct RateLimiterState {
+    pub last_search: Mutex<Option<Instant>>,
+    pub last_refresh: Mutex<Option<Instant>>,
+}
+
+impl RateLimiterState {
+    pub fn new() -> Self {
+        RateLimiterState {
+            last_search: Mutex::new(None),
+            last_refresh: Mutex::new(None),
+        }
+    }
+}
 
 impl SearchCacheState {
     pub fn new() -> Self {
@@ -86,38 +144,41 @@ impl SearchCacheState {
     }
 
     fn get(&self, key: &str) -> Option<Vec<SymbolResult>> {
-        let cache = match self.0.lock() {
+        let mut cache = match self.0.lock() {
             Ok(guard) => guard,
             Err(_) => {
                 tracing::warn!("Search cache mutex poisoned; cache disabled for this request");
                 return None;
             }
         };
-        let entry = cache.get(key)?;
+        let entry = cache.get_mut(key)?;
         if entry.cached_at.elapsed()
             > Duration::from_secs(crate::config::SEARCH_CACHE_TTL_SECS as u64)
         {
             return None;
         }
+        entry.last_accessed_at = Instant::now();
         Some(entry.results.clone())
     }
 
     fn set(&self, key: String, results: Vec<SymbolResult>) {
         if let Ok(mut cache) = self.0.lock() {
             if cache.len() >= crate::config::SEARCH_CACHE_MAX_ENTRIES {
-                if let Some(oldest_key) = cache
+                if let Some(lru_key) = cache
                     .iter()
-                    .min_by_key(|(_, v)| v.cached_at)
+                    .min_by_key(|(_, v)| v.last_accessed_at)
                     .map(|(k, _)| k.clone())
                 {
-                    cache.remove(&oldest_key);
+                    cache.remove(&lru_key);
                 }
             }
+            let now = Instant::now();
             cache.insert(
                 key,
                 SearchCacheEntry {
                     results,
-                    cached_at: Instant::now(),
+                    cached_at: now,
+                    last_accessed_at: now,
                 },
             );
         }
@@ -152,6 +213,7 @@ async fn validate_symbol(
 pub async fn get_portfolio(
     db: State<'_, DbState>,
     _client: State<'_, HttpClient>,
+    gains_cache: State<'_, RealizedGainsCacheState>,
 ) -> Result<PortfolioSnapshot, AppError> {
     let pool = &db.0;
     let base_currency = get_base_currency(pool).await;
@@ -168,18 +230,27 @@ pub async fn get_portfolio(
     let cost_basis_method = cost_basis_method_opt.unwrap_or_else(|| "avco".to_string());
 
     let realized_gains = {
-        let transactions = db::get_all_transactions(pool).await?;
-        match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
-            Ok(s) => s.total_realized_gain,
-            Err(e) => {
-                tracing::error!(
-                    "realized_gains error (method={:?}): {}",
-                    cost_basis_method,
-                    e
-                );
-                return Err(AppError::from(e));
+        let summary = if let Some(cached) = gains_cache.get() {
+            tracing::info!("realized_gains cache hit");
+            cached
+        } else {
+            let transactions = db::get_all_transactions(pool).await?;
+            match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
+                Ok(s) => {
+                    gains_cache.set(s.clone());
+                    s
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "realized_gains error (method={:?}): {}",
+                        cost_basis_method,
+                        e
+                    );
+                    return Err(AppError::from(e));
+                }
             }
-        }
+        };
+        summary.total_realized_gain
     };
 
     let annual_dividend_income = db::get_annual_dividend_income(pool, &base_currency, &cached_fx)
@@ -593,7 +664,33 @@ pub async fn preview_import_csv(
 pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
+    rate_limiter: State<'_, RateLimiterState>,
 ) -> Result<RefreshResult, AppError> {
+    // Enforce a 5-second minimum between actual price refreshes to prevent API abuse.
+    {
+        const MIN_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+        let mut last = rate_limiter
+            .last_refresh
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ts) = *last {
+            if ts.elapsed() < MIN_REFRESH_INTERVAL {
+                tracing::warn!(
+                    "refresh_prices rate-limited: called {}ms after previous refresh",
+                    ts.elapsed().as_millis()
+                );
+                return Ok(RefreshResult {
+                    prices: vec![],
+                    failed_symbols: vec![],
+                    triggered_alerts: vec![],
+                    alert_errors: vec![],
+                    snapshot_error: None,
+                });
+            }
+        }
+        *last = Some(Instant::now());
+    }
+
     let base_currency = get_base_currency(&db.0).await;
 
     let holdings = {
@@ -755,9 +852,10 @@ pub async fn refresh_prices(
 pub async fn run_stress_test_cmd(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
+    gains_cache: State<'_, RealizedGainsCacheState>,
     scenario: StressScenario,
 ) -> Result<StressResult, AppError> {
-    let snapshot = get_portfolio(db, client).await?;
+    let snapshot = get_portfolio(db, client, gains_cache).await?;
     Ok(run_stress_test(&snapshot, &scenario))
 }
 
@@ -767,19 +865,21 @@ pub async fn search_symbols(
     client: State<'_, HttpClient>,
     cache: State<'_, SearchCacheState>,
     db: State<'_, DbState>,
+    rate_limiter: State<'_, RateLimiterState>,
 ) -> Result<Vec<SymbolResult>, AppError> {
-    if query.trim().len() < 2 {
+    let q = query.trim();
+    if q.len() < 2 || q.len() > crate::config::MAX_SEARCH_QUERY_LEN {
         return Ok(vec![]);
     }
 
-    let key = query.trim().to_lowercase();
+    let key = q.to_lowercase();
 
-    // 1. In-memory cache (5-minute TTL)
+    // 1. In-memory cache (5-minute TTL) — cached results bypass the rate limit.
     if let Some(cached) = cache.get(&key) {
         return Ok(cached);
     }
 
-    // 2. SQLite persistent cache
+    // 2. SQLite persistent cache — also bypasses the rate limit.
     let db_results = {
         let pool = &db.0;
         db::search_symbol_cache(pool, &key)
@@ -787,8 +887,27 @@ pub async fn search_symbols(
             .unwrap_or_default()
     };
 
-    // 3. Yahoo Finance API
-    let results = match search_symbols_yahoo(&client.0, &query).await {
+    // 3. Rate limit live Yahoo Finance API calls to at most one per 500 ms.
+    {
+        const MIN_SEARCH_INTERVAL: Duration = Duration::from_millis(500);
+        let mut last = rate_limiter
+            .last_search
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ts) = *last {
+            if ts.elapsed() < MIN_SEARCH_INTERVAL {
+                tracing::warn!(
+                    "search_symbols rate-limited: called {}ms after previous search",
+                    ts.elapsed().as_millis()
+                );
+                return Ok(db_results);
+            }
+        }
+        *last = Some(Instant::now());
+    }
+
+    // 4. Yahoo Finance API
+    let results = match search_symbols_yahoo(&client.0, q).await {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("Symbol search API failed: {}", e);
@@ -1600,6 +1719,7 @@ pub async fn get_portfolio_analytics(
 #[tauri::command]
 pub async fn get_realized_gains(
     db: State<'_, DbState>,
+    gains_cache: State<'_, RealizedGainsCacheState>,
     holding_id: Option<HoldingId>,
 ) -> Result<RealizedGainsSummary, AppError> {
     let pool = &db.0;
@@ -1607,12 +1727,28 @@ pub async fn get_realized_gains(
         .await?
         .unwrap_or_else(|| "avco".to_string());
 
+    // Use the cache only for the full-portfolio (no per-holding filter) query.
+    if holding_id.is_none() {
+        if let Some(cached) = gains_cache.get() {
+            tracing::info!("realized_gains cache hit (get_realized_gains)");
+            return Ok(cached);
+        }
+    }
+
     let transactions = match holding_id {
         Some(ref id) => db::get_transactions_for_holding(pool, id).await?,
         None => db::get_all_transactions(pool).await?,
     };
 
-    compute_realized_gains_grouped(&transactions, &cost_basis_method).map_err(AppError::from)
+    let summary = compute_realized_gains_grouped(&transactions, &cost_basis_method)
+        .map_err(AppError::from)?;
+
+    // Populate the cache only for the full-portfolio case.
+    if holding_id.is_none() {
+        gains_cache.set(summary.clone());
+    }
+
+    Ok(summary)
 }
 
 #[cfg(test)]
@@ -2107,6 +2243,46 @@ mod tests {
             snapshot.daily_pnl
         );
     }
+
+    // ── SQLITE_MAGIC validation tests ─────────────────────────────────────────
+
+    #[test]
+    fn sqlite_magic_bytes_match_valid_header() {
+        // The constant must equal the canonical 16-byte SQLite magic header.
+        assert_eq!(
+            SQLITE_MAGIC, b"SQLite format 3\0",
+            "SQLITE_MAGIC must equal the canonical SQLite file header"
+        );
+    }
+
+    #[test]
+    fn sqlite_magic_check_passes_for_valid_bytes() {
+        let header: [u8; 16] = *b"SQLite format 3\0";
+        assert_eq!(
+            header, SQLITE_MAGIC,
+            "valid SQLite magic bytes should match SQLITE_MAGIC"
+        );
+    }
+
+    #[test]
+    fn sqlite_magic_check_fails_for_random_bytes() {
+        let bad_header: [u8; 16] = [
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]; // PNG magic
+        assert_ne!(
+            bad_header, SQLITE_MAGIC,
+            "non-SQLite bytes must not match SQLITE_MAGIC"
+        );
+    }
+
+    #[test]
+    fn sqlite_magic_check_fails_for_all_zeroes() {
+        let zero_header: [u8; 16] = [0u8; 16];
+        assert_ne!(
+            zero_header, SQLITE_MAGIC,
+            "all-zero header must not match SQLITE_MAGIC"
+        );
+    }
 }
 
 // ── Transaction commands ──────────────────────────────────────────────────────
@@ -2114,6 +2290,7 @@ mod tests {
 #[tauri::command]
 pub async fn add_transaction(
     db: State<'_, DbState>,
+    gains_cache: State<'_, RealizedGainsCacheState>,
     input: TransactionInput,
 ) -> Result<Transaction, AppError> {
     if input.quantity <= 0.0 {
@@ -2127,9 +2304,11 @@ pub async fn add_transaction(
         ));
     }
     let pool = &db.0;
-    db::insert_transaction(pool, input)
+    let result = db::insert_transaction(pool, input)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    gains_cache.invalidate();
+    Ok(result)
 }
 
 /// Deprecated: use `get_transactions_paginated` instead.
@@ -2151,12 +2330,15 @@ pub async fn get_transactions(
 #[tauri::command]
 pub async fn delete_transaction(
     db: State<'_, DbState>,
+    gains_cache: State<'_, RealizedGainsCacheState>,
     id: TransactionId,
 ) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::delete_transaction(pool, &id)
+    let result = db::delete_transaction(pool, &id)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    gains_cache.invalidate();
+    Ok(result)
 }
 
 // ── Account Commands ──────────────────────────────────────────────────────────

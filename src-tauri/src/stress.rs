@@ -372,4 +372,114 @@ mod tests {
         let result = run_stress_test(&snapshot, &scenario);
         assert_eq!(result.scenario, "My Custom Scenario");
     }
+
+    #[test]
+    fn cash_only_portfolio_is_unchanged() {
+        // All holdings are cash — asset shocks must not affect them.
+        let snapshot = make_snapshot(vec![
+            make_holding("CAD-CASH", AssetType::Cash, "CAD", 10_000.0),
+            make_holding("USD-CASH", AssetType::Cash, "CAD", 5_000.0),
+        ]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.20);
+        shocks.insert("etf".to_string(), -0.10);
+        shocks.insert("crypto".to_string(), -0.50);
+        let scenario = StressScenario {
+            name: "Asset shocks on cash-only portfolio".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!(
+            result.total_impact.abs() < 0.001,
+            "cash holdings must be immune to asset shocks; total_impact={}",
+            result.total_impact
+        );
+        assert!(
+            (result.stressed_value - 15_000.0).abs() < 0.001,
+            "stressed_value should equal original total; got {}",
+            result.stressed_value
+        );
+    }
+
+    #[test]
+    fn zero_cost_basis_holding_no_panic_or_nan() {
+        // A holding with cost_basis = 0.0 must not produce NaN or Inf.
+        let mut holding = make_holding("ZERO", AssetType::Stock, "CAD", 1_000.0);
+        holding.cost_basis = 0.0;
+        // market_value_cad is still non-zero so the stressed value is defined.
+        let snapshot = make_snapshot(vec![holding]);
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.10);
+        let scenario = StressScenario {
+            name: "Mild shock on zero cost basis".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!(
+            result.stressed_value.is_finite(),
+            "stressed_value must be finite; got {}",
+            result.stressed_value
+        );
+        assert!(
+            result.total_impact.is_finite(),
+            "total_impact must be finite; got {}",
+            result.total_impact
+        );
+        for h in &result.holding_breakdown {
+            assert!(
+                h.stressed_value.is_finite(),
+                "holding stressed_value must be finite for symbol {}",
+                h.symbol
+            );
+        }
+    }
+
+    #[test]
+    fn fx_only_shock_no_asset_shocks() {
+        // FX shock on a USD holding raises its CAD value; CAD holding is unaffected.
+        let usd_value = 10_000.0;
+        let cad_value = 5_000.0;
+        let snapshot = make_snapshot(vec![
+            make_holding("AAPL", AssetType::Stock, "USD", usd_value),
+            make_holding("RY.TO", AssetType::Stock, "CAD", cad_value),
+        ]);
+        let mut shocks = HashMap::new();
+        shocks.insert("fx_usd_cad".to_string(), 0.10);
+        let scenario = StressScenario {
+            name: "FX-only: USD strengthens 10%".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        let usd_result = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "AAPL")
+            .unwrap();
+        let cad_result = result
+            .holding_breakdown
+            .iter()
+            .find(|h| h.symbol == "RY.TO")
+            .unwrap();
+
+        // USD holding gains 10%
+        assert!(
+            (usd_result.stressed_value - usd_value * 1.10).abs() < 0.001,
+            "USD holding should gain 10%; expected {} got {}",
+            usd_value * 1.10,
+            usd_result.stressed_value
+        );
+        // CAD holding is unchanged
+        assert!(
+            (cad_result.stressed_value - cad_value).abs() < 0.001,
+            "CAD holding should be unaffected by FX shock; expected {} got {}",
+            cad_value,
+            cad_result.stressed_value
+        );
+    }
 }

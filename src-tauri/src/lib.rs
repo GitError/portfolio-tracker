@@ -71,7 +71,7 @@ mod ts_binding_tests {
     }
 }
 
-use commands::{DbState, HttpClient, SearchCacheState};
+use commands::{DbState, HttpClient, RateLimiterState, RealizedGainsCacheState, SearchCacheState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 use tauri::Manager;
@@ -137,6 +137,7 @@ pub fn run() {
             let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
             let wal_pool = pool.clone();
             tauri::async_runtime::spawn(async move {
+                // Checkpoint WAL every 5 min to bound WAL file growth; safe for low-write desktop workloads.
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
                 interval.tick().await; // skip immediate first tick
                 loop {
@@ -163,6 +164,8 @@ pub fn run() {
             app.manage(DbState(pool));
             app.manage(HttpClient(http_client));
             app.manage(SearchCacheState::new());
+            app.manage(RealizedGainsCacheState::new());
+            app.manage(RateLimiterState::new());
             // Store the WAL shutdown sender so on_window_event can signal the task to exit.
             app.manage(WalShutdown(shutdown_tx));
 

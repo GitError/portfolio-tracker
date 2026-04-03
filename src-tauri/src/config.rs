@@ -44,3 +44,7 @@ pub const SEARCH_CACHE_TTL_SECS: i64 = 300; // 5 minutes
 
 /// Maximum number of entries to keep in the in-memory search cache.
 pub const SEARCH_CACHE_MAX_ENTRIES: usize = 200;
+
+/// Maximum length (in characters) for a symbol search query string.
+/// Queries longer than this are rejected without hitting the network or cache.
+pub const MAX_SEARCH_QUERY_LEN: usize = 100;
