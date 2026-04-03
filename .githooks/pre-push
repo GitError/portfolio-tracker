@@ -12,7 +12,7 @@ npm run lint --silent
 npm run typecheck --silent
 npm run format:check --silent
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" fmt --check && cd ..
+  (cd src-tauri && "$CARGO" fmt --check) || { echo "  ✗ cargo fmt check failed — run: cd src-tauri && cargo fmt"; exit 1; }
 fi
 echo "  ✓ Lint + type check + format passed"
 
