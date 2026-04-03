@@ -241,7 +241,16 @@ function AppRoutes() {
             />
           }
         >
-          <Route index element={<Dashboard portfolio={portfolio} loading={loading} />} />
+          <Route
+            index
+            element={
+              <Dashboard
+                portfolio={portfolio}
+                loading={loading}
+                onOpenCostBasisModal={() => setShowCostBasisModal(true)}
+              />
+            }
+          />
           <Route
             path="/holdings"
             element={
