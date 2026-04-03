@@ -8,6 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
+import { useToast } from '../components/ui/Toast';
 import type {
   AccountType,
   Holding,
@@ -190,6 +191,7 @@ function saveCachedPortfolio(snapshot: PortfolioSnapshot, holdings: Holding[]): 
 }
 
 function usePortfolioState(): UsePortfolioReturn {
+  const { showToast } = useToast();
   const [portfolio, setPortfolio] = useState<PortfolioSnapshot | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,6 +206,8 @@ function usePortfolioState(): UsePortfolioReturn {
 
   /** Tracks the in-flight refresh promise to deduplicate concurrent calls (#381). */
   const pendingRefreshRef = useRef<Promise<RefreshResult | null> | null>(null);
+  /** True when a second refresh was requested while one was already in-flight (#468). */
+  const queuedRefreshRef = useRef(false);
   /** Kept in sync with isOffline state so write callbacks can read it without a dep. */
   const isOfflineRef = useRef(false);
 
@@ -298,12 +302,20 @@ function usePortfolioState(): UsePortfolioReturn {
     loadPortfolio();
   }, [loadPortfolio]);
 
+  /** Stable ref so the queued-refresh callback can invoke the latest version of itself. */
+  const refreshPricesInternalRef = useRef<() => Promise<RefreshResult | null>>(() =>
+    Promise.resolve(null)
+  );
+
   /**
-   * Internal refresh that returns the result and deduplicates concurrent calls.
-   * If a refresh is already in-flight, returns the same promise (#381).
+   * Internal refresh that returns the result. Deduplicates concurrent calls: if a refresh
+   * is already in-flight the second caller is queued and fires one additional refresh after
+   * the current one completes (#381, #468).
    */
   const refreshPricesInternal = useCallback((): Promise<RefreshResult | null> => {
     if (pendingRefreshRef.current) {
+      // Queue a follow-up refresh rather than silently dropping the request (#468)
+      queuedRefreshRef.current = true;
       return pendingRefreshRef.current;
     }
     setIsRefreshing(true);
@@ -324,6 +336,13 @@ function usePortfolioState(): UsePortfolioReturn {
             setUnseenTriggeredCount((prev) => prev + triggered.length);
             await refreshAlerts();
           }
+          // Surface snapshot persistence errors as a non-blocking warning (#487)
+          if (result.snapshotError) {
+            showToast(
+              'Prices updated, but the snapshot could not be saved. Data may be stale after restart.',
+              'info'
+            );
+          }
           // alertErrors surfaced in UI via alertRefreshErrors state
           await loadPortfolioSilent();
           return result;
@@ -338,12 +357,22 @@ function usePortfolioState(): UsePortfolioReturn {
       } finally {
         pendingRefreshRef.current = null;
         setIsRefreshing(false);
+        // Fire the queued refresh now that the in-flight one is done (#468)
+        if (queuedRefreshRef.current) {
+          queuedRefreshRef.current = false;
+          void refreshPricesInternalRef.current();
+        }
       }
     })();
 
     pendingRefreshRef.current = p;
     return p;
-  }, [loadPortfolioSilent, refreshAlerts]);
+  }, [loadPortfolioSilent, refreshAlerts, showToast]);
+
+  // Keep the stable ref up to date with the latest callback instance
+  useEffect(() => {
+    refreshPricesInternalRef.current = refreshPricesInternal;
+  }, [refreshPricesInternal]);
 
   /** Public-facing refreshPrices: deduplicates in-flight requests, returns void. */
   const refreshPrices = useCallback(async (): Promise<void> => {

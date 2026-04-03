@@ -155,6 +155,8 @@ export interface RefreshResult {
   triggeredAlerts: string[];
   /** Error messages from alert evaluation that did not prevent the refresh. */
   alertErrors?: string[];
+  /** Set when prices were updated but the portfolio snapshot could not be saved. */
+  snapshotError?: string;
 }
 
 export interface ExportPayload {
