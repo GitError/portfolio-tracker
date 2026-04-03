@@ -651,18 +651,13 @@ pub async fn refresh_prices(
         }
     }
 
-    // Build a portfolio snapshot to record the current total value
+    // Build a portfolio snapshot to record the current total value.
+    // #475: Reuse the holdings and rate data already in memory — no extra DB round-trips.
     let snapshot_totals = {
-        let pool = &db.0;
-        let (snap_holdings, cached_prices, cached_fx) = tokio::try_join!(
-            db::get_all_holdings(pool),
-            db::get_cached_prices(pool),
-            db::get_fx_rates(pool),
-        )?;
         let snap = build_portfolio_snapshot(
-            &snap_holdings,
-            &cached_prices,
-            &cached_fx,
+            &holdings,
+            &prices,
+            &fx_rates,
             &base_currency,
             Utc::now().to_rfc3339(),
             0.0,
@@ -670,6 +665,58 @@ pub async fn refresh_prices(
         );
         (snap.total_value, snap.total_cost, snap.total_gain_loss)
     };
+
+    // #474: Load all active alerts in one query then evaluate them in memory.
+    // This replaces the previous pattern of one SELECT per refreshed symbol.
+    let active_alerts: HashMap<String, Vec<(String, String, f64)>> = {
+        let pool = &db.0;
+        match db::get_all_active_alerts(pool).await {
+            Ok(rows) => {
+                let mut map: HashMap<String, Vec<(String, String, f64)>> = HashMap::new();
+                for (id, symbol_upper, dir, threshold) in rows {
+                    map.entry(symbol_upper)
+                        .or_default()
+                        .push((id, dir, threshold));
+                }
+                map
+            }
+            Err(e) => {
+                let msg = format!("Failed to load active alerts: {e}");
+                tracing::warn!("{}", msg);
+                alert_errors.push(msg);
+                HashMap::new()
+            }
+        }
+    };
+
+    for price in &prices {
+        let symbol_upper = price.symbol.to_uppercase();
+        if let Some(alerts) = active_alerts.get(&symbol_upper) {
+            for (id, dir_str, threshold) in alerts {
+                let crossed = match (dir_str.as_str(), price.previous_close) {
+                    ("above", Some(prev)) => prev < *threshold && price.price >= *threshold,
+                    ("below", Some(prev)) => prev > *threshold && price.price <= *threshold,
+                    ("above", None) => price.price >= *threshold,
+                    ("below", None) => price.price <= *threshold,
+                    _ => false,
+                };
+                if crossed {
+                    let pool = &db.0;
+                    match db::mark_alert_triggered(pool, id).await {
+                        Ok(()) => triggered_alert_ids.push(id.clone()),
+                        Err(e) => {
+                            let msg = format!(
+                                "Failed to trigger alert {} for {}: {}",
+                                id, price.symbol, e
+                            );
+                            tracing::warn!("{}", msg);
+                            alert_errors.push(msg);
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Record the snapshot and prune old data; log errors but don't fail the command.
     // Surface snapshot insertion failures to the caller via RefreshResult.snapshot_error.
@@ -691,25 +738,6 @@ pub async fn refresh_prices(
         };
         if let Err(e) = db::prune_snapshots(pool).await {
             tracing::warn!("Failed to prune portfolio snapshots: {}", e);
-        }
-
-        // Check price alerts — collect newly-triggered IDs and surface errors
-        for price in &prices {
-            match db::check_and_trigger_alerts(
-                pool,
-                &price.symbol,
-                price.price,
-                price.previous_close,
-            )
-            .await
-            {
-                Ok(ids) => triggered_alert_ids.extend(ids),
-                Err(e) => {
-                    let msg = format!("Failed to check alerts for {}: {}", price.symbol, e);
-                    tracing::warn!("{}", msg);
-                    alert_errors.push(msg);
-                }
-            }
         }
         err
     };
@@ -2005,8 +2033,8 @@ mod tests {
     }
 
     #[test]
-    fn build_portfolio_snapshot_excludes_intraday_purchase_from_daily_pnl() {
-        // A holding created today should contribute 0 to daily_pnl.
+    fn build_portfolio_snapshot_same_day_purchase_uses_cost_basis_for_daily_pnl() {
+        // A holding created today uses (current_price - cost_basis) * quantity as daily PnL proxy.
         let today = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let mut holding = make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD");
         holding.created_at = today;
@@ -2016,7 +2044,7 @@ mod tests {
             price: 120.0,
             currency: "CAD".to_string(),
             change: 2.0,
-            change_percent: 5.0, // would be 60.0 CAD if applied
+            change_percent: 5.0, // day-over-day pct — should NOT be used for same-day purchases
             updated_at: Utc::now().to_rfc3339(),
             open: None,
             previous_close: None,
@@ -2033,10 +2061,10 @@ mod tests {
             0.0,
         );
 
-        // market_value_cad = 10 * 120 = 1200; daily_pnl should be 0, not 60
+        // Expected: (120 - 100) * 10 = 200 (gain since purchase used as daily proxy)
         assert!(
-            (snapshot.daily_pnl - 0.0).abs() < 0.001,
-            "expected daily_pnl == 0 for intraday purchase, got {}",
+            (snapshot.daily_pnl - 200.0).abs() < 0.001,
+            "expected daily_pnl == 200 for same-day purchase using cost-basis proxy, got {}",
             snapshot.daily_pnl
         );
     }

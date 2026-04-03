@@ -218,13 +218,11 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
                 }
             })
         };
-        let currency = sanitize_str(&parse_required_field(
-            &record,
-            currency_index,
-            row,
-            "currency",
-        )?)
-        .to_uppercase();
+        let raw_currency = parse_required_field(&record, currency_index, row, "currency")?;
+        if raw_currency.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: currency exceeds maximum length", row));
+        }
+        let currency = sanitize_str(&raw_currency).to_uppercase();
         let raw_symbol = sanitize_str(&parse_optional_field(&record, Some(symbol_index)));
         let symbol = if matches!(asset_type, AssetType::Cash) {
             if raw_symbol.is_empty() || raw_symbol.eq_ignore_ascii_case("CASH") {
@@ -282,18 +280,21 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
         }
         let exchange = sanitize_str(&raw_exchange).to_uppercase();
 
-        if currency.len() > crate::config::MAX_FIELD_LEN {
-            return Err(format!("Row {}: currency exceeds maximum length", row));
-        }
-
         let iad_str = parse_optional_field(&record, indicated_annual_dividend_index);
         let indicated_annual_dividend = if iad_str.is_empty() {
             None
         } else {
             iad_str.parse::<f64>().ok()
         };
-        let iad_currency_str =
+        let raw_iad_currency =
             parse_optional_field(&record, indicated_annual_dividend_currency_index);
+        if raw_iad_currency.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!(
+                "Row {}: indicated_annual_dividend_currency exceeds maximum length",
+                row
+            ));
+        }
+        let iad_currency_str = sanitize_str(&raw_iad_currency);
         let indicated_annual_dividend_currency = if iad_currency_str.is_empty() {
             None
         } else {

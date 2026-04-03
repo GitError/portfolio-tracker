@@ -286,8 +286,14 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
         .map(|r| {
             let asset_type_str: String = r.get(3);
             let account_str: String = r.get(4);
-            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %asset_type_str, "unrecognised asset_type; defaulting to Stock");
+                AssetType::Stock
+            });
+            let account = AccountType::from_str(&account_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %account_str, "unrecognised account_type; defaulting to Taxable");
+                AccountType::Taxable
+            });
             Holding {
                 id: HoldingId(r.get(0)),
                 symbol: r.get(1),
@@ -474,7 +480,7 @@ pub async fn get_symbol_cache_exact(
     let row = sqlx::query(
         "SELECT symbol, name, asset_type, exchange, currency
          FROM symbol_cache
-         WHERE symbol = UPPER($1)
+         WHERE UPPER(symbol) = UPPER($1)
          LIMIT 1",
     )
     .bind(symbol)
@@ -504,7 +510,6 @@ pub async fn upsert_symbol_fundamentals(
     meta: &SymbolMetadata,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
-    let symbol_upper = meta.symbol.to_uppercase();
     sqlx::query(
         "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at)
          VALUES ($1, $1, 'stock', '', '', $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -519,7 +524,7 @@ pub async fn upsert_symbol_fundamentals(
            market_cap=excluded.market_cap,
            fundamentals_updated_at=excluded.fundamentals_updated_at",
     )
-    .bind(&symbol_upper)
+    .bind(&meta.symbol)
     .bind(&meta.sector)
     .bind(&meta.industry)
     .bind(&meta.country)
@@ -546,7 +551,7 @@ pub async fn get_symbol_fundamentals_from_cache(
     let row = sqlx::query(
         "SELECT symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at
          FROM symbol_cache
-         WHERE symbol = UPPER($1) AND fundamentals_updated_at IS NOT NULL
+         WHERE UPPER(symbol) = UPPER($1) AND fundamentals_updated_at IS NOT NULL
          LIMIT 1",
     )
     .bind(symbol)
@@ -696,13 +701,12 @@ pub async fn sum_target_weights(
 pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<PriceAlert, String> {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
-    let symbol_upper = input.symbol.to_uppercase();
     sqlx::query(
         "INSERT INTO price_alerts (id, symbol, direction, threshold, currency, note, triggered, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, 0, $7)",
     )
     .bind(&id)
-    .bind(&symbol_upper)
+    .bind(&input.symbol)
     .bind(input.direction.as_str())
     .bind(input.threshold)
     .bind(&input.currency)
@@ -714,7 +718,7 @@ pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<P
 
     Ok(PriceAlert {
         id: AlertId(id),
-        symbol: symbol_upper,
+        symbol: input.symbol,
         direction: input.direction,
         threshold: input.threshold,
         currency: input.currency,
@@ -765,6 +769,41 @@ pub async fn delete_alert(pool: &SqlitePool, id: &AlertId) -> Result<bool, Strin
     Ok(result.rows_affected() > 0)
 }
 
+/// Fetch all non-triggered alerts in a single query.
+///
+/// Returns a `Vec<(id, symbol_uppercase, direction_str, threshold)>` suitable
+/// for building an in-memory lookup map, avoiding one DB round-trip per symbol
+/// in the price-refresh hot path.
+pub async fn get_all_active_alerts(
+    pool: &SqlitePool,
+) -> Result<Vec<(String, String, String, f64)>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT id, UPPER(symbol), direction, threshold FROM price_alerts WHERE triggered = 0",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.get(0), r.get(1), r.get(2), r.get(3)))
+        .collect())
+}
+
+/// Mark a single alert as triggered by its ID.
+///
+/// Called once per triggered alert after the in-memory check in the price-refresh
+/// hot path; replaces the per-symbol `check_and_trigger_alerts` DB round-trip.
+pub async fn mark_alert_triggered(pool: &SqlitePool, id: &str) -> Result<(), String> {
+    sqlx::query("UPDATE price_alerts SET triggered = 1 WHERE id = $1")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Mark alerts as triggered for a symbol when threshold is crossed.
 ///
 /// Uses bracket logic when `prev_price` is available: an "above" alert fires
@@ -783,7 +822,7 @@ pub async fn check_and_trigger_alerts(
     use sqlx::Row;
     let rows = sqlx::query(
         "SELECT id, direction, threshold FROM price_alerts
-         WHERE symbol = UPPER($1) AND triggered = 0",
+         WHERE UPPER(symbol) = UPPER($1) AND triggered = 0",
     )
     .bind(symbol)
     .fetch_all(pool)
@@ -1229,8 +1268,14 @@ pub async fn get_holdings_paginated(
         .map(|r| {
             let asset_type_str: String = r.get(3);
             let account_str: String = r.get(4);
-            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %asset_type_str, "unrecognised asset_type; defaulting to Stock");
+                AssetType::Stock
+            });
+            let account = AccountType::from_str(&account_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %account_str, "unrecognised account_type; defaulting to Taxable");
+                AccountType::Taxable
+            });
             Holding {
                 id: HoldingId(r.get(0)),
                 symbol: r.get(1),
