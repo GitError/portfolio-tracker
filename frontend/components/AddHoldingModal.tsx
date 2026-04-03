@@ -101,6 +101,9 @@ const LABEL_STYLE: React.CSSProperties = {
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
   marginBottom: 4,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 };
 
 const ERROR_STYLE: React.CSSProperties = {
@@ -590,7 +593,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {/* IAD + IAD currency + Frequency */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <Field label="Indicated Annual Div / Unit">
+                <Field label="Ann. Div / Unit">
                   <input
                     type="number"
                     value={form.indicatedAnnualDividend}
