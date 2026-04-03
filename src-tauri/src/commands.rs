@@ -2033,8 +2033,8 @@ mod tests {
     }
 
     #[test]
-    fn build_portfolio_snapshot_excludes_intraday_purchase_from_daily_pnl() {
-        // A holding created today should contribute 0 to daily_pnl.
+    fn build_portfolio_snapshot_same_day_purchase_uses_cost_basis_for_daily_pnl() {
+        // A holding created today uses (current_price - cost_basis) * quantity as daily PnL proxy.
         let today = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let mut holding = make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD");
         holding.created_at = today;
@@ -2044,7 +2044,7 @@ mod tests {
             price: 120.0,
             currency: "CAD".to_string(),
             change: 2.0,
-            change_percent: 5.0, // would be 60.0 CAD if applied
+            change_percent: 5.0, // day-over-day pct — should NOT be used for same-day purchases
             updated_at: Utc::now().to_rfc3339(),
             open: None,
             previous_close: None,
@@ -2061,10 +2061,10 @@ mod tests {
             0.0,
         );
 
-        // market_value_cad = 10 * 120 = 1200; daily_pnl should be 0, not 60
+        // Expected: (120 - 100) * 10 = 200 (gain since purchase used as daily proxy)
         assert!(
-            (snapshot.daily_pnl - 0.0).abs() < 0.001,
-            "expected daily_pnl == 0 for intraday purchase, got {}",
+            (snapshot.daily_pnl - 200.0).abs() < 0.001,
+            "expected daily_pnl == 200 for same-day purchase using cost-basis proxy, got {}",
             snapshot.daily_pnl
         );
     }

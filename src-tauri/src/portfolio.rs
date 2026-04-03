@@ -112,9 +112,7 @@ pub fn build_portfolio_snapshot(
         total_value += market_value_cad;
         total_cost += cost_value_cad;
 
-        // Exclude intraday purchases from daily PnL: a holding created today has
-        // no prior-day close to compare against, so applying the day-over-day
-        // change_percent would overstate the gain.
+        // Compute daily PnL contribution for this holding.
         // Use a consistent UTC date boundary to avoid off-by-one errors at midnight.
         let today_utc = Utc::now().date_naive().to_string(); // "YYYY-MM-DD"
         let created_date_utc = holding
@@ -130,7 +128,15 @@ pub fn build_portfolio_snapshot(
             })
             .unwrap_or("");
         if !created_date_utc.is_empty() && created_date_utc < today_utc.as_str() {
+            // Prior-day holding: use Yahoo's day-over-day change_percent against current market value.
             daily_pnl += market_value_cad * (change_percent / 100.0);
+        } else if !created_date_utc.is_empty() && created_date_utc == today_utc.as_str() {
+            // Same-day purchase: no prior-day close available from the price feed.
+            // Use cost_basis per unit as the prior-close proxy so the Dashboard
+            // reflects the actual gain since purchase rather than showing $0.
+            // daily_pnl_holding = (current_price - cost_basis_per_unit) * quantity * fx_rate
+            let cost_per_unit = holding.cost_basis; // cost_basis is already per-unit
+            daily_pnl += (current_price - cost_per_unit) * holding.quantity * fx_rate;
         }
 
         holdings_with_price.push(HoldingWithPrice {
@@ -397,8 +403,9 @@ mod tests {
     }
 
     #[test]
-    fn build_portfolio_snapshot_excludes_intraday_purchase_from_daily_pnl() {
-        // A holding created today should contribute 0 to daily_pnl.
+    fn build_portfolio_snapshot_same_day_purchase_uses_cost_basis_for_daily_pnl() {
+        // A holding created today has no prior-day close from the price feed.
+        // daily_pnl should reflect (current_price - cost_basis) * quantity, not 0.
         let today = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let mut holding = make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD");
         holding.created_at = today;
@@ -408,7 +415,7 @@ mod tests {
             price: 120.0,
             currency: "CAD".to_string(),
             change: 2.0,
-            change_percent: 5.0, // would be 60.0 CAD if applied
+            change_percent: 5.0, // day-over-day pct — should NOT be used for same-day purchases
             updated_at: Utc::now().to_rfc3339(),
             open: None,
             previous_close: None,
@@ -425,10 +432,47 @@ mod tests {
             0.0,
         );
 
-        // market_value_cad = 10 * 120 = 1200; daily_pnl should be 0, not 60
+        // Expected: (120 - 100) * 10 = 200 (gain since purchase used as daily proxy)
+        // NOT 0 (old behaviour) and NOT 60 (market_value * change_percent / 100)
         assert!(
-            (snapshot.daily_pnl - 0.0).abs() < 0.001,
-            "expected daily_pnl == 0 for intraday purchase, got {}",
+            (snapshot.daily_pnl - 200.0).abs() < 0.001,
+            "expected daily_pnl == 200 for same-day purchase using cost-basis proxy, got {}",
+            snapshot.daily_pnl
+        );
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_same_day_purchase_zero_gain_when_at_cost() {
+        // Same-day purchase where current price == cost basis → daily_pnl == 0.
+        let today = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+        let mut holding = make_holding("FLAT", AssetType::Stock, 10.0, 100.0, "CAD");
+        holding.created_at = today;
+
+        let prices = vec![PriceData {
+            symbol: "FLAT".to_string(),
+            price: 100.0, // same as cost_basis
+            currency: "CAD".to_string(),
+            change: 0.0,
+            change_percent: 1.0, // irrelevant — should be ignored
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            Utc::now().to_rfc3339(),
+            0.0,
+            0.0,
+        );
+
+        assert!(
+            snapshot.daily_pnl.abs() < 0.001,
+            "expected daily_pnl == 0 when same-day price equals cost basis, got {}",
             snapshot.daily_pnl
         );
     }
