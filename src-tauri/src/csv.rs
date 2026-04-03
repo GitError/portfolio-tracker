@@ -223,7 +223,11 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
             return Err(format!("Row {}: currency exceeds maximum length", row));
         }
         let currency = sanitize_str(&raw_currency).to_uppercase();
-        let raw_symbol = sanitize_str(&parse_optional_field(&record, Some(symbol_index)));
+        let raw_symbol_field = parse_optional_field(&record, Some(symbol_index));
+        if raw_symbol_field.len() > crate::config::MAX_FIELD_LEN {
+            return Err(format!("Row {}: symbol exceeds maximum length", row));
+        }
+        let raw_symbol = sanitize_str(&raw_symbol_field);
         let symbol = if matches!(asset_type, AssetType::Cash) {
             if raw_symbol.is_empty() || raw_symbol.eq_ignore_ascii_case("CASH") {
                 format!("{}-CASH", currency)
@@ -787,5 +791,39 @@ mod tests {
         let rows = parse_import_rows(&csv).expect("BOM-prefixed CSV should parse without error");
         assert_eq!(rows.len(), 1, "BOM should be stripped transparently");
         assert_eq!(rows[0].symbol, "AAPL");
+    }
+
+    /// A symbol field that exceeds MAX_FIELD_LEN in its raw (pre-sanitize) form
+    /// is rejected with a clear error rather than silently truncated.
+    #[test]
+    fn parse_import_rows_symbol_exceeding_max_field_len_returns_error() {
+        let long_symbol = "A".repeat(crate::config::MAX_FIELD_LEN + 1);
+        let csv = format!(
+            "symbol,name,type,quantity,cost_basis,currency\n{},Apple Inc.,stock,10,150,USD\n",
+            long_symbol
+        );
+        let err = parse_import_rows(&csv).expect_err("oversized symbol should fail");
+        assert!(
+            err.contains("symbol exceeds maximum length"),
+            "error should mention symbol length, got: {}",
+            err
+        );
+    }
+
+    /// When a CSV has more rows than MAX_IMPORT_ROWS the error is returned as
+    /// soon as the limit is hit, not after all rows are parsed.
+    #[test]
+    fn parse_import_rows_row_limit_enforced_early() {
+        let header = "symbol,name,type,quantity,cost_basis,currency\n";
+        let data_row = "AAPL,Apple Inc.,stock,10,150,USD\n";
+        // Build a CSV with MAX_IMPORT_ROWS + 1 data rows
+        let rows_str = data_row.repeat(crate::config::MAX_IMPORT_ROWS + 1);
+        let csv = format!("{}{}", header, rows_str);
+        let err = parse_import_rows(&csv).expect_err("exceeding row limit should fail");
+        assert!(
+            err.contains("limited to"),
+            "error should mention the row limit, got: {}",
+            err
+        );
     }
 }
