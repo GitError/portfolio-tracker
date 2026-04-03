@@ -170,6 +170,62 @@ mod tests {
     }
 
     #[test]
+    fn zero_rate_direct_pair_returns_none_stale() {
+        // Direct pair with rate == 0.0 must return None (fx_stale) — not Some(0.0).
+        let rates = vec![make_rate("USDCAD", 0.0)];
+        assert_eq!(
+            convert_to_base(250.0, "USD", "CAD", &rates),
+            None,
+            "zero direct-pair rate should signal fx_stale via None"
+        );
+    }
+
+    #[test]
+    fn zero_rate_inverted_pair_returns_none_stale() {
+        // Inverted pair with rate == 0.0 must also return None to avoid divide-by-zero.
+        let rates = vec![make_rate("CADUSD", 0.0)];
+        assert_eq!(
+            convert_to_base(250.0, "CAD", "USD", &rates),
+            None,
+            "zero inverted-pair rate should signal fx_stale via None"
+        );
+    }
+
+    #[test]
+    fn unknown_currency_pair_returns_none_stale() {
+        // Neither GBP/CAD nor CAD/GBP in cache → None (pass-through with stale flag).
+        let rates = vec![make_rate("USDCAD", 1.36)];
+        assert_eq!(
+            convert_to_base(100.0, "GBP", "CAD", &rates),
+            None,
+            "unknown pair should return None to trigger fx_stale"
+        );
+        // Empty cache also returns None.
+        assert_eq!(convert_to_base(100.0, "EUR", "CAD", &[]), None);
+    }
+
+    #[test]
+    fn same_currency_returns_amount_without_lookup() {
+        // CAD → CAD should short-circuit and return the amount unchanged (no rates needed).
+        assert_eq!(convert_to_base(123.45, "CAD", "CAD", &[]), Some(123.45));
+        assert_eq!(convert_to_base(0.0, "USD", "USD", &[]), Some(0.0));
+        // Case-insensitive match.
+        assert_eq!(convert_to_base(50.0, "usd", "USD", &[]), Some(50.0));
+    }
+
+    #[test]
+    fn inverted_pair_precision_within_epsilon() {
+        // Inverted rate: 1 / 1.36 ≈ 0.735294…  Result should match within 1e-6.
+        let rates = vec![make_rate("USDCAD", 1.36)];
+        let result = convert_to_base(100.0, "CAD", "USD", &rates).unwrap();
+        let expected = 100.0_f64 / 1.36;
+        assert!(
+            (result - expected).abs() < 1e-6,
+            "inverted pair result {result} differed from expected {expected} by more than 1e-6"
+        );
+    }
+
+    #[test]
     fn fetch_all_fx_rates_filters_base_currency() {
         let currencies = vec!["USD".to_string(), "CAD".to_string(), "EUR".to_string()];
         let base = "CAD";

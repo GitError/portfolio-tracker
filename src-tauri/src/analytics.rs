@@ -41,6 +41,7 @@ fn compute_avco(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                 };
             }
             TransactionType::Sell => {
+                // Epsilon for float comparison; portfolio values are in dollars with 2 decimal places, so 1e-9 is safely sub-cent.
                 if tx.quantity > total_qty + 1e-9 {
                     return Err(format!(
                         "Sell quantity {:.4} exceeds available inventory {:.4} at {}",
@@ -57,6 +58,7 @@ fn compute_avco(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                 total_cost_basis += cost_basis;
                 total_qty -= sold_qty;
 
+                // Epsilon for float comparison; portfolio values are in dollars with 2 decimal places, so 1e-9 is safely sub-cent.
                 if total_qty < 1e-9 {
                     total_qty = 0.0;
                     avg_cost = 0.0;
@@ -99,6 +101,7 @@ fn compute_fifo(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
             }
             TransactionType::Sell => {
                 let available: f64 = buy_queue.iter().map(|(q, _)| q).sum();
+                // Epsilon for float comparison; portfolio values are in dollars with 2 decimal places, so 1e-9 is safely sub-cent.
                 if tx.quantity > available + 1e-9 {
                     return Err(format!(
                         "Sell quantity {:.4} exceeds available inventory {:.4} at {}",
@@ -109,6 +112,7 @@ fn compute_fifo(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                 let mut remaining_sell = tx.quantity;
                 let mut lot_cost_basis = 0.0f64;
 
+                // Epsilon for float comparison; portfolio values are in dollars with 2 decimal places, so 1e-9 is safely sub-cent.
                 while remaining_sell > 1e-9 {
                     let Some((ref mut lot_qty, lot_price)) = buy_queue.front_mut() else {
                         return Err(
@@ -122,6 +126,7 @@ fn compute_fifo(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                     *lot_qty -= consumed;
                     remaining_sell -= consumed;
 
+                    // Epsilon for float comparison; portfolio values are in dollars with 2 decimal places, so 1e-9 is safely sub-cent.
                     if *lot_qty < 1e-9 {
                         buy_queue.pop_front();
                     }
