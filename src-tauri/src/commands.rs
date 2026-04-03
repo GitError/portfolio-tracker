@@ -674,7 +674,9 @@ pub async fn refresh_prices(
             Ok(rows) => {
                 let mut map: HashMap<String, Vec<(String, String, f64)>> = HashMap::new();
                 for (id, symbol_upper, dir, threshold) in rows {
-                    map.entry(symbol_upper).or_default().push((id, dir, threshold));
+                    map.entry(symbol_upper)
+                        .or_default()
+                        .push((id, dir, threshold));
                 }
                 map
             }
