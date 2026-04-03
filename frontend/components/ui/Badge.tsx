@@ -21,8 +21,9 @@ export function Badge({ type }: BadgeProps) {
     <span
       style={{
         ...BADGE_STYLE,
+        background: `${config.color}18`,
         color: config.color,
-        border: `1px solid ${config.color}`,
+        border: `1px solid ${config.color}55`,
       }}
     >
       {config.label}
@@ -39,6 +40,7 @@ export function AccountBadge({ account }: { account: AccountType }) {
     <span
       style={{
         ...BADGE_STYLE,
+        background: `${config.color}18`,
         color: config.color,
         border: `1px solid ${config.color}55`,
       }}

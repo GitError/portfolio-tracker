@@ -46,7 +46,7 @@ function AccountTypeBadge({ type }: { type: string }) {
         letterSpacing: '0.08em',
         padding: '2px 6px',
         borderRadius: 2,
-        background: `${accountTypeColor(type)}22`,
+        background: `${accountTypeColor(type)}18`,
         color: accountTypeColor(type),
         border: `1px solid ${accountTypeColor(type)}55`,
       }}
