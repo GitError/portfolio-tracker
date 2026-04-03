@@ -379,6 +379,40 @@ function buildSnapshot(): PortfolioSnapshot {
 
 export const MOCK_SNAPSHOT: PortfolioSnapshot = buildSnapshot();
 
+/**
+ * Build a minimal PortfolioSnapshot from a list of plain Holding objects.
+ * Used in browser dev mode to keep the mock state consistent after mutations
+ * (add/update/delete holding).
+ */
+export function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
+  const totalValue = holdingsList.length * 1000;
+  return {
+    ...MOCK_SNAPSHOT,
+    holdings: holdingsList.map((h) => ({
+      ...h,
+      currentPrice: h.costBasis,
+      currentPriceCad: h.costBasis,
+      marketValueCad: h.quantity * h.costBasis,
+      costValueCad: h.quantity * h.costBasis,
+      gainLoss: 0,
+      gainLossPercent: 0,
+      weight: totalValue > 0 ? (h.quantity * h.costBasis) / totalValue : 0,
+      targetValue: 0,
+      targetDeltaValue: 0,
+      targetDeltaPercent: 0,
+      dailyChangePercent: 0,
+      fxStale: false,
+      priceIsStale: false,
+    })),
+    totalValue,
+    totalCost: totalValue,
+    totalGainLoss: 0,
+    totalGainLossPercent: 0,
+    dailyPnl: 0,
+    lastUpdated: new Date().toISOString(),
+  };
+}
+
 export const MOCK_DIVIDENDS: Dividend[] = [
   {
     id: 1,
