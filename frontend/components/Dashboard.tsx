@@ -20,6 +20,8 @@ import type { AccountType, HoldingWithPrice, PortfolioSnapshot } from '../types/
 interface DashboardProps {
   portfolio: PortfolioSnapshot | null;
   loading: boolean;
+  /** Called when the user clicks "Set method" in the realized-gains stat (#488). */
+  onOpenCostBasisModal?: () => void;
 }
 
 const PANEL: React.CSSProperties = {
@@ -66,7 +68,7 @@ function topMoversTitle(lastUpdated: string | undefined): string {
   return isToday ? 'Top Movers \u2014 Today' : 'Top Movers \u2014 Last Close';
 }
 
-export function Dashboard({ portfolio, loading }: DashboardProps) {
+export function Dashboard({ portfolio, loading, onOpenCostBasisModal }: DashboardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1156,12 +1158,27 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
             },
             {
               label: t('dashboard.realizedGains'),
-              value: portfolio
-                ? `${portfolio.realizedGains >= 0 ? '+' : ''}${formatCurrency(portfolio.realizedGains, baseCurrency)}`
-                : '—',
-              sub: t('common.allTime'),
-              subColor: portfolio ? pnlColor(portfolio.realizedGains) : undefined,
-              valueColor: portfolio ? pnlColor(portfolio.realizedGains) : undefined,
+              // When no cost-basis method has been chosen, suppress the value (#488)
+              value: portfolio?.requiresCostBasisSelection
+                ? '—'
+                : portfolio
+                  ? `${portfolio.realizedGains >= 0 ? '+' : ''}${formatCurrency(portfolio.realizedGains, baseCurrency)}`
+                  : '—',
+              sub: portfolio?.requiresCostBasisSelection ? '' : t('common.allTime'),
+              subColor:
+                portfolio && !portfolio.requiresCostBasisSelection
+                  ? pnlColor(portfolio.realizedGains)
+                  : undefined,
+              valueColor:
+                portfolio && !portfolio.requiresCostBasisSelection
+                  ? pnlColor(portfolio.realizedGains)
+                  : undefined,
+              /** Show "Set method" link when cost-basis method has not been chosen (#488). */
+              actionLabel: portfolio?.requiresCostBasisSelection ? 'Set method' : undefined,
+              onAction:
+                portfolio?.requiresCostBasisSelection && onOpenCostBasisModal
+                  ? onOpenCostBasisModal
+                  : undefined,
             },
           ].map((stat, i, arr) => (
             <div
@@ -1186,6 +1203,24 @@ export function Dashboard({ portfolio, loading }: DashboardProps) {
               >
                 {stat.value}
               </div>
+              {'actionLabel' in stat && stat.actionLabel && stat.onAction && (
+                <button
+                  onClick={stat.onAction}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-accent)',
+                    cursor: 'pointer',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 11,
+                    padding: 0,
+                    marginTop: 4,
+                    textDecoration: 'underline',
+                  }}
+                >
+                  {stat.actionLabel}
+                </button>
+              )}
               {stat.sub && (
                 <div
                   style={{
