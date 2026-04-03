@@ -12,7 +12,7 @@ npm run lint --silent
 npm run typecheck --silent
 npm run format:check --silent
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" fmt --check && cd ..
+  (cd src-tauri && "$CARGO" fmt --check) || { echo "  ✗ cargo fmt check failed — run: cd src-tauri && cargo fmt"; exit 1; }
 fi
 echo "  ✓ Lint + type check + format passed"
 
@@ -25,7 +25,7 @@ npm run build --silent
 
 echo "  → Backend build (cargo)..."
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" build --quiet 2>/dev/null && cd ..
+  (cd src-tauri && "$CARGO" build --quiet) || { echo "  ✗ Backend build failed"; exit 1; }
 else
   echo "  (cargo not found, skipping backend build)"
 fi
@@ -40,7 +40,7 @@ npm run test --silent
 
 echo "  → Backend tests..."
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" test --quiet 2>/dev/null && cd ..
+  (cd src-tauri && "$CARGO" test --quiet) || { echo "  ✗ Backend tests failed"; exit 1; }
 else
   echo "  (cargo not found, skipping backend tests)"
 fi
@@ -50,7 +50,7 @@ echo "  ✓ Tests passed"
 echo ""
 echo "Stage 4: Clippy..."
 if [ -x "$CARGO" ]; then
-  cd src-tauri && "$CARGO" clippy -- -D warnings && cd ..
+  (cd src-tauri && "$CARGO" clippy -- -D warnings) || { echo "  ✗ Clippy failed"; exit 1; }
   echo "  ✓ Clippy passed"
 else
   echo "  (cargo not found, skipping clippy)"

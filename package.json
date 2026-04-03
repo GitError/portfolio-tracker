@@ -23,7 +23,8 @@
     "typecheck": "tsc --noEmit",
     "review": "eslint frontend && tsc --noEmit && prettier --check frontend",
     "review:diff": "git diff --name-only HEAD | grep -E '\\.(ts|tsx)$' | xargs eslint",
-    "generate:types": "cd src-tauri && . /Users/giterror/.cargo/env && cargo test export_typescript_bindings"
+    "generate:types": "cd src-tauri && . /Users/giterror/.cargo/env && cargo test export_typescript_bindings",
+    "prepare": "sh scripts/install-hooks.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
