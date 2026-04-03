@@ -407,6 +407,7 @@ pub async fn get_fx_rates(pool: &SqlitePool) -> Result<Vec<FxRate>, String> {
 
 pub async fn upsert_symbol(pool: &SqlitePool, result: &SymbolResult) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
+    let symbol_upper = result.symbol.to_uppercase();
     sqlx::query(
         "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -417,7 +418,7 @@ pub async fn upsert_symbol(pool: &SqlitePool, result: &SymbolResult) -> Result<(
            currency=excluded.currency,
            updated_at=excluded.updated_at",
     )
-    .bind(&result.symbol)
+    .bind(&symbol_upper)
     .bind(&result.name)
     .bind(result.asset_type.as_str())
     .bind(&result.exchange)
@@ -473,7 +474,7 @@ pub async fn get_symbol_cache_exact(
     let row = sqlx::query(
         "SELECT symbol, name, asset_type, exchange, currency
          FROM symbol_cache
-         WHERE UPPER(symbol) = UPPER($1)
+         WHERE symbol = UPPER($1)
          LIMIT 1",
     )
     .bind(symbol)
@@ -503,6 +504,7 @@ pub async fn upsert_symbol_fundamentals(
     meta: &SymbolMetadata,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
+    let symbol_upper = meta.symbol.to_uppercase();
     sqlx::query(
         "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at)
          VALUES ($1, $1, 'stock', '', '', $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -517,7 +519,7 @@ pub async fn upsert_symbol_fundamentals(
            market_cap=excluded.market_cap,
            fundamentals_updated_at=excluded.fundamentals_updated_at",
     )
-    .bind(&meta.symbol)
+    .bind(&symbol_upper)
     .bind(&meta.sector)
     .bind(&meta.industry)
     .bind(&meta.country)
@@ -544,7 +546,7 @@ pub async fn get_symbol_fundamentals_from_cache(
     let row = sqlx::query(
         "SELECT symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at
          FROM symbol_cache
-         WHERE UPPER(symbol) = UPPER($1) AND fundamentals_updated_at IS NOT NULL
+         WHERE symbol = UPPER($1) AND fundamentals_updated_at IS NOT NULL
          LIMIT 1",
     )
     .bind(symbol)
@@ -694,12 +696,13 @@ pub async fn sum_target_weights(
 pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<PriceAlert, String> {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
+    let symbol_upper = input.symbol.to_uppercase();
     sqlx::query(
         "INSERT INTO price_alerts (id, symbol, direction, threshold, currency, note, triggered, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, 0, $7)",
     )
     .bind(&id)
-    .bind(&input.symbol)
+    .bind(&symbol_upper)
     .bind(input.direction.as_str())
     .bind(input.threshold)
     .bind(&input.currency)
@@ -711,7 +714,7 @@ pub async fn insert_alert(pool: &SqlitePool, input: PriceAlertInput) -> Result<P
 
     Ok(PriceAlert {
         id: AlertId(id),
-        symbol: input.symbol,
+        symbol: symbol_upper,
         direction: input.direction,
         threshold: input.threshold,
         currency: input.currency,
@@ -780,7 +783,7 @@ pub async fn check_and_trigger_alerts(
     use sqlx::Row;
     let rows = sqlx::query(
         "SELECT id, direction, threshold FROM price_alerts
-         WHERE UPPER(symbol) = UPPER($1) AND triggered = 0",
+         WHERE symbol = UPPER($1) AND triggered = 0",
     )
     .bind(symbol)
     .fetch_all(pool)
