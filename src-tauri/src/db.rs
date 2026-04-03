@@ -286,8 +286,14 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
         .map(|r| {
             let asset_type_str: String = r.get(3);
             let account_str: String = r.get(4);
-            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %asset_type_str, "unrecognised asset_type; defaulting to Stock");
+                AssetType::Stock
+            });
+            let account = AccountType::from_str(&account_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %account_str, "unrecognised account_type; defaulting to Taxable");
+                AccountType::Taxable
+            });
             Holding {
                 id: HoldingId(r.get(0)),
                 symbol: r.get(1),
@@ -1229,8 +1235,14 @@ pub async fn get_holdings_paginated(
         .map(|r| {
             let asset_type_str: String = r.get(3);
             let account_str: String = r.get(4);
-            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %asset_type_str, "unrecognised asset_type; defaulting to Stock");
+                AssetType::Stock
+            });
+            let account = AccountType::from_str(&account_str).unwrap_or_else(|_| {
+                tracing::warn!(raw = %account_str, "unrecognised account_type; defaulting to Taxable");
+                AccountType::Taxable
+            });
             Holding {
                 id: HoldingId(r.get(0)),
                 symbol: r.get(1),
