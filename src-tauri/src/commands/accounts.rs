@@ -1,7 +1,7 @@
-use chrono::Utc;
 use crate::db;
 use crate::error::AppError;
 use crate::types::{Account, CreateAccountRequest};
+use chrono::Utc;
 
 use super::DbState;
 

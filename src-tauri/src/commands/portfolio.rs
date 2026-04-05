@@ -7,7 +7,10 @@ use crate::error::AppError;
 use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{Holding, HoldingId, HoldingInput, PortfolioSnapshot};
 
-use super::{get_base_currency, validate_holding_fields, DbState, HttpClient, RealizedGainsCacheState, WEIGHT_EPSILON};
+use super::{
+    get_base_currency, validate_holding_fields, DbState, HttpClient, RealizedGainsCacheState,
+    WEIGHT_EPSILON,
+};
 
 #[tauri::command]
 pub async fn get_portfolio(

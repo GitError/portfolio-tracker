@@ -5,7 +5,9 @@ use tauri::State;
 use crate::csv::{build_holdings_csv, parse_import_rows};
 use crate::db;
 use crate::error::AppError;
-use crate::types::{AssetType, HoldingInput, ImportError, ImportResult, PreviewImportResult, PreviewRow};
+use crate::types::{
+    AssetType, HoldingInput, ImportError, ImportResult, PreviewImportResult, PreviewRow,
+};
 
 use super::{validate_symbol, DbState, HttpClient, WEIGHT_EPSILON};
 

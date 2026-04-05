@@ -8,9 +8,8 @@ use crate::db;
 use crate::error::AppError;
 use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{
-    CountryWeight, HoldingId, PortfolioAnalytics, PortfolioRiskMetrics,
-    PortfolioSnapshot, RealizedGainsSummary, RebalanceSuggestion, SectorWeight, SymbolMetadata,
-    Transaction,
+    CountryWeight, HoldingId, PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot,
+    RealizedGainsSummary, RebalanceSuggestion, SectorWeight, SymbolMetadata, Transaction,
 };
 
 use super::{get_base_currency, DbState, HttpClient, RealizedGainsCacheState};
