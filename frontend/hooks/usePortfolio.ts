@@ -23,6 +23,7 @@ import type {
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
+import { loadCachedPortfolio, saveCachedPortfolio } from '../lib/portfolioCache';
 
 export interface UsePortfolioReturn {
   portfolio: PortfolioSnapshot | null;
@@ -146,49 +147,6 @@ function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
     dailyPnl: 0,
     lastUpdated: new Date().toISOString(),
   };
-}
-
-const CACHE_KEY = 'portfolio_snapshot_cache';
-
-interface PortfolioCache {
-  snapshot: PortfolioSnapshot;
-  holdings: Holding[];
-}
-
-/** Lightweight schema validation for the localStorage cache to prevent loading corrupt data. */
-function isValidPortfolioCache(value: unknown): value is PortfolioCache {
-  if (!value || typeof value !== 'object') return false;
-  const obj = value as Record<string, unknown>;
-  if (!obj.snapshot || typeof obj.snapshot !== 'object') return false;
-  const snap = obj.snapshot as Record<string, unknown>;
-  if (!Array.isArray(snap.holdings)) return false;
-  if (typeof snap.totalValue !== 'number') return false;
-  if (typeof snap.lastUpdated !== 'string') return false;
-  if (!Array.isArray(obj.holdings)) return false;
-  return true;
-}
-
-function loadCachedPortfolio(): PortfolioCache | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    if (!isValidPortfolioCache(parsed)) {
-      localStorage.removeItem(CACHE_KEY);
-      return null;
-    }
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveCachedPortfolio(snapshot: PortfolioSnapshot, holdings: Holding[]): void {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ snapshot, holdings }));
-  } catch {
-    /* storage may be full — best effort */
-  }
 }
 
 function usePortfolioState(): UsePortfolioReturn {
