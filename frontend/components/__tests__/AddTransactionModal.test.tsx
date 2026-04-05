@@ -132,14 +132,17 @@ describe('AddTransactionModal', () => {
     if (form) fireEvent.submit(form);
 
     await waitFor(() => {
-      expect(mockTauriInvoke).toHaveBeenCalledWith('add_transaction', expect.objectContaining({
-        input: expect.objectContaining({
-          holdingId: 'h-1',
-          transactionType: 'buy',
-          quantity: 10,
-          price: 150,
-        }),
-      }));
+      expect(mockTauriInvoke).toHaveBeenCalledWith(
+        'add_transaction',
+        expect.objectContaining({
+          input: expect.objectContaining({
+            holdingId: 'h-1',
+            transactionType: 'buy',
+            quantity: 10,
+            price: 150,
+          }),
+        })
+      );
     });
 
     await waitFor(() => {
