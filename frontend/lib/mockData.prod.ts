@@ -24,3 +24,7 @@ export const MOCK_SNAPSHOT: PortfolioSnapshot = {
 };
 export const MOCK_DIVIDENDS: Dividend[] = [];
 export const MOCK_HOLDINGS: Holding[] = [];
+// No-op stub — never called in production (isTauri() is always true in Tauri builds).
+export function buildMockSnapshot(_holdings: Holding[]): PortfolioSnapshot {
+  return MOCK_SNAPSHOT;
+}
