@@ -127,6 +127,21 @@ impl SearchCacheState {
     }
 }
 
+/// Simple per-command rate limiter to prevent API abuse.
+pub struct RateLimiterState {
+    pub last_search: Mutex<Option<Instant>>,
+    pub last_refresh: Mutex<Option<Instant>>,
+}
+
+impl RateLimiterState {
+    pub fn new() -> Self {
+        RateLimiterState {
+            last_search: Mutex::new(None),
+            last_refresh: Mutex::new(None),
+        }
+    }
+}
+
 pub(crate) async fn get_base_currency(pool: &SqlitePool) -> String {
     db::get_config(pool, "base_currency")
         .await

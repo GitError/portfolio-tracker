@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use chrono::Utc;
 use tauri::State;
@@ -11,13 +12,40 @@ use crate::price::{fetch_all_prices, fetch_price, FetchAllPricesResult};
 use crate::search::search_symbols_yahoo;
 use crate::types::{PerformancePoint, PriceData, RefreshResult, SymbolResult};
 
-use super::{get_base_currency, DbState, HttpClient, SearchCacheState};
+use super::{get_base_currency, DbState, HttpClient, RateLimiterState, SearchCacheState};
 
 #[tauri::command]
 pub async fn refresh_prices(
     db: State<'_, DbState>,
     client: State<'_, HttpClient>,
+    rate_limiter: State<'_, RateLimiterState>,
 ) -> Result<RefreshResult, AppError> {
+    // Enforce a 5-second minimum between actual price refreshes to prevent API abuse.
+    {
+        const MIN_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+        let mut last = rate_limiter
+            .last_refresh
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ts) = *last {
+            if ts.elapsed() < MIN_REFRESH_INTERVAL {
+                tracing::warn!(
+                    "refresh_prices rate-limited: called {}ms after previous refresh",
+                    ts.elapsed().as_millis()
+                );
+                // Return an empty result rather than an error so the UI stays consistent.
+                return Ok(RefreshResult {
+                    prices: vec![],
+                    failed_symbols: vec![],
+                    triggered_alerts: vec![],
+                    alert_errors: vec![],
+                    snapshot_error: None,
+                });
+            }
+        }
+        *last = Some(std::time::Instant::now());
+    }
+
     let base_currency = get_base_currency(&db.0).await;
 
     let holdings = {
@@ -181,6 +209,7 @@ pub async fn search_symbols(
     client: State<'_, HttpClient>,
     cache: State<'_, SearchCacheState>,
     db: State<'_, DbState>,
+    rate_limiter: State<'_, RateLimiterState>,
 ) -> Result<Vec<SymbolResult>, AppError> {
     let q = query.trim();
     if q.len() < 2 || q.len() > crate::config::MAX_SEARCH_QUERY_LEN {
@@ -189,12 +218,12 @@ pub async fn search_symbols(
 
     let key = q.to_lowercase();
 
-    // 1. In-memory cache (5-minute TTL)
+    // 1. In-memory cache (5-minute TTL) — cached results bypass the rate limit.
     if let Some(cached) = cache.get(&key) {
         return Ok(cached);
     }
 
-    // 2. SQLite persistent cache
+    // 2. SQLite persistent cache — also bypasses the rate limit.
     let db_results = {
         let pool = &db.0;
         db::search_symbol_cache(pool, &key)
@@ -202,7 +231,26 @@ pub async fn search_symbols(
             .unwrap_or_default()
     };
 
-    // 3. Yahoo Finance API
+    // 3. Rate limit live Yahoo Finance API calls to at most one per 500 ms.
+    {
+        const MIN_SEARCH_INTERVAL: Duration = Duration::from_millis(500);
+        let mut last = rate_limiter
+            .last_search
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(ts) = *last {
+            if ts.elapsed() < MIN_SEARCH_INTERVAL {
+                tracing::warn!(
+                    "search_symbols rate-limited: called {}ms after previous search",
+                    ts.elapsed().as_millis()
+                );
+                return Ok(db_results);
+            }
+        }
+        *last = Some(std::time::Instant::now());
+    }
+
+    // 4. Yahoo Finance API
     let results = match search_symbols_yahoo(&client.0, q).await {
         Ok(r) => r,
         Err(e) => {

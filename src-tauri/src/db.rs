@@ -2005,4 +2005,145 @@ mod tests {
         let result = update_account(&pool, "nonexistent", "Name", "tfsa", None).await;
         assert!(result.is_err());
     }
+
+    // ── Pagination boundary tests ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn pagination_page_beyond_total_returns_empty() {
+        // Insert 3 holdings, request page 3 with page_size 5 (offset would be 10).
+        let pool = open_test_db().await;
+        insert_holding(&pool, make_input("AAA"))
+            .await
+            .expect("insert");
+        insert_holding(&pool, make_input("BBB"))
+            .await
+            .expect("insert");
+        insert_holding(&pool, make_input("CCC"))
+            .await
+            .expect("insert");
+
+        // page=3, page_size=5 → offset=(3-1)*5=10, beyond 3 rows
+        let result = get_holdings_paginated(&pool, 3, 5)
+            .await
+            .expect("paginated query should not error");
+
+        assert!(
+            result.items.is_empty(),
+            "items should be empty for page beyond total; got {} items",
+            result.items.len()
+        );
+        assert_eq!(result.total, 3, "total count should still be 3");
+    }
+
+    #[tokio::test]
+    async fn pagination_page_size_one() {
+        // Insert 3 holdings, fetch one per page.
+        let pool = open_test_db().await;
+        insert_holding(&pool, make_input("P1"))
+            .await
+            .expect("insert");
+        insert_holding(&pool, make_input("P2"))
+            .await
+            .expect("insert");
+        insert_holding(&pool, make_input("P3"))
+            .await
+            .expect("insert");
+
+        for page in 1..=3i64 {
+            let result = get_holdings_paginated(&pool, page, 1)
+                .await
+                .expect("paginated query should not error");
+            assert_eq!(
+                result.items.len(),
+                1,
+                "page {} should return exactly 1 item",
+                page
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn pagination_exact_boundary() {
+        // Insert exactly 5 holdings.
+        let pool = open_test_db().await;
+        for sym in ["E1", "E2", "E3", "E4", "E5"] {
+            insert_holding(&pool, make_input(sym))
+                .await
+                .expect("insert");
+        }
+
+        // First page: expect all 5 items.
+        let first = get_holdings_paginated(&pool, 1, 5)
+            .await
+            .expect("first page");
+        assert_eq!(
+            first.items.len(),
+            5,
+            "first page should return 5 items; got {}",
+            first.items.len()
+        );
+
+        // Second page: expect 0 items.
+        let second = get_holdings_paginated(&pool, 2, 5)
+            .await
+            .expect("second page");
+        assert!(
+            second.items.is_empty(),
+            "second page should be empty; got {} items",
+            second.items.len()
+        );
+    }
+
+    // ── Account fallback tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn account_fallback_no_matching_type_leaves_account_id_none() {
+        // Insert a holding with account type 'tfsa' but no accounts table row for tfsa.
+        // The holding should be inserted without error, account_id stays None.
+        let pool = open_test_db().await;
+        let input = HoldingInput {
+            account: AccountType::Tfsa,
+            account_id: None,
+            ..make_input("NOBKT")
+        };
+        let holding = insert_holding(&pool, input)
+            .await
+            .expect("insert should succeed even without matching account");
+
+        assert!(
+            holding.account_id.is_none(),
+            "account_id should remain None when no matching account type exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn account_fallback_multiple_same_type_assigns_earliest() {
+        // Insert 2 accounts of the same type at different timestamps.
+        // A holding inserted without account_id should be assigned to the earlier one.
+        let pool = open_test_db().await;
+
+        // Insert first account (earlier created_at ensured by sequential inserts)
+        insert_account(&pool, "acc-first", "First RRSP", "rrsp", None)
+            .await
+            .expect("insert acc-first");
+        // Small delay via distinct timestamp is not guaranteed in-memory, so we
+        // explicitly set created_at by inserting in known order and relying on
+        // the ORDER BY created_at ASC in the fallback query.
+        insert_account(&pool, "acc-second", "Second RRSP", "rrsp", None)
+            .await
+            .expect("insert acc-second");
+
+        let input = HoldingInput {
+            account: AccountType::Rrsp,
+            account_id: None,
+            ..make_input("RRSPHOLD")
+        };
+        let holding = insert_holding(&pool, input).await.expect("insert holding");
+
+        assert_eq!(
+            holding.account_id.as_deref(),
+            Some("acc-first"),
+            "holding should be assigned to the earliest-created account of matching type"
+        );
+    }
 }
