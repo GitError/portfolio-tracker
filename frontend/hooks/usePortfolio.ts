@@ -20,7 +20,7 @@ import type {
   PriceAlert,
   RefreshResult,
 } from '../types/portfolio';
-import { MOCK_SNAPSHOT, MOCK_HOLDINGS } from '../lib/mockData';
+import { MOCK_SNAPSHOT, MOCK_HOLDINGS, buildMockSnapshot } from '../lib/mockData';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
 import { loadCachedPortfolio, saveCachedPortfolio } from '../lib/portfolioCache';
@@ -118,35 +118,6 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       maturityDate: cells[columnIndex('maturity_date')] || null,
     };
   });
-}
-
-function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
-  const totalValue = holdingsList.length * 1000;
-  return {
-    ...MOCK_SNAPSHOT,
-    holdings: holdingsList.map((h) => ({
-      ...h,
-      currentPrice: h.costBasis,
-      currentPriceCad: h.costBasis,
-      marketValueCad: h.quantity * h.costBasis,
-      costValueCad: h.quantity * h.costBasis,
-      gainLoss: 0,
-      gainLossPercent: 0,
-      weight: totalValue > 0 ? (h.quantity * h.costBasis) / totalValue : 0,
-      targetValue: 0,
-      targetDeltaValue: 0,
-      targetDeltaPercent: 0,
-      dailyChangePercent: 0,
-      fxStale: false,
-      priceIsStale: false,
-    })),
-    totalValue,
-    totalCost: totalValue,
-    totalGainLoss: 0,
-    totalGainLossPercent: 0,
-    dailyPnl: 0,
-    lastUpdated: new Date().toISOString(),
-  };
 }
 
 function usePortfolioState(): UsePortfolioReturn {
