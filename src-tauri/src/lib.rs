@@ -71,7 +71,7 @@ mod ts_binding_tests {
     }
 }
 
-use commands::{DbState, HttpClient, RealizedGainsCacheState, SearchCacheState};
+use commands::{DbState, HttpClient, RateLimiterState, RealizedGainsCacheState, SearchCacheState};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 use tauri::Manager;
@@ -165,6 +165,7 @@ pub fn run() {
             app.manage(HttpClient(http_client));
             app.manage(SearchCacheState::new());
             app.manage(RealizedGainsCacheState::new());
+            app.manage(RateLimiterState::new());
             // Store the WAL shutdown sender so on_window_event can signal the task to exit.
             app.manage(WalShutdown(shutdown_tx));
 
