@@ -45,7 +45,6 @@ function useRealPerformance(range: string): {
 
   useEffect(() => {
     if (!isTauri()) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     tauriInvoke<PerformancePoint[]>('get_performance', { range })
       .then((points) => setRawPoints(points))
