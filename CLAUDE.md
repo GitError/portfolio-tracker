@@ -110,7 +110,7 @@ portfolio-tracker/                          ← Cargo workspace root
 |-----------|-----------------------------------|
 | Shell     | Tauri v2                          |
 | Backend   | Rust (tokio, reqwest, sqlx, tracing) |
-| Frontend  | React 18 + TypeScript + Vite      |
+| Frontend  | React 19 + TypeScript + Vite      |
 | Styling   | Tailwind CSS v4                   |
 | Charts    | Recharts                          |
 | Icons     | lucide-react                      |
