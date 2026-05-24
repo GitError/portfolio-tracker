@@ -30,7 +30,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added generated TypeScript bindings from Rust types using `ts-rs`.
 - Added paginated backend/frontend paths for holdings, transactions, alerts, and dividends.
 - Added offline cache fallback for portfolio loading when the backend is unavailable.
-- Added soft-delete support for holdings, transactions, and dividends.
 - Expanded Rust and frontend test coverage across price, CSV, hook, and component surfaces.
 
 ### Changed
@@ -41,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Hardened backend validation, domain correctness, price staleness handling, and cost-basis selection.
+- Replaced destructive hard-delete paths with soft-delete support for holdings, transactions, and dividends.
 - Fixed frontend localStorage validation, i18n wiring, ARIA issues, refresh deduplication, optimistic delete behavior, and holdings effect dependencies.
 - Added stricter database constraints and symbol/account validation fixes.
 
