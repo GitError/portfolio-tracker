@@ -29,17 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added the standalone `portfolio-mcp` stdio MCP server for AI-assisted portfolio access.
 - Added generated TypeScript bindings from Rust types using `ts-rs`.
 - Added paginated backend/frontend paths for holdings, transactions, alerts, and dividends.
-- Added stale-while-revalidate frontend price refresh behavior and offline cache fallback.
+- Added offline cache fallback for portfolio loading when the backend is unavailable.
+- Added soft-delete support for holdings, transactions, and dividends.
 - Expanded Rust and frontend test coverage across price, CSV, hook, and component surfaces.
 
 ### Changed
-- Upgraded Vite to 8.0.3, ts-rs to 12, uuid to 1.23, lucide-react to 1.7, i18next to 26.0.2, recharts to 3.8.1, and the March 2026 dev-dependency bundle.
+- Upgraded the Vite 8 baseline, ts-rs to 12, uuid to 1.23, lucide-react to 1.7, i18next to 26.0.2, recharts to 3.8.1, and the March 2026 dev-dependency bundle.
 - Updated GitHub Actions dependencies for checkout, setup-node, upload-artifact, and paths-filter.
 - Introduced typed Rust app errors and type-safe IDs for holdings, alerts, and transactions.
 - Split the Stress Test frontend into focused sub-components and reduced unnecessary Rust clone calls.
 
 ### Fixed
-- Added soft-delete support for holdings, transactions, and dividends.
 - Hardened backend validation, domain correctness, price staleness handling, and cost-basis selection.
 - Fixed frontend localStorage validation, i18n wiring, ARIA issues, refresh deduplication, optimistic delete behavior, and holdings effect dependencies.
 - Added stricter database constraints and symbol/account validation fixes.
