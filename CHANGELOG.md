@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-8] - 2026-05-24
+
+### Changed
+- Merged the remaining open dependency PRs and refreshed the locked frontend/backend dependency graph.
+- Updated frontend runtime dependencies: React 19.2, react-router-dom 7.14, i18next 26.2, react-i18next 17.0, and lucide-react 1.16.
+- Updated frontend development tooling: Vite 8.0, Vitest 4.1.7, Playwright 1.60, ESLint 10.4, eslint-plugin-react-hooks 7.1, TypeScript ESLint 8.59, Prettier 3.8, Tailwind Vite plugin 4.3, and happy-dom 20.9.
+- Updated Rust dependency lockfile through Dependabot maintenance for Tauri, Tokio, uuid, and related transitive packages.
+
+### Fixed
+- Disabled the newly introduced `react-hooks/set-state-in-effect` lint rule for now so the updated React Hooks plugin does not fail CI on existing, intentional effect-driven loading patterns.
+- Removed a stale local-only Performance component lint suppression made redundant by the rule-level configuration.
+
+### Housekeeping
+- Confirmed there are no open pull requests after the dependency refresh.
+- Cleaned stale local branch state and removed local `Cargo.lock` / `AGENTS.md` workspace drift before starting new feature work.
+
 ## [0.1.0-6] - 2026-03-23
 
 ### Changed

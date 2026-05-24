@@ -272,6 +272,10 @@ Open Settings from the sidebar or press `⌘,`.
 
 **Base Currency** — select the currency all portfolio values are displayed in. Changing the base currency immediately triggers a price refresh so FX conversions update. Supported: CAD, USD, EUR, GBP, AUD, CHF, JPY.
 
+**Theme** — switch between dark and light themes. The preference is applied before React mounts so the app does not flash the wrong theme on startup.
+
+**Language** — choose the UI language. Translations are powered by i18next and the selected language is persisted across launches.
+
 ### Data
 
 **Auto-refresh** — automatically refresh prices in the background on a fixed interval. Options: Disabled (default), 1 minute, 5 minutes, 15 minutes, 30 minutes, 1 hour. A countdown timer in the TopBar shows time until the next refresh.

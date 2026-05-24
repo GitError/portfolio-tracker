@@ -34,8 +34,9 @@ Incremental improvements to the existing feature set.
 | ✅ | Action Center | Quick-access side panel for alert triggers and fast transaction entry. |
 | ✅ | Annual Dividend Income | Dashboard card shows trailing 12-month dividend income from recorded payment events. |
 | ✅ | SQLx Migration | Database layer migrated from rusqlite to SQLx with async connection pool and WAL mode. |
-| 🔲 | Dark / Light Theme Toggle | Light theme variant selectable in Settings (tracked as [#264](https://github.com/GitError/portfolio-tracker/issues/264)). |
-| 🔲 | i18n / Multi-language | Language picker in Settings; i18next-based translations (tracked as [#263](https://github.com/GitError/portfolio-tracker/issues/263)). |
+| ✅ | Dark / Light Theme Toggle | Light theme variant selectable in Settings. |
+| ✅ | i18n / Multi-language | Language picker in Settings with i18next-based translations. |
+| ✅ | Dependency Maintenance Refresh | May 2026 Dependabot updates merged for React ecosystem, Tauri packages, Tokio, uuid, i18next, lucide-react, and dev tooling. |
 
 ---
 
@@ -70,6 +71,7 @@ Features that require significant architectural work or are still being evaluate
 
 | Version | Feature |
 |---------|---------|
+| v0.1.0-8 | Dependency maintenance refresh; all open dependency PRs merged and frontend lint config aligned with updated React Hooks plugin |
 | v0.1.0-4 | SQLx migration (async pool + WAL mode), `src/` → `frontend/` rename, export/import extended to include transactions and dividends |
 | v0.1.0-3 | Annual dividend income in Dashboard, backend hardening, analytics and performance fixes |
 | v0.1.0-2 | Transaction History, Analytics, Accounts modal, Action Center, in-app alert toast notifications, full backup/restore |

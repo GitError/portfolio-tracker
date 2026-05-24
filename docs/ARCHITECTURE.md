@@ -10,12 +10,16 @@ Technical reference for the Portfolio Tracker codebase.
 |-----------|---------------------------------------------------|
 | Shell     | [Tauri v2](https://tauri.app)                     |
 | Backend   | Rust — tokio, reqwest, sqlx, chrono, uuid         |
-| Frontend  | React 18 + TypeScript + Vite                      |
+| Frontend  | React 19 + TypeScript + Vite                      |
 | Styling   | Tailwind CSS v4                                   |
 | Charts    | [Recharts](https://recharts.org)                  |
 | Icons     | [lucide-react](https://lucide.dev)                |
 | Router    | react-router-dom v7                               |
 | Database  | SQLite via SQLx (WAL mode, async connection pool) |
+
+### Current Dependency Baseline
+
+As of the May 2026 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19, Vite 8, Vitest 4.1, ESLint 10, lucide-react 1.16, i18next 26.2, Tauri 2.10, SQLx 0.8, Tokio 1.50+, and uuid 1.23+ through the locked dependency graph.
 
 ---
 

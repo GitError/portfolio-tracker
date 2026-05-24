@@ -23,7 +23,7 @@ Latest release: https://github.com/GitError/portfolio-tracker/releases/latest
 
 ## Getting Started
 
-**Prerequisites:** Rust 1.70+ ([rustup.rs](https://rustup.rs)) · Node.js 22+ ([nodejs.org](https://nodejs.org)) · macOS 11+
+**Prerequisites:** Rust stable ([rustup.rs](https://rustup.rs)) · Node.js 22+ ([nodejs.org](https://nodejs.org)) · macOS 11+
 
 ```bash
 git clone https://github.com/GitError/portfolio-tracker.git
@@ -31,6 +31,8 @@ cd portfolio-tracker
 npm install
 git config core.hooksPath .githooks
 ```
+
+> After dependency updates, prefer `npm ci` if local frontend tooling fails to load native optional packages such as Rolldown bindings.
 
 ```bash
 cargo tauri dev     # Full Tauri app (Rust + React)
