@@ -614,10 +614,7 @@ export function Settings() {
           padding: '0 16px',
         }}
       >
-        <SettingRow
-          label={t('settings.theme')}
-          description="Choose between dark, light, or match your system preference."
-        >
+        <SettingRow label={t('settings.theme')} description={t('settings.themeDescription')}>
           <ThemePicker theme={theme} onSelect={setTheme} />
         </SettingRow>
       </div>

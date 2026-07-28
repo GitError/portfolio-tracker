@@ -297,7 +297,7 @@ export function Analytics() {
               color: 'var(--text-secondary)',
             }}
           >
-            Sector breakdown and risk metrics
+            {t('analytics.subtitle')}
           </p>
         </div>
         <button
@@ -322,7 +322,7 @@ export function Analytics() {
             size={14}
             style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }}
           />
-          {analytics ? t('common.refresh') : 'Load Analytics'}
+          {analytics ? t('common.refresh') : t('analytics.loadAnalytics')}
         </button>
       </div>
 
@@ -357,13 +357,11 @@ export function Analytics() {
       )}
 
       {/* Empty state — not yet loaded */}
-      {!loading && !analytics && !error && (
-        <EmptyState message="No analytics loaded — click 'Load Analytics' to fetch sector and risk data." />
-      )}
+      {!loading && !analytics && !error && <EmptyState message={t('analytics.emptyLoad')} />}
 
       {/* No holdings */}
       {analytics && analytics.metadata.length === 0 && analytics.sectorBreakdown.length === 0 && (
-        <EmptyState message="No holdings found — add holdings to your portfolio to see analytics." />
+        <EmptyState message={t('analytics.emptyNoHoldings')} />
       )}
 
       {analytics && (analytics.metadata.length > 0 || analytics.sectorBreakdown.length > 0) && (
@@ -380,34 +378,34 @@ export function Analytics() {
                 margin: '0 0 12px',
               }}
             >
-              Risk Metrics
+              {t('analytics.riskMetrics')}
             </h2>
             <div style={{ display: 'flex', gap: 12 }}>
               <RiskCard
-                label="Portfolio Beta"
+                label={t('analytics.portfolioBeta')}
                 value={
                   analytics.riskMetrics.weightedBeta != null
                     ? analytics.riskMetrics.weightedBeta.toFixed(2)
                     : 'N/A'
                 }
-                sub="Weighted average beta"
+                sub={t('analytics.weightedAverageBeta')}
               />
               <RiskCard
-                label="Dividend Yield"
+                label={t('analytics.dividendYield')}
                 value={
                   analytics.riskMetrics.portfolioYield > 0
                     ? `${(analytics.riskMetrics.portfolioYield * 100).toFixed(2)}%`
                     : '0.00%'
                 }
-                sub="Weighted portfolio yield"
+                sub={t('analytics.weightedPortfolioYield')}
               />
               <RiskCard
-                label="HHI Concentration"
+                label={t('analytics.hhiConcentration')}
                 value={formatNumber(analytics.riskMetrics.concentrationHhi, 0)}
-                sub="Lower is more diversified"
+                sub={t('analytics.lowerMoreDiversified')}
               />
               <RiskCard
-                label="Largest Position"
+                label={t('analytics.largestPosition')}
                 value={`${analytics.riskMetrics.largestPositionWeight.toFixed(2)}%`}
                 sub={analytics.riskMetrics.topSector ?? ''}
               />
@@ -442,7 +440,7 @@ export function Analytics() {
                   margin: '0 0 16px',
                 }}
               >
-                Sector Breakdown
+                {t('analytics.sectorBreakdown')}
               </h2>
               {pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={260}>
@@ -462,7 +460,10 @@ export function Analytics() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value) => [`${(value as number).toFixed(2)}%`, 'Weight']}
+                      formatter={(value) => [
+                        `${(value as number).toFixed(2)}%`,
+                        t('holdings.columns.weight'),
+                      ]}
                       contentStyle={{
                         background: 'var(--bg-surface)',
                         border: '1px solid var(--border-primary)',
@@ -485,7 +486,7 @@ export function Analytics() {
                     fontSize: 13,
                   }}
                 >
-                  No sector data available
+                  {t('analytics.noSectorData')}
                 </div>
               )}
             </section>
@@ -510,7 +511,7 @@ export function Analytics() {
                     margin: '0 0 16px',
                   }}
                 >
-                  Geographic Breakdown
+                  {t('analytics.geographicBreakdown')}
                 </h2>
                 {barData.length > 0 ? (
                   <ResponsiveContainer width="100%" height={260}>
@@ -540,7 +541,10 @@ export function Analytics() {
                         width={90}
                       />
                       <Tooltip
-                        formatter={(value) => [`${(value as number).toFixed(2)}%`, 'Weight']}
+                        formatter={(value) => [
+                          `${(value as number).toFixed(2)}%`,
+                          t('holdings.columns.weight'),
+                        ]}
                         contentStyle={{
                           background: 'var(--bg-surface)',
                           border: '1px solid var(--border-primary)',
@@ -564,7 +568,7 @@ export function Analytics() {
                       fontSize: 13,
                     }}
                   >
-                    No geographic data available
+                    {t('analytics.noGeographicData')}
                   </div>
                 )}
               </section>
@@ -583,7 +587,7 @@ export function Analytics() {
                 margin: '0 0 12px',
               }}
             >
-              Holdings Detail
+              {t('analytics.holdingsDetail')}
             </h2>
             <div
               style={{
@@ -597,56 +601,56 @@ export function Analytics() {
                 <thead>
                   <tr>
                     <SortableHeader
-                      label="Symbol"
+                      label={t('holdings.columns.symbol')}
                       sortKey="symbol"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="Sector"
+                      label={t('analytics.colSector')}
                       sortKey="sector"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="Industry"
+                      label={t('analytics.colIndustry')}
                       sortKey="industry"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="Country"
+                      label={t('analytics.colCountry')}
                       sortKey="country"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="Beta"
+                      label={t('analytics.colBeta')}
                       sortKey="beta"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="P/E"
+                      label={t('analytics.colPeRatio')}
                       sortKey="peRatio"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="Div Yield"
+                      label={t('analytics.colDivYield')}
                       sortKey="dividendYield"
                       currentKey={sortKey}
                       currentDir={sortDir}
                       onSort={handleSort}
                     />
                     <SortableHeader
-                      label="Market Cap"
+                      label={t('analytics.colMarketCap')}
                       sortKey="marketCap"
                       currentKey={sortKey}
                       currentDir={sortDir}

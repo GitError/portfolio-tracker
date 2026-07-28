@@ -39,10 +39,13 @@ export function useLanguage() {
   const setLanguage = async (code: string) => {
     setLanguageState(code);
     await i18next.changeLanguage(code);
+    // Mirror to localStorage even in Tauri mode: i18n.ts's synchronous
+    // pre-render init only has access to localStorage, not the async Tauri
+    // config store, so this cache is what prevents a language flash on the
+    // next app launch.
+    localStorage.setItem('app_language', code);
     if (isTauri()) {
       await tauriInvoke('set_config_cmd', { key: 'app_language', value: code });
-    } else {
-      localStorage.setItem('app_language', code);
     }
   };
 

@@ -49,6 +49,7 @@ ci-cd/
 *.log
 npm-debug.log*
 .claude/
+.superpowers/
 
 # IDE
 .cursor/

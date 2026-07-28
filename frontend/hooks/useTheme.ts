@@ -61,10 +61,13 @@ export function useTheme(): { theme: ThemeMode; setTheme: (mode: ThemeMode) => P
     setThemeState(mode);
     applyTheme(mode);
     try {
+      // Mirror to localStorage even in Tauri mode: index.html's pre-mount
+      // script only has synchronous access to localStorage, not the async
+      // Tauri config store, so this cache is what prevents a flash of the
+      // wrong theme on the next app launch.
+      localStorage.setItem(CONFIG_KEY, mode);
       if (isTauri()) {
         await tauriInvoke('set_config_cmd', { key: CONFIG_KEY, value: mode });
-      } else {
-        localStorage.setItem(CONFIG_KEY, mode);
       }
     } catch {
       // ignore persistence errors; theme is still applied in-memory
