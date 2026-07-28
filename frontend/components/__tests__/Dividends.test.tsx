@@ -72,10 +72,10 @@ describe('Dividends component smoke tests', () => {
     expect(screen.getByText(/symbol/i)).toBeTruthy();
   });
 
-  it('shows Record Dividend button', async () => {
+  it('shows Add Dividend button', async () => {
     renderDividends();
-    await waitFor(() => screen.getByRole('button', { name: /record dividend/i }));
-    expect(screen.getByRole('button', { name: /record dividend/i })).toBeTruthy();
+    await waitFor(() => screen.getByRole('button', { name: /add dividend/i }));
+    expect(screen.getByRole('button', { name: /add dividend/i })).toBeTruthy();
   });
 
   it('shows descriptive subtitle', async () => {

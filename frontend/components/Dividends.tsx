@@ -335,7 +335,7 @@ export function Dividends() {
           }}
         >
           <Plus size={14} />
-          Record Dividend
+          {t('dividends.addDividend')}
         </button>
       </div>
 

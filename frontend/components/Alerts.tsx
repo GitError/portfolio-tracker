@@ -106,7 +106,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
-        New Price Alert
+        {t('alerts.newPriceAlert')}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
         <div>
@@ -143,7 +143,9 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>PRICE</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+            {t('alerts.threshold').toUpperCase()}
+          </div>
           <input
             style={{ ...inputStyle, fontFamily: 'var(--font-mono)' }}
             type="number"
@@ -168,7 +170,7 @@ function AddAlertForm({ holdings, onAdd, onCancel }: AddAlertFormProps) {
       </div>
       <div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
-          NOTE (OPTIONAL)
+          {t('alerts.noteOptional').toUpperCase()}
         </div>
         <input
           style={inputStyle}
@@ -348,7 +350,7 @@ export function Alerts() {
             {t('alerts.title')}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-            Get notified when a price crosses your threshold.
+            {t('alerts.subtitle')}
           </p>
         </div>
         <button
@@ -368,7 +370,7 @@ export function Alerts() {
           }}
         >
           <Plus size={14} />
-          New Alert
+          {t('alerts.newAlert')}
         </button>
       </div>
 
