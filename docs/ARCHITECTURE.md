@@ -19,7 +19,7 @@ Technical reference for the Portfolio Tracker codebase.
 
 ### Current Dependency Baseline
 
-As of the May 2026 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19, Vite 8, Vitest 4.1, ESLint 10, lucide-react 1.16, i18next 26.2, Tauri 2.10, SQLx 0.8, Tokio 1.50+, and uuid 1.23+ through the locked dependency graph.
+As of the 2026-07-28 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19.2, Vite 8.0, Vitest 4.1.9, TypeScript 5.9, ESLint 10.5, Tailwind 4.2, lucide-react 1.27, recharts 3.10, i18next 26.3 / react-i18next 17.0, react-router-dom 7.14, and @tauri-apps/api 2.11 on the frontend; Tauri 2.10, Tokio 1.50, chrono 0.4.44, and uuid 1.23 on the backend. **SQLx is split across the workspace:** `src-tauri` requires `^0.9` (Cargo.lock resolves to 0.9.0), but `portfolio-mcp` still pins `^0.8` (resolves to 0.8.6) — the two binaries run different SQLx major versions. Worth aligning `portfolio-mcp/Cargo.toml` to `^0.9` in a follow-up if there's no reason for the split.
 
 ---
 
@@ -32,13 +32,27 @@ portfolio-tracker/                          # Cargo workspace root
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   ├── migrations/                         # SQLx migrations (numbered)
+│   ├── migrations/                         # SQLx migrations (0001–0011)
 │   └── src/
 │       ├── main.rs                         # Tauri entry point
 │       ├── lib.rs                          # App bootstrap, state init, command registration
 │       ├── config.rs                       # App-level constants (DB name, user-agent, TTLs)
+│       ├── error.rs                        # AppError — shared Tauri command error type
 │       ├── types.rs                        # All shared Rust types (serde camelCase)
-│       ├── commands.rs                     # Tauri command handlers (thin wrappers over domain logic)
+│       ├── commands/                       # Tauri command handlers (thin wrappers over domain logic)
+│       │   ├── mod.rs                      # Command registration, DbState + shared state structs
+│       │   ├── accounts.rs                 # Account CRUD commands
+│       │   ├── alerts.rs                   # Price alert commands
+│       │   ├── analytics.rs                # Analytics/rebalance commands
+│       │   ├── backup.rs                   # backup_database / restore_database
+│       │   ├── config.rs                   # get_config_cmd / set_config_cmd (key allowlist)
+│       │   ├── dividends.rs                # Dividend commands
+│       │   ├── import.rs                   # CSV import/export commands
+│       │   ├── portfolio.rs                # Holdings CRUD + get_portfolio
+│       │   ├── prices.rs                   # refresh_prices, search_symbols, get_performance
+│       │   ├── stress.rs                   # run_stress_test_cmd
+│       │   └── transactions.rs             # Transaction commands
+│       ├── commands_tests.rs               # Command-level validation tests
 │       ├── db.rs                           # SQLite schema, migrations, CRUD (async SQLx)
 │       ├── portfolio.rs                    # build_portfolio_snapshot + helpers
 │       ├── csv.rs                          # CSV import/export helpers
@@ -91,15 +105,21 @@ portfolio-tracker/                          # Cargo workspace root
         ├── Dashboard.tsx                   # Route /
         ├── Holdings.tsx                    # Route /holdings [paginated]
         ├── Performance.tsx                 # Route /performance
-        ├── StressTest.tsx                  # Route /stress
+        ├── StressTest.tsx                  # Route /stress (composes ShockSliders, PresetScenarioSelector, StressResultsTable, ScenarioComparison, StressTestInfo, ResilienceSummary)
         ├── Rebalance.tsx                   # Route /rebalance
         ├── Alerts.tsx                      # Route /alerts
-        ├── Dividends.tsx                   # Route /dividends
         ├── TransactionHistory.tsx          # Route /transactions [paginated]
+        ├── Analytics.tsx                   # Route /analytics — sector/country breakdown, risk metrics, realized gains
+        ├── Dividends.tsx                   # Route /dividends
         ├── Settings.tsx                    # Route /settings
+        ├── Help.tsx                        # Route /help — keyboard shortcuts reference
         ├── AddHoldingModal.tsx             # Add/edit holding modal
+        ├── AddTransactionModal.tsx         # Log a buy/sell transaction
         ├── ImportHoldingsModal.tsx         # CSV import with preview
-        ├── CostBasisModal.tsx              # Cost-basis selection modal (AVCO, FIFO, ACB)
+        ├── CostBasisModal.tsx              # Cost-basis selection modal (AVCO, FIFO)
+        ├── AccountsModal.tsx               # Named account management (create/delete)
+        ├── ActionCenter.tsx                # Side panel: recent alert triggers + fast transaction entry
+        ├── KeyboardShortcutsOverlay.tsx    # `?`-triggered shortcuts overlay
         └── ui/                             # Shared UI primitives (Toast, Badge, Select, …)
 ```
 
@@ -117,7 +137,9 @@ portfolio-tracker/                          # Cargo workspace root
 
 ## Tauri Command Inventory
 
-All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
+All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`. Command handlers live in `src-tauri/src/commands/` (split by domain, registered in `commands/mod.rs`) and return `Result<T, AppError>` — see the `AppError` note in Conventions below.
+
+> **Pagination:** every `*_paginated` command takes 1-indexed `{ page, pageSize }` (page ≥ 1, pageSize 1–500) — not `{ offset, limit }` — and returns `PaginatedResult<T>`.
 
 ### Portfolio & Snapshot
 
@@ -131,7 +153,7 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
 | Command | Arguments | Returns |
 |---------|-----------|---------|
 | `get_holdings` | — | `Holding[]` *deprecated: use get_holdings_paginated* |
-| `get_holdings_paginated` | `{ offset, limit }` | `PaginatedResponse<Holding>` |
+| `get_holdings_paginated` | `{ page, pageSize }` | `PaginatedResult<Holding>` |
 | `add_holding` | `{ holding }` | `Holding` |
 | `update_holding` | `{ holding }` | `Holding` |
 | `delete_holding` | `{ id }` | `boolean` |
@@ -141,7 +163,7 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
 | Command | Arguments | Returns |
 |---------|-----------|---------|
 | `get_transactions` | `{ holdingId? }` | `Transaction[]` *deprecated: use get_transactions_paginated* |
-| `get_transactions_paginated` | `{ offset, limit, holdingId? }` | `PaginatedResponse<Transaction>` |
+| `get_transactions_paginated` | `{ holdingId?, page, pageSize }` | `PaginatedResult<Transaction>` |
 | `add_transaction` | `{ input }` | `Transaction` |
 | `delete_transaction` | `{ id }` | `boolean` |
 
@@ -149,9 +171,11 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
 
 | Command | Arguments | Returns |
 |---------|-----------|---------|
-| `get_alerts` | — | `PriceAlert[]` |
-| `add_alert` | `{ alert }` | `PriceAlert` |
+| `get_alerts` | — | `PriceAlert[]` *deprecated: use get_alerts_paginated* |
+| `get_alerts_paginated` | `{ page, pageSize }` | `PaginatedResult<PriceAlert>` |
+| `add_alert` | `{ alert }` | `PriceAlert` (validates threshold is finite and positive) |
 | `delete_alert` | `{ id }` | `boolean` |
+| `reset_alert` | `{ id }` | `PriceAlert` |
 
 ### Price & Market Data
 
@@ -159,6 +183,8 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
 |---------|-----------|---------|
 | `refresh_prices` | — | `RefreshResult` |
 | `search_symbols` | `{ query }` | `SymbolResult[]` |
+| `get_symbol_price` | `{ symbol }` | `PriceData` |
+| `get_cached_prices` | — | `PriceData[]` |
 | `get_performance` | `{ range }` | `PerformancePoint[]` |
 
 ### Accounts
@@ -175,6 +201,7 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
 | Command | Arguments | Returns |
 |---------|-----------|---------|
 | `get_dividends` | — | `Dividend[]` |
+| `get_dividends_paginated` | `{ page, pageSize }` | `PaginatedResult<Dividend>` |
 | `add_dividend` | `{ dividend }` | `Dividend` |
 | `delete_dividend` | `{ id }` | `boolean` |
 
@@ -195,22 +222,23 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`.
 
 | Command | Arguments | Returns |
 |---------|-----------|---------|
-| `import_holdings_csv` | `{ csv }` | `ImportResult` |
+| `import_holdings_csv` | `{ csvContent }` | `ImportResult` |
+| `preview_import_csv` | `{ csvContent }` | `PreviewImportResult` |
 | `export_holdings_csv` | — | `string` |
 
 ### Backup / Restore
 
 | Command | Arguments | Returns |
 |---------|-----------|---------|
-| `backup_database` | — | `ExportPayload` |
-| `restore_database` | `{ payload }` | `void` |
+| `backup_database` | `{ destinationPath }` | `string` — path the backup was written to; a bare filename resolves under `app_data_dir`, WAL is checkpointed first |
+| `restore_database` | `{ sourcePath }` | `string` — status message; source is verified via SQLite magic bytes + `PRAGMA integrity_check` before it replaces the live DB |
 
 ### Configuration
 
 | Command | Arguments | Returns |
 |---------|-----------|---------|
 | `get_config_cmd` | `{ key }` | `string \| null` |
-| `set_config_cmd` | `{ key, value }` | `void` |
+| `set_config_cmd` | `{ key, value }` | `void` — `key` must be on the allowlist in `commands/config.rs` |
 
 All TypeScript types are defined in `frontend/types/portfolio.ts` and mirror their Rust counterparts in `src-tauri/src/types.rs`.
 

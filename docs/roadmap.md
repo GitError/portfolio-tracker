@@ -35,8 +35,17 @@ Incremental improvements to the existing feature set.
 | ✅ | Annual Dividend Income | Dashboard card shows trailing 12-month dividend income from recorded payment events. |
 | ✅ | SQLx Migration | Database layer migrated from rusqlite to SQLx with async connection pool and WAL mode. |
 | ✅ | Dark / Light Theme Toggle | Light theme variant selectable in Settings. |
-| ✅ | i18n / Multi-language | Language picker in Settings with i18next-based translations. |
-| ✅ | Dependency Maintenance Refresh | May 2026 Dependabot updates merged for React ecosystem, Tauri packages, Tokio, uuid, i18next, lucide-react, and dev tooling. |
+| ✅ | i18n / Multi-language | Language picker in Settings with i18next-based translations; Analytics, Alerts, Settings, and Dividends now fully wired to `t()` alongside Dashboard/TopBar. |
+| ✅ | Dependency Maintenance Refresh | May 2026 Dependabot updates merged for React ecosystem, Tauri packages, Tokio, uuid, i18next, lucide-react, and dev tooling. A further July 2026 round merged 9 more PRs (chrono, serde, sqlx, tauri-build, lucide-react, recharts, i18next, uuid, @tauri-apps/api, dev-dependencies group, tauri-action, checkout). |
+| ✅ | CI/Security Regression Fixes | July 2026 — a later dependency merge had reintroduced nonexistent `actions/checkout@v6`/`setup-node@v6` and a disabled CSP; both re-fixed, plus the theme/language flash-of-wrong-preference bug on Tauri launch. See `docs/analysis-2026-03-22.md` for the full verified fix list. |
+
+---
+
+## Next Up: Guided Import + Insights
+
+Design finalized, not yet implemented — see [`docs/superpowers/specs/2026-05-24-import-plus-insights-design.md`](superpowers/specs/2026-05-24-import-plus-insights-design.md) for the full spec. This is the next major feature and should be the default starting point for new feature work.
+
+Replaces the current strict, CSV-only, canonical-header importer with a guided wizard: upload CSV or XLSX → pick account context once → deterministic column inference against a broker-alias registry → reviewable import plan (`create`/`update`/`skip`/`needs_fix`/`warning` per row) → commit clean rows → post-import insight panel (new positions, drift from target weights, stale symbols, cash balance changes). Explicitly out of scope for v1: brokerage API integration, LLM-based column inference, and full transaction-history reconstruction.
 
 ---
 
@@ -71,6 +80,7 @@ Features that require significant architectural work or are still being evaluate
 
 | Version | Feature |
 |---------|---------|
+| Unreleased | CI/CSP/theme-flash regression fixes (PR #575), remaining i18n wiring (Analytics/Alerts/Settings/Dividends), 9 more Dependabot merges — not yet tagged as a new version |
 | v0.1.0-8 | Dependency maintenance refresh; all open dependency PRs merged and frontend lint config aligned with updated React Hooks plugin |
 | v0.1.0-4 | SQLx migration (async pool + WAL mode), `src/` → `frontend/` rename, export/import extended to include transactions and dividends |
 | v0.1.0-3 | Annual dividend income in Dashboard, backend hardening, analytics and performance fixes |

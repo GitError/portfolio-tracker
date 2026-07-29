@@ -14,14 +14,28 @@ portfolio-tracker/                          ← Cargo workspace root
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   ├── migrations/                         ← SQLx migrations (0001–0006)
+│   ├── migrations/                         ← SQLx migrations (0001–0011)
 │   └── src/
 │       ├── main.rs                         ← Tauri entry point
 │       ├── lib.rs                          ← App bootstrap, state init, command registration
 │       ├── config.rs                       ← App-level constants (DB name, user-agent, TTLs)
+│       ├── error.rs                        ← AppError — shared Tauri command error type
 │       ├── types.rs                        ← Shared Rust types (Serialize/Deserialize, camelCase)
 │       ├── db.rs                           ← SQLite schema, migrations, CRUD (async SQLx)
-│       ├── commands.rs                     ← #[tauri::command] thin wrappers
+│       ├── commands/                       ← #[tauri::command] thin wrappers, split by domain
+│       │   ├── mod.rs                      ← Command registration, DbState + shared state
+│       │   ├── accounts.rs                 ← Account CRUD
+│       │   ├── alerts.rs                   ← Price alert CRUD + threshold validation
+│       │   ├── analytics.rs                ← Analytics + rebalance commands
+│       │   ├── backup.rs                   ← backup_database / restore_database
+│       │   ├── config.rs                   ← get_config_cmd / set_config_cmd (key allowlist)
+│       │   ├── dividends.rs                ← Dividend CRUD
+│       │   ├── import.rs                   ← CSV import/export (transactional)
+│       │   ├── portfolio.rs                ← Holdings CRUD + get_portfolio
+│       │   ├── prices.rs                   ← refresh_prices, search_symbols, get_performance
+│       │   ├── stress.rs                   ← run_stress_test_cmd
+│       │   └── transactions.rs             ← Transaction CRUD
+│       ├── commands_tests.rs               ← Command-level validation tests
 │       ├── portfolio.rs                    ← build_portfolio_snapshot + helpers
 │       ├── csv.rs                          ← CSV import/export helpers
 │       ├── price.rs                        ← Yahoo Finance price fetching
@@ -77,23 +91,29 @@ portfolio-tracker/                          ← Cargo workspace root
 │       ├── Dashboard.tsx                   ← Dashboard view (route: /)
 │       ├── Holdings.tsx                    ← Holdings table view (route: /holdings) [paginated]
 │       ├── Performance.tsx                 ← Performance charts (route: /performance)
-│       ├── StressTest.tsx                  ← Stress test panel (route: /stress)
+│       ├── StressTest.tsx                  ← Stress test panel (route: /stress); composes ShockSliders, PresetScenarioSelector, StressResultsTable, ScenarioComparison, StressTestInfo, ResilienceSummary
 │       ├── Rebalance.tsx                   ← Rebalancing view (route: /rebalance)
 │       ├── Alerts.tsx                      ← Price alerts view (route: /alerts)
+│       ├── TransactionHistory.tsx          ← Transaction table view (route: /transactions) [paginated]
+│       ├── Analytics.tsx                   ← Analytics view (route: /analytics) — sector/country breakdown, risk metrics
 │       ├── Dividends.tsx                   ← Dividend tracking view (route: /dividends)
 │       ├── Settings.tsx                    ← Settings panel (route: /settings)
-│       ├── TransactionHistory.tsx          ← Transaction table view [paginated]
+│       ├── Help.tsx                        ← Keyboard shortcuts reference (route: /help)
 │       ├── AddHoldingModal.tsx             ← Add/edit holding modal
+│       ├── AddTransactionModal.tsx         ← Log a buy/sell transaction
 │       ├── ImportHoldingsModal.tsx         ← CSV import with preview
-│       ├── CostBasisModal.tsx              ← Cost-basis selection modal (AVCO, FIFO, ACB)
+│       ├── CostBasisModal.tsx              ← Cost-basis selection modal (AVCO, FIFO)
+│       ├── AccountsModal.tsx               ← Named account management
+│       ├── ActionCenter.tsx                ← Side panel: recent alert triggers + fast transaction entry
 │       └── ui/
 │           ├── Toast.tsx                   ← Notification toast
 │           ├── Badge.tsx                   ← Asset type badge
 │           ├── Spinner.tsx                 ← Loading spinner
 │           ├── EmptyState.tsx              ← No-data placeholder
+│           ├── CollapsiblePanel.tsx        ← Collapsible section wrapper
 │           ├── Select.tsx                  ← Custom select component
 │           ├── SymbolSearch.tsx            ← Symbol search autocomplete
-│           └── KeyboardShortcutsOverlay.tsx ← `?` help overlay
+│           └── KeyboardShortcutsOverlay.tsx ← `?` help overlay (the stale duplicate formerly at components/KeyboardShortcutsOverlay.tsx was deleted 2026-07-28)
 │
 ├── e2e/                                    ← Playwright E2E tests
 ├── public/
@@ -187,14 +207,16 @@ Add to `~/.claude/settings.json`:
 
 ### Rust
 - All types in `types.rs`, re-exported from other modules as needed
-- Commands in `commands.rs` are thin wrappers: validate input → call domain fn → return result
+- Commands live in `commands/` (split by domain — `accounts.rs`, `alerts.rs`, `backup.rs`, `config.rs`, etc., registered in `commands/mod.rs`), not a single `commands.rs` file. Each is a thin wrapper: validate input → call domain fn → return result
 - Domain logic lives in `portfolio.rs` (snapshot), `csv.rs` (import/export), `analytics.rs`, `stress.rs`
-- Use `Result<T, String>` for command return types (Tauri convention)
-- Database accessed via async `SqlitePool` (SQLx + WAL mode, 5 connections); migrations in `src-tauri/migrations/`
+- Use `Result<T, AppError>` for command return types, not `Result<T, String>` — `AppError` (`error.rs`) is a tagged enum (`Validation` / `Database` / `Network` / `NotFound` / `Conflict`) that serializes as `{ "type": "...", "message": "..." }` so the frontend can switch on `error.type` instead of string-matching. `sqlx::Error` and `reqwest::Error` convert into it via `From` impls; a bare `String`/`&str` also converts via `From`, defaulting to `Validation`
+- Database accessed via async `SqlitePool` (SQLx + WAL mode, 5 connections); migrations in `src-tauri/migrations/` (currently 0001–0011)
 - All DB operations go through `db.rs` — no raw SQL anywhere else
 - Use `serde(rename_all = "camelCase")` on all structs exposed to frontend
 - reqwest calls must include header `User-Agent: Mozilla/5.0` (Yahoo Finance blocks bare requests)
 - Use `tracing::error!/warn!/info!` for logging — never `eprintln!`
+- `set_config_cmd` only accepts keys on a fixed allowlist (`base_currency`, `app_language`, `app_theme`, `auto_refresh_interval_ms`, `auto_refresh_market_hours_only`, `cost_basis_method`, `notifications_enabled`) — add new config keys there before wiring up a new setting
+- `backup_database`/`restore_database` canonicalize paths and verify SQLite magic bytes + `PRAGMA integrity_check` before touching the live DB file — don't bypass this when adding new import/export paths
 
 ### TypeScript
 - Types in `frontend/types/portfolio.ts` must mirror Rust types exactly (camelCase)
@@ -277,14 +299,19 @@ export interface PreviewRow {
 ```
 
 // ── Tauri Command Signatures ── (use tauriInvoke, not invoke)
+// Pagination is 1-indexed `{ page, pageSize }`, NOT `{ offset, limit }` — the paginated commands
+// were redesigned after this doc was first written; PaginatedResult<T> is the real return type name.
 
 ```
 tauriInvoke('get_portfolio')                          → PortfolioSnapshot
 tauriInvoke('get_holdings')                           → Holding[] [Deprecated: use get_holdings_paginated]
-tauriInvoke('get_holdings_paginated', { offset, limit })  → PaginatedResponse<Holding>
+tauriInvoke('get_holdings_paginated', { page, pageSize })  → PaginatedResult<Holding>
 tauriInvoke('add_holding', { holding })               → Holding
 tauriInvoke('update_holding', { holding })            → Holding
 tauriInvoke('delete_holding', { id })                 → boolean
+tauriInvoke('import_holdings_csv', { csvContent })    → ImportResult
+tauriInvoke('preview_import_csv', { csvContent })     → PreviewImportResult
+tauriInvoke('export_holdings_csv')                    → string
 tauriInvoke('refresh_prices')                         → RefreshResult
 tauriInvoke('get_performance', { range })             → PerformancePoint[]
 tauriInvoke('run_stress_test_cmd', { scenario })      → StressResult
@@ -293,25 +320,28 @@ tauriInvoke('add_account', { account })               → Account
 tauriInvoke('update_account', { id, account })        → Account
 tauriInvoke('delete_account', { id })                 → boolean
 tauriInvoke('search_symbols', { query })              → SymbolResult[]
+tauriInvoke('get_symbol_price', { symbol })           → PriceData
+tauriInvoke('get_cached_prices')                      → PriceData[]
 tauriInvoke('get_transactions', { holdingId? })       → Transaction[] [Deprecated: use get_transactions_paginated]
-tauriInvoke('get_transactions_paginated', { offset, limit, holdingId? }) → PaginatedResponse<Transaction>
+tauriInvoke('get_transactions_paginated', { holdingId?, page, pageSize }) → PaginatedResult<Transaction>
 tauriInvoke('add_transaction', { input })             → Transaction
 tauriInvoke('delete_transaction', { id })             → boolean
 tauriInvoke('get_realized_gains', { holdingId? })     → RealizedGainsSummary
 tauriInvoke('get_dividends')                          → Dividend[]
+tauriInvoke('get_dividends_paginated', { page, pageSize }) → PaginatedResult<Dividend>
 tauriInvoke('add_dividend', { dividend })             → Dividend
 tauriInvoke('delete_dividend', { id })                → boolean
-tauriInvoke('get_alerts')                             → PriceAlert[]
+tauriInvoke('get_alerts')                             → PriceAlert[] [Deprecated: use get_alerts_paginated]
+tauriInvoke('get_alerts_paginated', { page, pageSize }) → PaginatedResult<PriceAlert>
 tauriInvoke('add_alert', { alert })                   → PriceAlert
 tauriInvoke('delete_alert', { id })                   → boolean
+tauriInvoke('reset_alert', { id })                    → PriceAlert
 tauriInvoke('get_portfolio_analytics')                → PortfolioAnalytics
 tauriInvoke('get_rebalance_suggestions', { ... })     → RebalanceSuggestion[]
-tauriInvoke('import_holdings_csv', { csv })           → ImportResult
-tauriInvoke('export_holdings_csv')                    → string
-tauriInvoke('backup_database')                        → ExportPayload
-tauriInvoke('restore_database', { payload })          → void
+tauriInvoke('backup_database', { destinationPath })   → string (path the backup was written to; bare filename resolves under app_data_dir)
+tauriInvoke('restore_database', { sourcePath })       → string (status message; source is verified via SQLite magic bytes + integrity check before replacing the live DB)
 tauriInvoke('get_config_cmd', { key })                → string | null
-tauriInvoke('set_config_cmd', { key, value })         → void
+tauriInvoke('set_config_cmd', { key, value })         → void  (key must be on the allowlist in commands/config.rs)
 ```
 
 ---
@@ -429,7 +459,7 @@ export const PRESET_SCENARIOS: StressScenario[] = [
 - Types in `frontend/types/portfolio.ts` must mirror Rust types exactly (camelCase). Run `npm run generate:types` after Rust type changes.
 
 ## Testing
-- Rust: `cargo test` (unit tests in each module)
+- Rust: `cargo test` (unit tests in each module, plus `commands_tests.rs` for command-level validation)
 - Frontend: Vitest + React Testing Library
-- E2E: Playwright
-- Coverage target: 80%+
+- E2E: Playwright (`e2e/`) — `e2e/` is included in `tsconfig.json`'s `include`, so type errors there are caught by `tsc --noEmit`
+- Coverage target: 80%+ (aspirational) — `vitest.config.ts` thresholds are currently ratcheted to actual measured coverage (lines 50 / functions 42 / branches 44 / statements 50) so the CI gate passes today. Raise these numbers as coverage improves; don't lower them without justification, and don't jump straight to 80% without the tests to back it — that broke CI once already

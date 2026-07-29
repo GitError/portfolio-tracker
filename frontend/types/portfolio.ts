@@ -223,7 +223,7 @@ export interface SymbolResult {
 }
 
 export interface Dividend {
-  id: number;
+  id: string;
   holdingId: string;
   symbol: string;
   amountPerUnit: number;
