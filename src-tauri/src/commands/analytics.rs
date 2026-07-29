@@ -469,13 +469,13 @@ pub async fn get_rebalance_suggestions(
                 0.0
             };
             Some(RebalanceSuggestion {
-                holding_id: h.id,
-                symbol: h.symbol,
-                name: h.name,
+                holding_id: h.holding.id,
+                symbol: h.holding.symbol,
+                name: h.holding.name,
                 current_value_cad: h.market_value_cad,
                 target_value_cad,
                 current_weight: h.weight,
-                target_weight: h.target_weight,
+                target_weight: h.holding.target_weight,
                 drift,
                 suggested_trade_cad,
                 suggested_units,

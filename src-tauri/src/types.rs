@@ -395,24 +395,8 @@ pub struct FxRate {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct HoldingWithPrice {
-    pub id: HoldingId,
-    pub symbol: String,
-    pub name: String,
-    pub asset_type: AssetType,
-    pub account: AccountType,
-    pub account_id: Option<String>,
-    pub account_name: Option<String>,
-    pub quantity: f64,
-    pub cost_basis: f64,
-    pub currency: String,
-    pub exchange: String,
-    pub target_weight: f64,
-    pub created_at: String,
-    pub updated_at: String,
-    pub indicated_annual_dividend: Option<f64>,
-    pub indicated_annual_dividend_currency: Option<String>,
-    pub dividend_frequency: Option<String>,
-    pub maturity_date: Option<String>,
+    #[serde(flatten)]
+    pub holding: Holding,
     pub current_price: f64,
     pub current_price_cad: f64,
     pub market_value_cad: f64,
@@ -430,6 +414,19 @@ pub struct HoldingWithPrice {
     /// True when the cached price for this holding is older than the staleness
     /// threshold (currently 24 hours). Cash holdings are always false.
     pub price_is_stale: bool,
+}
+
+impl std::ops::Deref for HoldingWithPrice {
+    type Target = Holding;
+    fn deref(&self) -> &Holding {
+        &self.holding
+    }
+}
+
+impl std::ops::DerefMut for HoldingWithPrice {
+    fn deref_mut(&mut self) -> &mut Holding {
+        &mut self.holding
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
