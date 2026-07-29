@@ -6,7 +6,7 @@ import type { HoldingWithPrice, PortfolioSnapshot } from '../../types/portfolio'
 import { MOCK_SNAPSHOT } from '../../lib/mockData';
 
 // Initialize i18n (Holdings uses useTranslation)
-import '../../lib/i18n';
+import i18next from '../../lib/i18n';
 
 // Shared mock state — reassigned per test
 let mockHoldings: HoldingWithPrice[] = [];
@@ -32,13 +32,15 @@ vi.mock('../../hooks/usePortfolio', () => ({
   }),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   mockHoldings = [];
   mockPortfolio = null;
+  // Pin language so English-text assertions don't break if the default locale changes.
+  await i18next.changeLanguage('en');
 });
 
 function renderHoldings() {

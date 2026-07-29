@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { Settings } from '../Settings';
 
 // Initialize i18n
-import '../../lib/i18n';
+import i18next from '../../lib/i18n';
 
 // Mock AccountsModal to avoid deep dependency rendering
 vi.mock('../AccountsModal', () => ({
@@ -43,7 +43,7 @@ vi.mock('@tauri-apps/api/app', () => ({
   getVersion: () => mockGetVersion(),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -51,6 +51,8 @@ beforeEach(() => {
   localStorage.clear();
   vi.clearAllMocks();
   mockIsTauri = false;
+  // Pin language so English-text assertions don't break if the default locale changes.
+  await i18next.changeLanguage('en');
 });
 
 function renderSettings() {

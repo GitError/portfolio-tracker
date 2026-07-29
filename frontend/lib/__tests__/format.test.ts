@@ -46,6 +46,10 @@ describe('formatCurrency', () => {
     it('formats using an explicit locale override, ignoring the global i18next language', () => {
       expect(formatCurrency(1234.56, 'USD', 'de')).toBe('1.234,56 USD');
     });
+
+    it('formats using French locale separators (narrow no-break space thousands, comma decimal)', () => {
+      expect(formatCurrency(1234.56, 'USD', 'fr')).toBe('1 234,56 USD');
+    });
   });
 });
 
@@ -121,6 +125,10 @@ describe('formatNumber', () => {
 
     it('formats using an explicit locale override, ignoring the global i18next language', () => {
       expect(formatNumber(1234.5, 2, 'de')).toBe('1.234,50');
+    });
+
+    it('formats using French locale separators (narrow no-break space thousands, comma decimal)', () => {
+      expect(formatNumber(1234.5, 2, 'fr')).toBe('1 234,50');
     });
   });
 });

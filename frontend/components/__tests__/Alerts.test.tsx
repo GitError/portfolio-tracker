@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { Alerts } from '../Alerts';
 
 // Initialize i18n (Alerts uses useTranslation)
-import '../../lib/i18n';
+import i18next from '../../lib/i18n';
 
 const mockDeleteAlert = vi.fn();
 
@@ -38,13 +38,15 @@ vi.mock('../../hooks/usePortfolio', () => ({
   }),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
   mockDeleteAlert.mockResolvedValue(true);
+  // Pin language so English-text assertions don't break if the default locale changes.
+  await i18next.changeLanguage('en');
 });
 
 function renderAlerts() {

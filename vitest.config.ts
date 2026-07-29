@@ -27,8 +27,8 @@ export default defineConfig({
       // measured coverage so the gate is real and green. Raise incrementally as tests are added
       // — do not lower these numbers without adding an equivalent justification.
       thresholds: {
-        lines: 50,
-        functions: 42,
+        lines: 51,
+        functions: 43,
         branches: 44,
         statements: 50,
       },
