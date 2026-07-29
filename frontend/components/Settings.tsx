@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { getVersion } from '@tauri-apps/api/app';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { useConfig } from '../hooks/useConfig';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
@@ -487,6 +488,14 @@ export function Settings() {
   const { theme, setTheme } = useTheme();
   const [accountsOpen, setAccountsOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
+  const [appVersion, setAppVersion] = useState('...');
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => {});
+  }, []);
 
   // Auto-refresh controls — read/write config directly to avoid creating a
   // second competing interval alongside the one in AppRoutes.
@@ -742,7 +751,7 @@ export function Settings() {
               color: 'var(--text-secondary)',
             }}
           >
-            0.1.0
+            {appVersion}
           </span>
         </SettingRow>
       </div>

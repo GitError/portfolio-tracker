@@ -78,23 +78,45 @@ use commands::{DbState, HttpClient, RateLimiterState, RealizedGainsCacheState, S
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 use tauri::Manager;
+use tracing_subscriber::prelude::*;
 
 /// Holds the sender half of the WAL checkpoint shutdown channel.
 /// Managed as Tauri app state so the window-destroyed event can signal the background task.
 struct WalShutdown(tokio::sync::watch::Sender<bool>);
 
+/// Keeps the non-blocking file appender's background flush thread alive for the
+/// lifetime of the app. Dropping this guard stops log writes, so it's managed as
+/// Tauri app state rather than a local variable in `setup`.
+struct LogGuard(#[allow(dead_code)] tracing_appender::non_blocking::WorkerGuard);
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .try_init();
-
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            let log_dir = app.path().app_log_dir()?;
+            std::fs::create_dir_all(&log_dir)?;
+            let file_appender = tracing_appender::rolling::daily(&log_dir, "portfolio-tracker.log");
+            let (non_blocking, log_guard) = tracing_appender::non_blocking(file_appender);
+
+            let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+            // Dev builds also mirror logs to stderr; release builds write to the file only.
+            let stderr_layer = cfg!(debug_assertions)
+                .then(|| tracing_subscriber::fmt::layer().with_writer(std::io::stderr));
+
+            let _ = tracing_subscriber::registry()
+                .with(env_filter)
+                .with(
+                    tracing_subscriber::fmt::layer()
+                        .with_writer(non_blocking)
+                        .with_ansi(false),
+                )
+                .with(stderr_layer)
+                .try_init();
+
+            app.manage(LogGuard(log_guard));
+
             let app_data_dir = app.path().app_data_dir()?;
 
             std::fs::create_dir_all(&app_data_dir)?;
