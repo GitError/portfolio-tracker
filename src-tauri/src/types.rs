@@ -104,6 +104,39 @@ impl TS for TransactionId {
     }
 }
 
+/// Typed wrapper for a dividend's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct DividendId(pub String);
+
+impl std::fmt::Display for DividendId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl TS for DividendId {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String {
+        "DividendId".to_string()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_string()
+    }
+    fn decl(_: &ts_rs::Config) -> String {
+        "type DividendId = string;".to_string()
+    }
+    fn decl_concrete(_: &ts_rs::Config) -> String {
+        "type DividendId = string;".to_string()
+    }
+    fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
+    fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("DividendId.ts"))
+    }
+}
+
 // ── Transaction types ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
@@ -527,7 +560,7 @@ pub struct PerformancePoint {
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Dividend {
-    pub id: i64,
+    pub id: DividendId,
     pub holding_id: HoldingId,
     pub symbol: String,
     pub amount_per_unit: f64,

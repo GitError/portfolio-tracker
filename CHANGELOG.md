@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **CI broken again** — a later dependency merge reintroduced `actions/checkout@v6` / `actions/setup-node@v6`, which do not exist; re-pinned to `@v4` across all three workflow jobs.
+- **CSP disabled again** — `tauri.conf.json` had regressed to `"csp": null`; restored a restrictive policy (`default-src 'self'`, explicit `script-src`/`style-src`/`connect-src`/`img-src`, Google Fonts allowlisted under `style-src`/`font-src`).
+- **Theme/language flash on launch (regression)** — `useTheme`/`useLanguage` now mirror the persisted preference to `localStorage` synchronously so the inline pre-React script in `index.html` can apply the correct theme/language before first paint in the Tauri webview, not just in the browser dev server.
+- **`Cargo.lock` out of sync with `sqlx` 0.9 requirement** — ran `cargo update -p sqlx` to bring the lockfile in line with `Cargo.toml`.
+- **`Dividend.id` was `i64`** while every other entity ID is a UUID string — added a `0011_dividend_uuid_id` migration, switched the Rust type to a new `DividendId` newtype, and updated the frontend type/mock data to match.
+- **`e2e/` excluded from `tsconfig.json`** — added to `include` so E2E type errors are now caught by `tsc --noEmit`.
+- **Orphaned duplicate component** — deleted `frontend/components/KeyboardShortcutsOverlay.tsx`; only `frontend/components/ui/KeyboardShortcutsOverlay.tsx` was ever imported.
+
+### Added
+- **i18n wiring completed** — `Analytics.tsx`, `Alerts.tsx`, `Settings.tsx`, and `Dividends.tsx` now call `t()` for all user-facing strings; all 7 locales are fully active across every view.
+
+### Changed
+- Merged 9 pending Dependabot PRs: `chrono` 0.4.44, `serde`, `sqlx` → 0.9 (Cargo.toml requirement), `tauri-build`/`tauri` 2.10.3, `lucide-react` 1.27.0, `recharts` 3.10.1, `i18next` 26.3.6, `uuid` 1.23.0, `@tauri-apps/api` 2.11.1, the frontend dev-dependencies group, and the `tauri-action`/`checkout` GitHub Actions.
+- Raised `vitest.config.ts` coverage thresholds from 25% to the project's stated 80% target (lines/functions/branches/statements). Actual coverage has not been re-measured against this gate yet — expect CI to fail until the test suite catches up.
+
+### Known Issues
+- Three Dependabot PRs remain open: #542 (TypeScript 6.0), #540 (vite + `@vitejs/plugin-react` 6), #538 (react ecosystem group).
+
 ## [0.1.0-8] - 2026-05-24
 
 ### Changed

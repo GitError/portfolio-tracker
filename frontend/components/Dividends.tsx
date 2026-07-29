@@ -219,7 +219,7 @@ export function Dividends() {
         } else {
           const holding = holdings.find((h) => h.id === input.holdingId);
           const mock: Dividend = {
-            id: Date.now(),
+            id: crypto.randomUUID(),
             symbol: holding?.symbol ?? '',
             ...input,
             createdAt: new Date().toISOString(),
@@ -236,7 +236,7 @@ export function Dividends() {
   );
 
   const handleDelete = useCallback(
-    async (id: number) => {
+    async (id: string) => {
       try {
         if (isTauri()) {
           await tauriInvoke<boolean>('delete_dividend', { id });

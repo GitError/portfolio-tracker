@@ -70,14 +70,19 @@ Start typing a symbol or company name in the Symbol field. Results are fetched f
 |---------|-------------|
 | TFSA | Tax-Free Savings Account |
 | RRSP | Registered Retirement Savings Plan |
+| FHSA | First Home Savings Account |
 | Taxable | Non-registered brokerage account |
+| Crypto | Crypto exchange or wallet |
 | Cash | Cash position (automatically set for Cash asset type) |
+| Other | Anything not covered above |
 
 ### Editing and Deleting
 
 Click any row in the holdings table to open the edit modal. Update any field and save. To delete, use the trash icon in the edit modal or the row action menu.
 
 ### CSV Import
+
+> This strict, canonical-header CSV importer is planned to be replaced by a broker-agnostic guided import wizard (CSV/XLSX, column inference, account context, import plan preview, post-import insights). See `docs/roadmap.md` and `docs/superpowers/specs/2026-05-24-import-plus-insights-design.md`. The behavior below is current until that ships.
 
 Click **Import** to bulk-load holdings from a CSV file.
 

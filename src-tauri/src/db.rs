@@ -4,9 +4,10 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    Account, AccountType, AlertDirection, AlertId, AssetType, Dividend, DividendInput, FxRate,
-    Holding, HoldingId, HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput, PriceData,
-    SymbolMetadata, SymbolResult, Transaction, TransactionId, TransactionInput, TransactionType,
+    Account, AccountType, AlertDirection, AlertId, AssetType, Dividend, DividendId, DividendInput,
+    FxRate, Holding, HoldingId, HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput,
+    PriceData, SymbolMetadata, SymbolResult, Transaction, TransactionId, TransactionInput,
+    TransactionType,
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -932,11 +933,13 @@ pub async fn insert_dividend(
     input: DividendInput,
     symbol: &str,
 ) -> Result<Dividend, String> {
+    let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
-    let result = sqlx::query(
-        "INSERT INTO dividends (holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6)",
+    sqlx::query(
+        "INSERT INTO dividends (id, holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
     )
+    .bind(&id)
     .bind(input.holding_id.0.as_str())
     .bind(input.amount_per_unit)
     .bind(&input.currency)
@@ -947,9 +950,8 @@ pub async fn insert_dividend(
     .await
     .map_err(|e| e.to_string())?;
 
-    let id = result.last_insert_rowid();
     Ok(Dividend {
-        id,
+        id: DividendId(id),
         holding_id: input.holding_id,
         symbol: symbol.to_string(),
         amount_per_unit: input.amount_per_unit,
@@ -977,7 +979,7 @@ pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
     Ok(rows
         .into_iter()
         .map(|r| Dividend {
-            id: r.get(0),
+            id: DividendId(r.get(0)),
             holding_id: HoldingId(r.get(1)),
             symbol: r.get(2),
             amount_per_unit: r.get(3),
@@ -989,11 +991,11 @@ pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
         .collect())
 }
 
-pub async fn delete_dividend(pool: &SqlitePool, id: i64) -> Result<bool, String> {
+pub async fn delete_dividend(pool: &SqlitePool, id: &DividendId) -> Result<bool, String> {
     let result = sqlx::query(
         "UPDATE dividends SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
     )
-    .bind(id)
+    .bind(id.0.as_str())
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -1419,7 +1421,7 @@ pub async fn get_dividends_paginated(
     let items = rows
         .into_iter()
         .map(|r| Dividend {
-            id: r.get(0),
+            id: DividendId(r.get(0)),
             holding_id: HoldingId(r.get(1)),
             symbol: r.get(2),
             amount_per_unit: r.get(3),
