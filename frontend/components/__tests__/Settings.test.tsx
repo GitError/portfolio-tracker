@@ -26,13 +26,21 @@ vi.mock('../../hooks/useLanguage', () => ({
 const mockSetConfigCmd = vi.fn().mockResolvedValue(undefined);
 const mockGetConfigCmd = vi.fn().mockResolvedValue(null);
 
+// Mutable so individual tests can simulate running inside the Tauri runtime.
+let mockIsTauri = false;
+
 vi.mock('../../lib/tauri', () => ({
-  isTauri: () => false,
+  isTauri: () => mockIsTauri,
   tauriInvoke: (cmd: string, ...args: unknown[]) => {
     if (cmd === 'set_config_cmd') return mockSetConfigCmd(cmd, ...args);
     if (cmd === 'get_config_cmd') return mockGetConfigCmd(cmd, ...args);
     return Promise.resolve(null);
   },
+}));
+
+const mockGetVersion = vi.fn().mockResolvedValue('1.2.3');
+vi.mock('@tauri-apps/api/app', () => ({
+  getVersion: () => mockGetVersion(),
 }));
 
 beforeEach(() => {
@@ -42,6 +50,7 @@ beforeEach(() => {
   delete (window as any).__TAURI__;
   localStorage.clear();
   vi.clearAllMocks();
+  mockIsTauri = false;
 });
 
 function renderSettings() {
@@ -82,9 +91,15 @@ describe('Settings component smoke tests', () => {
     expect(screen.getByText(/fifo/i)).toBeTruthy();
   });
 
-  it('shows the version number', () => {
+  it('shows a placeholder version outside the Tauri runtime', () => {
     renderSettings();
-    expect(screen.getByText('0.1.0')).toBeTruthy();
+    expect(screen.getByText('...')).toBeTruthy();
+  });
+
+  it('shows the real app version when running in Tauri', async () => {
+    mockIsTauri = true;
+    renderSettings();
+    await waitFor(() => expect(screen.getByText('1.2.3')).toBeTruthy());
   });
 
   it('shows Manage Accounts button', () => {
