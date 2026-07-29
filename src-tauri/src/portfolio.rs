@@ -592,6 +592,73 @@ mod tests {
     }
 
     #[test]
+    fn build_portfolio_snapshot_stale_but_present_price_is_used_over_cost_basis() {
+        // Regression guard for #316/#577: a cached price older than 60 minutes
+        // (market closed, no refresh) must still be used as current_price —
+        // cost_basis is only a fallback for a true cache miss (no row at all).
+        let holding = make_holding("AAPL", AssetType::Stock, 10.0, 50.0, "USD");
+        let three_hours_ago = (Utc::now() - chrono::Duration::hours(3)).to_rfc3339();
+        let prices = vec![PriceData {
+            symbol: "AAPL".to_string(),
+            price: 180.0,
+            currency: "USD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: three_hours_ago,
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "USD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        // Stale (3h old) cached price is used, not cost_basis (50.0).
+        assert!((snapshot.holdings[0].current_price - 180.0).abs() < 0.001);
+        // Still under 24h, so not flagged as stale.
+        assert!(!snapshot.holdings[0].price_is_stale);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_price_older_than_24h_flagged_stale_but_still_used() {
+        // A price older than PRICE_STALE_SECS (24h) is flagged stale for the UI,
+        // but must still be used as current_price rather than cost_basis.
+        let holding = make_holding("AAPL", AssetType::Stock, 10.0, 50.0, "USD");
+        let two_days_ago = (Utc::now() - chrono::Duration::hours(48)).to_rfc3339();
+        let prices = vec![PriceData {
+            symbol: "AAPL".to_string(),
+            price: 180.0,
+            currency: "USD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: two_days_ago,
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "USD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!((snapshot.holdings[0].current_price - 180.0).abs() < 0.001);
+        assert!(snapshot.holdings[0].price_is_stale);
+    }
+
+    #[test]
     fn build_portfolio_snapshot_missing_fx_marks_holding_as_stale() {
         // When FX rate is unavailable, fx_stale = true and rate defaults to 1.0.
         let holding = make_holding("AAPL", AssetType::Stock, 1.0, 100.0, "USD");

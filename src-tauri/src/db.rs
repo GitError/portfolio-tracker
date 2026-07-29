@@ -1560,6 +1560,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_cached_prices_returns_rows_older_than_60_minutes() {
+        // Regression guard for #316/#577: get_cached_prices must NOT filter out
+        // rows older than 60 minutes. Stale prices should still surface to the
+        // caller so build_portfolio_snapshot can use them instead of cost_basis.
+        let pool = open_test_db().await;
+        let three_hours_ago = (chrono::Utc::now() - chrono::Duration::hours(3)).to_rfc3339();
+        let price = PriceData {
+            symbol: "AAPL".to_string(),
+            price: 150.0,
+            currency: "USD".to_string(),
+            change: 1.0,
+            change_percent: 0.5,
+            updated_at: three_hours_ago,
+            open: None,
+            previous_close: None,
+            volume: None,
+        };
+        upsert_price(&pool, &price).await.expect("upsert price");
+
+        let prices = get_cached_prices(&pool).await.expect("get cached prices");
+        assert_eq!(prices.len(), 1);
+        assert!((prices[0].price - 150.0).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn get_fx_rates_returns_rows_older_than_60_minutes() {
+        // Regression guard for #316/#577: get_fx_rates must NOT filter out
+        // rows older than 60 minutes.
+        let pool = open_test_db().await;
+        let three_hours_ago = (chrono::Utc::now() - chrono::Duration::hours(3)).to_rfc3339();
+        let rate = FxRate {
+            pair: "USDCAD".to_string(),
+            rate: 1.4,
+            updated_at: three_hours_ago,
+        };
+        upsert_fx_rate(&pool, &rate).await.expect("upsert fx");
+
+        let rates = get_fx_rates(&pool).await.expect("get fx rates");
+        assert_eq!(rates.len(), 1);
+        assert!((rates[0].rate - 1.4).abs() < 0.001);
+    }
+
+    #[tokio::test]
     async fn get_symbol_cache_exact_finds_symbol_case_insensitively() {
         let pool = open_test_db().await;
         let symbol = SymbolResult {
