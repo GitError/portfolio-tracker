@@ -3,7 +3,7 @@ import type { AccountType } from "./AccountType";
 import type { AssetType } from "./AssetType";
 import type { HoldingId } from "./HoldingId";
 
-export type HoldingWithPrice = { id: HoldingId, symbol: string, name: string, assetType: AssetType, account: AccountType, accountId: string | null, accountName: string | null, quantity: number, costBasis: number, currency: string, exchange: string, targetWeight: number, createdAt: string, updatedAt: string, indicatedAnnualDividend: number | null, indicatedAnnualDividendCurrency: string | null, dividendFrequency: string | null, maturityDate: string | null, currentPrice: number, currentPriceCad: number, marketValueCad: number, costValueCad: number, gainLoss: number, gainLossPercent: number, weight: number, targetValue: number, targetDeltaValue: number, targetDeltaPercent: number, dailyChangePercent: number, 
+export type HoldingWithPrice = { currentPrice: number, currentPriceCad: number, marketValueCad: number, costValueCad: number, gainLoss: number, gainLossPercent: number, weight: number, targetValue: number, targetDeltaValue: number, targetDeltaPercent: number, dailyChangePercent: number, 
 /**
  * True when the FX rate for this holding's currency was not available;
  * values are shown in the source currency as a fallback.
@@ -13,4 +13,4 @@ fxStale: boolean,
  * True when the cached price for this holding is older than the staleness
  * threshold (currently 24 hours). Cash holdings are always false.
  */
-priceIsStale: boolean, };
+priceIsStale: boolean, id: HoldingId, symbol: string, name: string, assetType: AssetType, account: AccountType, accountId: string | null, accountName: string | null, quantity: number, costBasis: number, currency: string, exchange: string, targetWeight: number, createdAt: string, updatedAt: string, indicatedAnnualDividend: number | null, indicatedAnnualDividendCurrency: string | null, dividendFrequency: string | null, maturityDate: string | null, };
