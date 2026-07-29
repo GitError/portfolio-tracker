@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::db;
 use crate::error::AppError;
-use crate::types::{Dividend, DividendInput, PaginatedResult};
+use crate::types::{Dividend, DividendId, DividendInput, PaginatedResult};
 
 use super::DbState;
 
@@ -66,7 +66,7 @@ pub async fn add_dividend(
 }
 
 #[tauri::command]
-pub async fn delete_dividend(db: State<'_, DbState>, id: i64) -> Result<bool, AppError> {
+pub async fn delete_dividend(db: State<'_, DbState>, id: DividendId) -> Result<bool, AppError> {
     let pool = &db.0;
-    db::delete_dividend(pool, id).await.map_err(AppError::from)
+    db::delete_dividend(pool, &id).await.map_err(AppError::from)
 }

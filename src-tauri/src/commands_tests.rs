@@ -9,8 +9,8 @@
 mod tests {
     use crate::db;
     use crate::types::{
-        AccountType, AlertDirection, AssetType, DividendInput, HoldingId, HoldingInput,
-        PriceAlertInput, TransactionInput, TransactionType,
+        AccountType, AlertDirection, AssetType, DividendInput, HoldingInput, PriceAlertInput,
+        TransactionInput, TransactionType,
     };
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -313,7 +313,7 @@ mod tests {
         let all = db::get_dividends(&pool).await.expect("get all");
         assert_eq!(all.len(), 1);
 
-        db::delete_dividend(&pool, div.id).await.expect("delete");
+        db::delete_dividend(&pool, &div.id).await.expect("delete");
         let after = db::get_dividends(&pool).await.expect("get after");
         assert!(after.is_empty());
     }
