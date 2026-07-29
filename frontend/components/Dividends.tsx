@@ -267,19 +267,20 @@ export function Dividends() {
       }));
   }, [portfolio]);
 
-  // Summary stats
+  // Summary stats: total cash received (amountPerUnit x quantity), not the raw per-unit amount
   const summary = useMemo(() => {
     const bySymbol: Record<string, { total: number; currency: string; count: number }> = {};
     for (const div of dividends) {
       if (!bySymbol[div.symbol]) {
         bySymbol[div.symbol] = { total: 0, currency: div.currency, count: 0 };
       }
+      const holding = holdings.find((h) => h.id === div.holdingId);
       const entry = bySymbol[div.symbol]!;
-      entry.total += div.amountPerUnit;
+      entry.total += div.amountPerUnit * (holding?.quantity ?? 0);
       entry.count += 1;
     }
     return bySymbol;
-  }, [dividends]);
+  }, [dividends, holdings]);
 
   if (loading) {
     return (

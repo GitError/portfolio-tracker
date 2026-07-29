@@ -104,4 +104,15 @@ describe('Dividends component smoke tests', () => {
       expect(cells.length).toBeGreaterThan(0);
     });
   });
+
+  it('shows total cash received (amountPerUnit x quantity), not the raw per-unit amount', async () => {
+    // MOCK_DIVIDENDS: TD.TO pays 0.118/share on a 150-share holding -> 17.70 CAD total.
+    // AAPL pays 0.25/share on a 50-share holding -> 12.50 USD total.
+    // The old (buggy) behavior summed amountPerUnit directly, which would render
+    // as "0.12 CAD" and "0.25 USD" instead of the correct cash totals below.
+    renderDividends();
+    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+    expect(screen.getByText('17.70 CAD')).toBeTruthy();
+    expect(screen.getByText('12.50 USD')).toBeTruthy();
+  });
 });
