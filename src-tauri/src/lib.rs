@@ -7,6 +7,7 @@ mod csv;
 mod db;
 pub mod error;
 mod fx;
+mod maintenance;
 mod portfolio;
 mod price;
 mod search;
@@ -136,32 +137,11 @@ pub fn run() {
             // Spawn background WAL checkpoint task to prevent unbounded WAL growth.
             // A watch channel provides a graceful shutdown signal: the sender is stored in
             // app state so the on_window_event handler can signal shutdown on app exit.
-            let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
-            let wal_pool = pool.clone();
-            tauri::async_runtime::spawn(async move {
-                // Checkpoint WAL every 5 min to bound WAL file growth; safe for low-write desktop workloads.
-                let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
-                interval.tick().await; // skip immediate first tick
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            match sqlx::query("PRAGMA wal_checkpoint(RESTART)")
-                                .execute(&wal_pool)
-                                .await
-                            {
-                                Ok(_) => tracing::debug!("WAL checkpoint complete"),
-                                Err(e) => tracing::warn!("WAL checkpoint failed: {}", e),
-                            }
-                        }
-                        _ = shutdown_rx.changed() => {
-                            if *shutdown_rx.borrow() {
-                                tracing::info!("WAL checkpoint task shutting down");
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
+            let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+            tauri::async_runtime::spawn(maintenance::run_wal_checkpoint_loop(
+                pool.clone(),
+                shutdown_rx,
+            ));
 
             app.manage(DbState(pool));
             app.manage(HttpClient(http_client));

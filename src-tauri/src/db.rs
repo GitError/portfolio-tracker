@@ -1444,7 +1444,7 @@ pub async fn get_dividends_paginated(
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 /// Create an in-memory SQLite pool with all migrations applied.
-/// Accessible from other test modules within the crate.
+/// Accessible from other test modules within the crate (including `maintenance`).
 #[cfg(test)]
 pub(crate) async fn open_test_db() -> SqlitePool {
     let pool = SqlitePool::connect("sqlite::memory:")
