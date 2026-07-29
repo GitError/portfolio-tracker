@@ -342,6 +342,21 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
     Ok(holdings)
 }
 
+/// Look up a holding's symbol and currency by id (single-row lookup, avoids
+/// scanning the full holdings collection just to read one field).
+pub async fn get_holding_symbol_and_currency(
+    pool: &SqlitePool,
+    id: &str,
+) -> Result<Option<(String, String)>, String> {
+    use sqlx::Row;
+    let row = sqlx::query("SELECT symbol, currency FROM holdings WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.map(|r| (r.get(0), r.get(1))))
+}
+
 // ── Price cache ───────────────────────────────────────────────────────────────
 
 pub async fn upsert_price(pool: &SqlitePool, price: &PriceData) -> Result<(), String> {
@@ -1104,6 +1119,16 @@ pub async fn get_accounts(pool: &SqlitePool) -> Result<Vec<Account>, String> {
         .collect())
 }
 
+/// Look up an account's created_at timestamp by id (single-row lookup, avoids
+/// scanning the full accounts collection just to read one field).
+pub async fn get_account_created_at(pool: &SqlitePool, id: &str) -> Result<Option<String>, String> {
+    sqlx::query_scalar("SELECT created_at FROM accounts WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 pub async fn update_account(
     pool: &SqlitePool,
     id: &str,
@@ -1494,6 +1519,27 @@ mod tests {
         let symbols: Vec<&str> = holdings.iter().map(|h| h.symbol.as_str()).collect();
         assert!(symbols.contains(&"AAPL"));
         assert!(symbols.contains(&"MSFT"));
+    }
+
+    #[tokio::test]
+    async fn get_holding_symbol_and_currency_returns_matching_row() {
+        let pool = open_test_db().await;
+        let inserted = insert_holding(&pool, make_input("AAPL"))
+            .await
+            .expect("insert");
+        let result = get_holding_symbol_and_currency(&pool, inserted.id.0.as_str())
+            .await
+            .expect("lookup");
+        assert_eq!(result, Some(("AAPL".to_string(), "CAD".to_string())));
+    }
+
+    #[tokio::test]
+    async fn get_holding_symbol_and_currency_returns_none_for_missing_id() {
+        let pool = open_test_db().await;
+        let result = get_holding_symbol_and_currency(&pool, "does-not-exist")
+            .await
+            .expect("lookup");
+        assert_eq!(result, None);
     }
 
     #[tokio::test]
@@ -1998,6 +2044,34 @@ mod tests {
         let tfsa = accounts.iter().find(|a| a.id == "acc-1").unwrap();
         assert_eq!(tfsa.institution, Some("Questrade".to_string()));
         assert_eq!(tfsa.account_type, "tfsa");
+    }
+
+    #[tokio::test]
+    async fn get_account_created_at_returns_matching_timestamp() {
+        let pool = open_test_db().await;
+        insert_account(&pool, "acc-1", "My TFSA", "tfsa", Some("Questrade"))
+            .await
+            .expect("insert");
+        let accounts = get_accounts(&pool).await.expect("get accounts");
+        let expected = accounts
+            .iter()
+            .find(|a| a.id == "acc-1")
+            .unwrap()
+            .created_at
+            .clone();
+        let result = get_account_created_at(&pool, "acc-1")
+            .await
+            .expect("lookup");
+        assert_eq!(result, Some(expected));
+    }
+
+    #[tokio::test]
+    async fn get_account_created_at_returns_none_for_missing_id() {
+        let pool = open_test_db().await;
+        let result = get_account_created_at(&pool, "does-not-exist")
+            .await
+            .expect("lookup");
+        assert_eq!(result, None);
     }
 
     #[tokio::test]
