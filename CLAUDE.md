@@ -462,4 +462,4 @@ export const PRESET_SCENARIOS: StressScenario[] = [
 - Rust: `cargo test` (unit tests in each module, plus `commands_tests.rs` for command-level validation)
 - Frontend: Vitest + React Testing Library
 - E2E: Playwright (`e2e/`) — `e2e/` is included in `tsconfig.json`'s `include`, so type errors there are caught by `tsc --noEmit`
-- Coverage target: 80%+ — `vitest.config.ts` thresholds are set to 80% (lines/functions/branches/statements). Actual coverage has not been re-measured against this gate since it was raised; expect it to fail CI until the test suite catches up
+- Coverage target: 80%+ (aspirational) — `vitest.config.ts` thresholds are currently ratcheted to actual measured coverage (lines 50 / functions 42 / branches 44 / statements 50) so the CI gate passes today. Raise these numbers as coverage improves; don't lower them without justification, and don't jump straight to 80% without the tests to back it — that broke CI once already
