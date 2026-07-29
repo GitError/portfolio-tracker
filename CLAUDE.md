@@ -14,7 +14,7 @@ portfolio-tracker/                          ← Cargo workspace root
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   ├── migrations/                         ← SQLx migrations (0001–0010)
+│   ├── migrations/                         ← SQLx migrations (0001–0011)
 │   └── src/
 │       ├── main.rs                         ← Tauri entry point
 │       ├── lib.rs                          ← App bootstrap, state init, command registration
@@ -210,7 +210,7 @@ Add to `~/.claude/settings.json`:
 - Commands live in `commands/` (split by domain — `accounts.rs`, `alerts.rs`, `backup.rs`, `config.rs`, etc., registered in `commands/mod.rs`), not a single `commands.rs` file. Each is a thin wrapper: validate input → call domain fn → return result
 - Domain logic lives in `portfolio.rs` (snapshot), `csv.rs` (import/export), `analytics.rs`, `stress.rs`
 - Use `Result<T, AppError>` for command return types, not `Result<T, String>` — `AppError` (`error.rs`) is a tagged enum (`Validation` / `Database` / `Network` / `NotFound` / `Conflict`) that serializes as `{ "type": "...", "message": "..." }` so the frontend can switch on `error.type` instead of string-matching. `sqlx::Error` and `reqwest::Error` convert into it via `From` impls; a bare `String`/`&str` also converts via `From`, defaulting to `Validation`
-- Database accessed via async `SqlitePool` (SQLx + WAL mode, 5 connections); migrations in `src-tauri/migrations/` (currently 0001–0010)
+- Database accessed via async `SqlitePool` (SQLx + WAL mode, 5 connections); migrations in `src-tauri/migrations/` (currently 0001–0011)
 - All DB operations go through `db.rs` — no raw SQL anywhere else
 - Use `serde(rename_all = "camelCase")` on all structs exposed to frontend
 - reqwest calls must include header `User-Agent: Mozilla/5.0` (Yahoo Finance blocks bare requests)

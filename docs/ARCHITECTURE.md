@@ -19,7 +19,7 @@ Technical reference for the Portfolio Tracker codebase.
 
 ### Current Dependency Baseline
 
-As of the 2026-07-28 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19.2, Vite 8.0, Vitest 4.1.9, TypeScript 5.9, ESLint 10.5, Tailwind 4.2, lucide-react 1.27, recharts 3.10, i18next 26.3 / react-i18next 17.0, react-router-dom 7.14, and @tauri-apps/api 2.11 on the frontend; Tauri 2.10, SQLx (0.9 per `Cargo.toml` — note `Cargo.lock` has not yet caught up past 0.8.6, run `cargo update -p sqlx`), Tokio 1.50, chrono 0.4.44, and uuid 1.23 on the backend.
+As of the 2026-07-28 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19.2, Vite 8.0, Vitest 4.1.9, TypeScript 5.9, ESLint 10.5, Tailwind 4.2, lucide-react 1.27, recharts 3.10, i18next 26.3 / react-i18next 17.0, react-router-dom 7.14, and @tauri-apps/api 2.11 on the frontend; Tauri 2.10, Tokio 1.50, chrono 0.4.44, and uuid 1.23 on the backend. **SQLx is split across the workspace:** `src-tauri` requires `^0.9` (Cargo.lock resolves to 0.9.0), but `portfolio-mcp` still pins `^0.8` (resolves to 0.8.6) — the two binaries run different SQLx major versions. Worth aligning `portfolio-mcp/Cargo.toml` to `^0.9` in a follow-up if there's no reason for the split.
 
 ---
 
@@ -32,7 +32,7 @@ portfolio-tracker/                          # Cargo workspace root
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   ├── migrations/                         # SQLx migrations (0001–0010)
+│   ├── migrations/                         # SQLx migrations (0001–0011)
 │   └── src/
 │       ├── main.rs                         # Tauri entry point
 │       ├── lib.rs                          # App bootstrap, state init, command registration
