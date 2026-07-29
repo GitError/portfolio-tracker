@@ -1,6 +1,7 @@
 // ─── Breakdown table for stress test results ─────────────────────────────────
 import { ASSET_TYPE_CONFIG } from '../lib/constants';
-import { formatCurrency, formatPercent } from '../lib/format';
+import { formatPercent } from '../lib/format';
+import { useFormatCurrency } from '../hooks/useFormatters';
 import { pnlColor } from '../lib/colors';
 import { CollapsiblePanel } from './ui/CollapsiblePanel';
 import type { HoldingWithPrice, StressResult } from '../types/portfolio';
@@ -22,6 +23,7 @@ export interface StressResultsTableProps {
 
 // ─── StressResultsTable component ────────────────────────────────────────────
 export function StressResultsTable({ result, holdings, baseCurrency }: StressResultsTableProps) {
+  const formatCurrency = useFormatCurrency();
   const columns = [
     'Symbol',
     'Type',

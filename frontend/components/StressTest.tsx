@@ -19,7 +19,8 @@ import {
   fxShockKey,
   ACCOUNT_OPTIONS,
 } from '../lib/constants';
-import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
+import { formatPercent, formatCompact } from '../lib/format';
+import { useFormatCurrency } from '../hooks/useFormatters';
 import { pnlColor } from '../lib/colors';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
@@ -113,6 +114,7 @@ function applyHoldingFilters(
 
 // ─── Main component ───────────────────────────────────────────────────────────
 export function StressTest() {
+  const formatCurrency = useFormatCurrency();
   const { portfolio, holdings } = usePortfolio();
   const { result, loading, runTest } = useStressTest();
   const [searchParams, setSearchParams] = useSearchParams();

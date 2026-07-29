@@ -7,7 +7,7 @@ import type {
   SymbolResult,
 } from '../types/portfolio';
 import { ACCOUNT_OPTIONS, SUPPORTED_CURRENCIES } from '../lib/constants';
-import { formatNumber } from '../lib/format';
+import { useFormatNumber } from '../hooks/useFormatters';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
@@ -132,6 +132,7 @@ function Field({
 }
 
 export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Props) {
+  const formatNumber = useFormatNumber();
   const { holdings } = usePortfolio();
   const { showToast } = useToast();
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
