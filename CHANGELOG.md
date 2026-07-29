@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Dividend.id` was `i64`** while every other entity ID is a UUID string — added a `0011_dividend_uuid_id` migration, switched the Rust type to a new `DividendId` newtype, and updated the frontend type/mock data to match.
 - **`e2e/` excluded from `tsconfig.json`** — added to `include` so E2E type errors are now caught by `tsc --noEmit`.
 - **Orphaned duplicate component** — deleted `frontend/components/KeyboardShortcutsOverlay.tsx`; only `frontend/components/ui/KeyboardShortcutsOverlay.tsx` was ever imported.
+- **`commands_tests.rs` was dead code** — 22 command-layer validation/CRUD tests (including holding/alert/transaction/dividend round-trips and pagination validation) were never wired into the module tree after the `commands.rs` → `commands/` split and hadn't run in CI since. Added `#[cfg(test)] mod commands_tests;` to `lib.rs`; all 22 pass, including a dividend round-trip that directly exercises the new `DividendId` UUID migration end-to-end.
 
 ### Added
 - **i18n wiring completed** — `Analytics.tsx`, `Alerts.tsx`, `Settings.tsx`, and `Dividends.tsx` now call `t()` for all user-facing strings; all 7 locales are fully active across every view.
