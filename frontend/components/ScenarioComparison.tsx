@@ -1,7 +1,8 @@
 // ─── Scenario comparison table for stress test ───────────────────────────────
 import { useMemo } from 'react';
 import { fxShockKey } from '../lib/constants';
-import { formatCurrency, formatPercent, formatCompact } from '../lib/format';
+import { formatPercent, formatCompact } from '../lib/format';
+import { useFormatCurrency } from '../hooks/useFormatters';
 import { pnlColor } from '../lib/colors';
 import type { PortfolioSnapshot, StressScenario, StressScenarioInfo } from '../types/portfolio';
 
@@ -76,6 +77,7 @@ export interface ScenarioComparisonProps {
 
 // ─── ScenarioComparison component ────────────────────────────────────────────
 export function ScenarioComparison({ portfolio, scenarios }: ScenarioComparisonProps) {
+  const formatCurrency = useFormatCurrency();
   const baseCurrency = portfolio.baseCurrency;
 
   const rows = useMemo(

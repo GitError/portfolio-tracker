@@ -6,9 +6,13 @@ function isValidNumber(value: number | null | undefined): value is number {
   return value != null && Number.isFinite(value) && !Number.isNaN(value);
 }
 
-export function formatCurrency(amount: number | null | undefined, currency = 'CAD'): string {
+export function formatCurrency(
+  amount: number | null | undefined,
+  currency = 'CAD',
+  localeOverride?: string
+): string {
   if (!isValidNumber(amount)) return INVALID_NUMBER;
-  const locale = i18next.language || 'en';
+  const locale = localeOverride || i18next.language || 'en';
   return (
     new Intl.NumberFormat(locale, {
       style: 'decimal',
@@ -26,9 +30,13 @@ export function formatPercent(decimal: number | null | undefined): string {
   return `${sign}${decimal.toFixed(2)}%`;
 }
 
-export function formatNumber(n: number | null | undefined, decimals = 2): string {
+export function formatNumber(
+  n: number | null | undefined,
+  decimals = 2,
+  localeOverride?: string
+): string {
   if (!isValidNumber(n)) return INVALID_NUMBER;
-  const locale = i18next.language || 'en';
+  const locale = localeOverride || i18next.language || 'en';
   return new Intl.NumberFormat(locale, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,

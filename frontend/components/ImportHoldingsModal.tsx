@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ImportResult, PreviewImportResult, PreviewRow } from '../types/portfolio';
 import { ASSET_TYPE_CONFIG } from '../lib/constants';
-import { formatNumber } from '../lib/format';
+import { useFormatNumber } from '../hooks/useFormatters';
 import { Badge } from './ui/Badge';
 
 interface Props {
@@ -89,6 +89,7 @@ const TD: React.CSSProperties = {
 };
 
 function PreviewTable({ rows }: { rows: PreviewRow[] }) {
+  const formatNumber = useFormatNumber();
   return (
     <div style={{ border: '1px solid var(--border-primary)', overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>

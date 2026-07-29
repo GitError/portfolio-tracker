@@ -1,13 +1,15 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Download, RefreshCw, Copy } from 'lucide-react';
 import { Spinner } from './ui/Spinner';
-import { formatCurrency, formatNumber, formatPercent } from '../lib/format';
+import { formatPercent } from '../lib/format';
+import { useFormatCurrency, useFormatNumber } from '../hooks/useFormatters';
 import { tauriInvoke } from '../lib/tauri';
 import type { RebalanceSuggestion } from '../types/portfolio';
 
 const DEFAULT_DRIFT_THRESHOLD = 5;
 
 function DriftBadge({ drift }: { drift: number }) {
+  const formatNumber = useFormatNumber();
   const isOver = drift > 0;
   const color = isOver ? 'var(--color-loss)' : 'var(--color-accent)';
   const label = isOver ? `+${formatNumber(drift, 2)}pp` : `${formatNumber(drift, 2)}pp`;
@@ -26,6 +28,7 @@ function DriftBadge({ drift }: { drift: number }) {
 }
 
 function TradeCell({ suggestion }: { suggestion: RebalanceSuggestion }) {
+  const formatNumber = useFormatNumber();
   const isSell = suggestion.suggestedTradeCad > 0;
   const color = isSell ? 'var(--color-loss)' : 'var(--color-gain)';
   const action = isSell ? 'Sell' : 'Buy';
@@ -78,6 +81,7 @@ function buildCsvContent(suggestions: RebalanceSuggestion[]): string {
 }
 
 export function Rebalance() {
+  const formatCurrency = useFormatCurrency();
   const [driftThreshold, setDriftThreshold] = useState(DEFAULT_DRIFT_THRESHOLD);
   const [suggestions, setSuggestions] = useState<RebalanceSuggestion[] | null>(null);
   const [loading, setLoading] = useState(false);

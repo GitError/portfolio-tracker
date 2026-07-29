@@ -42,6 +42,10 @@ describe('formatCurrency', () => {
     it('formats with custom currency label', () => {
       expect(formatCurrency(100, 'USD')).toBe('100.00 USD');
     });
+
+    it('formats using an explicit locale override, ignoring the global i18next language', () => {
+      expect(formatCurrency(1234.56, 'USD', 'de')).toBe('1.234,56 USD');
+    });
   });
 });
 
@@ -113,6 +117,10 @@ describe('formatNumber', () => {
 
     it('formats zero', () => {
       expect(formatNumber(0)).toBe('0.00');
+    });
+
+    it('formats using an explicit locale override, ignoring the global i18next language', () => {
+      expect(formatNumber(1234.5, 2, 'de')).toBe('1.234,50');
     });
   });
 });

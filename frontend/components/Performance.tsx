@@ -14,7 +14,8 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { ALL_PERF_DATA, calcStats, filterByRange } from '../lib/perfMockData';
 import type { PerfDataPoint } from '../lib/perfMockData';
-import { formatCurrency, formatCompact, formatPercent } from '../lib/format';
+import { formatCompact, formatPercent } from '../lib/format';
+import { useFormatCurrency } from '../hooks/useFormatters';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG } from '../lib/constants';
 import { Select } from './ui/Select';
@@ -114,6 +115,7 @@ function CustomTooltip({
   label?: string;
   currency: string;
 }) {
+  const formatCurrency = useFormatCurrency();
   if (!active || !payload?.length) return null;
   const val = payload[0]!.value;
   const daily = payload[0]!.payload.dailyReturn;
@@ -137,6 +139,7 @@ function CustomTooltip({
 }
 
 export function Performance({ portfolio, onRefresh }: PerformanceProps) {
+  const formatCurrency = useFormatCurrency();
   const [searchParams, setSearchParams] = useSearchParams();
   const range = (searchParams.get('range') as Range) || '1Y';
   const accountFilter = (searchParams.get('account') as 'all' | AccountType) || 'all';
