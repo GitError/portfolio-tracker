@@ -223,7 +223,21 @@ pub async fn search_symbols(
         return Ok(cached);
     }
 
-    // 2. SQLite persistent cache — also bypasses the rate limit.
+    // 2. SQLite persistent cache: a result fresher than SEARCH_CACHE_TTL_SECS is
+    // served directly, skipping the Yahoo Finance call entirely (#580).
+    let fresh_db_results = {
+        let pool = &db.0;
+        db::search_symbol_cache_fresh(pool, &key, crate::config::SEARCH_CACHE_TTL_SECS)
+            .await
+            .unwrap_or_default()
+    };
+    if !fresh_db_results.is_empty() {
+        cache.set(key, fresh_db_results.clone());
+        return Ok(fresh_db_results);
+    }
+
+    // 3. Unfiltered SQLite lookup — may include stale rows. Kept only as a
+    // fallback for the rate-limit and Yahoo-failure paths below.
     let db_results = {
         let pool = &db.0;
         db::search_symbol_cache(pool, &key)
@@ -231,7 +245,7 @@ pub async fn search_symbols(
             .unwrap_or_default()
     };
 
-    // 3. Rate limit live Yahoo Finance API calls to at most one per 500 ms.
+    // 4. Rate limit live Yahoo Finance API calls to at most one per 500 ms.
     {
         const MIN_SEARCH_INTERVAL: Duration = Duration::from_millis(500);
         let mut last = rate_limiter
@@ -250,7 +264,7 @@ pub async fn search_symbols(
         *last = Some(std::time::Instant::now());
     }
 
-    // 4. Yahoo Finance API
+    // 5. Yahoo Finance API
     let results = match search_symbols_yahoo(&client.0, q).await {
         Ok(r) => r,
         Err(e) => {

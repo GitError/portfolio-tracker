@@ -509,6 +509,48 @@ pub async fn search_symbol_cache(
         .collect())
 }
 
+/// Like [`search_symbol_cache`] but only returns rows whose `updated_at` is
+/// within `max_age_secs` of now. Used to serve symbol search results straight
+/// from SQLite without hitting the Yahoo Finance API (#580).
+pub async fn search_symbol_cache_fresh(
+    pool: &SqlitePool,
+    query: &str,
+    max_age_secs: i64,
+) -> Result<Vec<SymbolResult>, String> {
+    use sqlx::Row;
+    let pattern = format!("%{}%", query.to_lowercase());
+    let sym_prefix = format!("{}%", query.to_uppercase());
+    let cutoff = (Utc::now() - chrono::Duration::seconds(max_age_secs)).to_rfc3339();
+
+    let rows = sqlx::query(
+        "SELECT symbol, name, asset_type, exchange, currency FROM symbol_cache
+         WHERE (symbol LIKE $1 OR LOWER(name) LIKE $2) AND updated_at >= $3
+         ORDER BY CASE WHEN symbol LIKE $1 THEN 0 ELSE 1 END
+         LIMIT 8",
+    )
+    .bind(&sym_prefix)
+    .bind(&pattern)
+    .bind(&cutoff)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            let asset_type_str: String = r.get(2);
+            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
+            SymbolResult {
+                symbol: r.get(0),
+                name: r.get(1),
+                asset_type,
+                exchange: r.get(3),
+                currency: r.get(4),
+            }
+        })
+        .collect())
+}
+
 pub async fn get_symbol_cache_exact(
     pool: &SqlitePool,
     symbol: &str,
@@ -1664,6 +1706,95 @@ mod tests {
             .expect("query exact");
         assert!(cached.is_some());
         assert_eq!(cached.expect("cached").name, "Apple Inc.");
+    }
+
+    #[tokio::test]
+    async fn search_symbol_cache_fresh_returns_recently_cached_rows() {
+        let pool = open_test_db().await;
+        let symbol = SymbolResult {
+            symbol: "AAPL".to_string(),
+            name: "Apple Inc.".to_string(),
+            asset_type: AssetType::Stock,
+            exchange: "NMS".to_string(),
+            currency: "USD".to_string(),
+        };
+        upsert_symbol(&pool, &symbol).await.expect("upsert symbol");
+
+        let results = search_symbol_cache_fresh(&pool, "aapl", 300)
+            .await
+            .expect("query fresh cache");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].symbol, "AAPL");
+    }
+
+    #[tokio::test]
+    async fn search_symbol_cache_fresh_excludes_stale_rows() {
+        // Regression guard for #580: a DB cache entry older than the TTL must
+        // NOT be served as "fresh" — the caller falls through to a live Yahoo call.
+        let pool = open_test_db().await;
+        let symbol = SymbolResult {
+            symbol: "AAPL".to_string(),
+            name: "Apple Inc.".to_string(),
+            asset_type: AssetType::Stock,
+            exchange: "NMS".to_string(),
+            currency: "USD".to_string(),
+        };
+        upsert_symbol(&pool, &symbol).await.expect("upsert symbol");
+
+        let ten_minutes_ago = (Utc::now() - chrono::Duration::minutes(10)).to_rfc3339();
+        sqlx::query("UPDATE symbol_cache SET updated_at = $1 WHERE symbol = 'AAPL'")
+            .bind(&ten_minutes_ago)
+            .execute(&pool)
+            .await
+            .expect("backdate symbol cache row");
+
+        let results = search_symbol_cache_fresh(&pool, "aapl", 300)
+            .await
+            .expect("query fresh cache");
+        assert!(
+            results.is_empty(),
+            "stale row should not be returned as fresh"
+        );
+
+        // The unfiltered lookup must still find it — it remains usable as a
+        // fallback when Yahoo is unreachable or rate-limited.
+        let stale_results = search_symbol_cache(&pool, "aapl")
+            .await
+            .expect("query full cache");
+        assert_eq!(stale_results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn search_symbol_cache_fresh_respects_custom_max_age() {
+        let pool = open_test_db().await;
+        let symbol = SymbolResult {
+            symbol: "MSFT".to_string(),
+            name: "Microsoft Corp.".to_string(),
+            asset_type: AssetType::Stock,
+            exchange: "NMS".to_string(),
+            currency: "USD".to_string(),
+        };
+        upsert_symbol(&pool, &symbol).await.expect("upsert symbol");
+
+        let two_minutes_ago = (Utc::now() - chrono::Duration::minutes(2)).to_rfc3339();
+        sqlx::query("UPDATE symbol_cache SET updated_at = $1 WHERE symbol = 'MSFT'")
+            .bind(&two_minutes_ago)
+            .execute(&pool)
+            .await
+            .expect("backdate symbol cache row");
+
+        let too_strict = search_symbol_cache_fresh(&pool, "msft", 60)
+            .await
+            .expect("query with 60s max age");
+        assert!(
+            too_strict.is_empty(),
+            "2-minute-old row exceeds 60s max age"
+        );
+
+        let lenient = search_symbol_cache_fresh(&pool, "msft", 300)
+            .await
+            .expect("query with 300s max age");
+        assert_eq!(lenient.len(), 1, "2-minute-old row is within 300s max age");
     }
 
     #[tokio::test]
