@@ -72,14 +72,10 @@ pub async fn update_account(
     let account_type = account.account_type.clone();
 
     let pool = &state.0;
-    // Fetch created_at for the returned struct with a targeted query (avoids N+1)
-    let created_at: Option<String> =
-        sqlx::query_scalar("SELECT created_at FROM accounts WHERE id = $1")
-            .bind(&id)
-            .fetch_optional(pool)
-            .await
-            .map_err(AppError::from)?;
-    let created_at = created_at.ok_or_else(|| format!("Account {} not found", id))?;
+    let created_at = db::get_account_created_at(pool, &id)
+        .await
+        .map_err(AppError::from)?
+        .ok_or_else(|| AppError::NotFound(format!("Account {} not found", id)))?;
 
     db::update_account(pool, &id, &name, &account_type, institution.as_deref()).await?;
 

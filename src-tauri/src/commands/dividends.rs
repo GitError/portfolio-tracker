@@ -40,21 +40,15 @@ pub async fn add_dividend(
     dividend: DividendInput,
 ) -> Result<Dividend, AppError> {
     let pool = &db.0;
-    // Look up the symbol and currency for the holding with a targeted query (avoids N+1)
-    let row: Option<(String, String)> =
-        sqlx::query_as("SELECT symbol, currency FROM holdings WHERE id = $1")
-            .bind(dividend.holding_id.0.as_str())
-            .fetch_optional(pool)
+    let (symbol, holding_currency) =
+        db::get_holding_symbol_and_currency(pool, dividend.holding_id.0.as_str())
             .await
-            .map_err(AppError::from)?;
-    let (symbol, holding_currency) = match row {
-        Some((s, c)) => (s, c),
-        None => (String::new(), String::new()),
-    };
+            .map_err(AppError::from)?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Holding {} not found", dividend.holding_id.0))
+            })?;
     // Validate that the dividend currency matches the holding's currency.
-    if !holding_currency.is_empty()
-        && holding_currency.to_uppercase() != dividend.currency.to_uppercase()
-    {
+    if holding_currency.to_uppercase() != dividend.currency.to_uppercase() {
         return Err(AppError::Validation(format!(
             "Dividend currency {} does not match holding currency {}",
             dividend.currency, holding_currency
