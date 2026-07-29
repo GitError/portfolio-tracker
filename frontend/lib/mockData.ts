@@ -416,8 +416,8 @@ export function buildMockSnapshot(holdingsList: Holding[]): PortfolioSnapshot {
 export const MOCK_DIVIDENDS: Dividend[] = [
   {
     id: 'a1000000-0000-4000-8000-000000000001',
-    holdingId: 'h1',
-    symbol: 'VDY.TO',
+    holdingId: '4',
+    symbol: 'TD.TO',
     amountPerUnit: 0.118,
     currency: 'CAD',
     exDate: '2026-01-15',
@@ -426,7 +426,7 @@ export const MOCK_DIVIDENDS: Dividend[] = [
   },
   {
     id: 'a1000000-0000-4000-8000-000000000002',
-    holdingId: 'h2',
+    holdingId: '1',
     symbol: 'AAPL',
     amountPerUnit: 0.25,
     currency: 'USD',
