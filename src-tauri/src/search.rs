@@ -145,6 +145,13 @@ mod tests {
     }
 
     #[test]
+    fn percent_encode_japanese_kanji() {
+        // 日本 (U+65E5 U+672C) → UTF-8 bytes E6 97 A5 E6 9C AC
+        let encoded = super::search_symbols_yahoo_encode("日本");
+        assert_eq!(encoded, "%E6%97%A5%E6%9C%AC");
+    }
+
+    #[test]
     fn percent_encode_space_becomes_plus() {
         let encoded = super::search_symbols_yahoo_encode("Apple Inc");
         assert_eq!(encoded, "Apple+Inc");
