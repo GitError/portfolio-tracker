@@ -102,7 +102,7 @@ mod tests {
                 cost_basis: value,
                 currency: currency.to_string(),
                 exchange: String::new(),
-                target_weight: 0.0,
+                target_weight: None,
                 created_at: "2024-01-01T00:00:00Z".to_string(),
                 updated_at: "2024-01-01T00:00:00Z".to_string(),
                 indicated_annual_dividend: None,

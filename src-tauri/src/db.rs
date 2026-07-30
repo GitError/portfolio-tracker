@@ -328,7 +328,7 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
                 cost_basis: r.get(8),
                 currency: r.get(9),
                 exchange: r.get(10),
-                target_weight: r.get(11),
+                target_weight: r.get::<Option<f64>, _>(11),
                 created_at: r.get(12),
                 updated_at: r.get(13),
                 indicated_annual_dividend: r.get::<Option<f64>, _>(14),
@@ -583,16 +583,30 @@ pub async fn get_symbol_cache_exact(
 // ── Symbol fundamentals cache ─────────────────────────────────────────────────
 
 /// Persist fundamentals fields into symbol_cache for a given symbol.
-/// Only updates the fundamentals columns; basic symbol info (name, asset_type, etc.) is unchanged.
+///
+/// Only updates the fundamentals columns on conflict; basic symbol info
+/// (name, asset_type, exchange, currency) is left untouched for a row that
+/// already exists (e.g. populated earlier via symbol search). When *inserting*
+/// a brand-new row, `name`/`asset_type`/`exchange`/`currency` are taken from
+/// the caller-supplied values (the same API response fundamentals came from)
+/// and only fall back to a placeholder when that data is genuinely absent.
 pub async fn upsert_symbol_fundamentals(
     pool: &SqlitePool,
     meta: &SymbolMetadata,
+    name: Option<&str>,
+    asset_type: Option<AssetType>,
+    exchange: Option<&str>,
+    currency: Option<&str>,
 ) -> Result<(), String> {
     let now = Utc::now().to_rfc3339();
     let symbol_upper = meta.symbol.to_uppercase();
+    let name = name.filter(|s| !s.is_empty()).unwrap_or(&symbol_upper);
+    let asset_type = asset_type.map(|a| a.as_str()).unwrap_or("stock");
+    let exchange = exchange.unwrap_or("");
+    let currency = currency.filter(|s| !s.is_empty()).unwrap_or("USD");
     sqlx::query(
-        "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at)
-         VALUES ($1, $1, 'stock', '', '', $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        "INSERT INTO symbol_cache (symbol, name, asset_type, exchange, currency, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
          ON CONFLICT(symbol) DO UPDATE SET
            sector=excluded.sector,
            industry=excluded.industry,
@@ -605,6 +619,10 @@ pub async fn upsert_symbol_fundamentals(
            fundamentals_updated_at=excluded.fundamentals_updated_at",
     )
     .bind(&symbol_upper)
+    .bind(name)
+    .bind(asset_type)
+    .bind(exchange)
+    .bind(currency)
     .bind(&meta.sector)
     .bind(&meta.industry)
     .bind(&meta.country)
@@ -1313,7 +1331,7 @@ pub async fn get_holdings_paginated(
                 cost_basis: r.get(8),
                 currency: r.get(9),
                 exchange: r.get(10),
-                target_weight: r.get(11),
+                target_weight: r.get::<Option<f64>, _>(11),
                 created_at: r.get(12),
                 updated_at: r.get(13),
                 indicated_annual_dividend: r.get::<Option<f64>, _>(14),
@@ -1539,7 +1557,7 @@ mod tests {
             cost_basis: 100.0,
             currency: "CAD".to_string(),
             exchange: String::new(),
-            target_weight: 0.0,
+            target_weight: None,
             indicated_annual_dividend: None,
             indicated_annual_dividend_currency: None,
             dividend_frequency: None,
@@ -1593,7 +1611,7 @@ mod tests {
         let updated_holding = Holding {
             quantity: 20.0,
             cost_basis: 150.0,
-            target_weight: 12.5,
+            target_weight: Some(12.5),
             ..inserted
         };
         let updated = update_holding(&pool, updated_holding)
@@ -1601,7 +1619,7 @@ mod tests {
             .expect("update");
         assert!((updated.quantity - 20.0).abs() < 0.001);
         assert!((updated.cost_basis - 150.0).abs() < 0.001);
-        assert!((updated.target_weight - 12.5).abs() < 0.001);
+        assert!((updated.target_weight.expect("target_weight") - 12.5).abs() < 0.001);
     }
 
     #[tokio::test]
@@ -1797,6 +1815,114 @@ mod tests {
         assert_eq!(lenient.len(), 1, "2-minute-old row is within 300s max age");
     }
 
+    // ── upsert_symbol_fundamentals ────────────────────────────────────────────
+
+    fn make_symbol_metadata(symbol: &str) -> SymbolMetadata {
+        SymbolMetadata {
+            symbol: symbol.to_string(),
+            sector: Some("Technology".to_string()),
+            industry: None,
+            country: Some("US".to_string()),
+            market_cap: Some(3_000_000_000_000.0),
+            pe_ratio: None,
+            dividend_yield: None,
+            beta: None,
+            eps: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn upsert_symbol_fundamentals_new_row_uses_provided_metadata() {
+        // Regression guard for #610: a brand-new symbol_cache row must be created
+        // with the real name/asset_type/exchange/currency from the API response,
+        // not the hardcoded 'stock'/blank placeholders — and the insert must
+        // actually succeed (updated_at is NOT NULL with no default).
+        let pool = open_test_db().await;
+        let meta = make_symbol_metadata("SHOP");
+
+        upsert_symbol_fundamentals(
+            &pool,
+            &meta,
+            Some("Shopify Inc."),
+            Some(AssetType::Etf),
+            Some("TSX"),
+            Some("CAD"),
+        )
+        .await
+        .expect("upsert should succeed for a new row");
+
+        use sqlx::Row;
+        let row = sqlx::query(
+            "SELECT name, asset_type, exchange, currency FROM symbol_cache WHERE symbol = 'SHOP'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("row should exist");
+        assert_eq!(row.get::<String, _>(0), "Shopify Inc.");
+        assert_eq!(row.get::<String, _>(1), "etf");
+        assert_eq!(row.get::<String, _>(2), "TSX");
+        assert_eq!(row.get::<String, _>(3), "CAD");
+    }
+
+    #[tokio::test]
+    async fn upsert_symbol_fundamentals_new_row_falls_back_when_data_absent() {
+        // When the API genuinely didn't return name/asset_type/exchange/currency,
+        // fall back to sensible defaults rather than failing the insert.
+        let pool = open_test_db().await;
+        let meta = make_symbol_metadata("XYZ");
+
+        upsert_symbol_fundamentals(&pool, &meta, None, None, None, None)
+            .await
+            .expect("upsert should succeed even with no name/type/exchange/currency");
+
+        use sqlx::Row;
+        let row = sqlx::query(
+            "SELECT name, asset_type, exchange, currency FROM symbol_cache WHERE symbol = 'XYZ'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("row should exist");
+        assert_eq!(row.get::<String, _>(0), "XYZ");
+        assert_eq!(row.get::<String, _>(1), "stock");
+        assert_eq!(row.get::<String, _>(2), "");
+        assert_eq!(row.get::<String, _>(3), "USD");
+    }
+
+    #[tokio::test]
+    async fn upsert_symbol_fundamentals_conflict_updates_fundamentals_only() {
+        let pool = open_test_db().await;
+        let symbol = SymbolResult {
+            symbol: "AAPL".to_string(),
+            name: "Apple Inc.".to_string(),
+            asset_type: AssetType::Stock,
+            exchange: "NMS".to_string(),
+            currency: "USD".to_string(),
+        };
+        upsert_symbol(&pool, &symbol).await.expect("upsert symbol");
+
+        let meta = make_symbol_metadata("AAPL");
+        upsert_symbol_fundamentals(&pool, &meta, None, None, None, None)
+            .await
+            .expect("upsert fundamentals on existing row");
+
+        use sqlx::Row;
+        let row = sqlx::query(
+            "SELECT name, asset_type, exchange, currency, sector FROM symbol_cache WHERE symbol = 'AAPL'",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("row should exist");
+        // Existing name/asset_type/exchange/currency from the search cache are untouched.
+        assert_eq!(row.get::<String, _>(0), "Apple Inc.");
+        assert_eq!(row.get::<String, _>(1), "stock");
+        assert_eq!(row.get::<String, _>(2), "NMS");
+        assert_eq!(row.get::<String, _>(3), "USD");
+        assert_eq!(
+            row.get::<Option<String>, _>(4),
+            Some("Technology".to_string())
+        );
+    }
+
     #[tokio::test]
     async fn insert_snapshot_and_retrieve_in_range() {
         let pool = open_test_db().await;
@@ -1895,9 +2021,9 @@ mod tests {
     async fn sum_target_weights_sums_all_holdings() {
         let pool = open_test_db().await;
         let mut input_a = make_input("AAPL");
-        input_a.target_weight = 40.0;
+        input_a.target_weight = Some(40.0);
         let mut input_b = make_input("MSFT");
-        input_b.target_weight = 35.0;
+        input_b.target_weight = Some(35.0);
         insert_holding(&pool, input_a).await.expect("insert a");
         insert_holding(&pool, input_b).await.expect("insert b");
         let sum = sum_target_weights(&pool, None).await.expect("sum");
@@ -1908,15 +2034,27 @@ mod tests {
     async fn sum_target_weights_excludes_specified_id() {
         let pool = open_test_db().await;
         let mut input_a = make_input("AAPL");
-        input_a.target_weight = 40.0;
+        input_a.target_weight = Some(40.0);
         let mut input_b = make_input("MSFT");
-        input_b.target_weight = 35.0;
+        input_b.target_weight = Some(35.0);
         let holding_a = insert_holding(&pool, input_a).await.expect("insert a");
         insert_holding(&pool, input_b).await.expect("insert b");
         let sum = sum_target_weights(&pool, Some(holding_a.id.0.as_str()))
             .await
             .expect("sum excluding a");
         assert!((sum - 35.0).abs() < 0.001);
+    }
+
+    #[tokio::test]
+    async fn sum_target_weights_ignores_unset_targets() {
+        let pool = open_test_db().await;
+        let mut input_a = make_input("AAPL");
+        input_a.target_weight = Some(40.0);
+        let input_b = make_input("MSFT"); // target_weight: None (unset)
+        insert_holding(&pool, input_a).await.expect("insert a");
+        insert_holding(&pool, input_b).await.expect("insert b");
+        let sum = sum_target_weights(&pool, None).await.expect("sum");
+        assert!((sum - 40.0).abs() < 0.001);
     }
 
     #[tokio::test]

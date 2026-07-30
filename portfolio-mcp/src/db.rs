@@ -105,7 +105,7 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> anyhow::Result<Vec<Holding>>
                 cost_basis: r.get(8),
                 currency: r.get(9),
                 exchange: r.get(10),
-                target_weight: r.get(11),
+                target_weight: r.get::<Option<f64>, _>(11),
                 created_at: r.get(12),
                 updated_at: r.get(13),
                 indicated_annual_dividend: r.get::<Option<f64>, _>(14),

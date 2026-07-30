@@ -107,7 +107,9 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       costBasis: Number(cells[columnIndex('cost_basis')]),
       currency,
       exchange: (cells[columnIndex('exchange')] ?? '').toUpperCase(),
-      targetWeight: Number(cells[columnIndex('target_weight')]) || 0,
+      targetWeight: cells[columnIndex('target_weight')]
+        ? Number(cells[columnIndex('target_weight')]) || null
+        : null,
       indicatedAnnualDividend: cells[columnIndex('indicated_annual_dividend')]
         ? Number(cells[columnIndex('indicated_annual_dividend')]) || null
         : null,
@@ -464,7 +466,7 @@ function usePortfolioState(): UsePortfolioReturn {
         String(holding.costBasis),
         holding.currency,
         holding.exchange,
-        String(holding.targetWeight),
+        holding.targetWeight != null ? String(holding.targetWeight) : '',
       ]),
     ];
     return rows.map((row) => row.join(',')).join('\n');

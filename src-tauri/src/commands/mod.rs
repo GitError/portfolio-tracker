@@ -228,7 +228,7 @@ mod tests {
         let rows = parse_import_rows(csv).expect("parse csv");
 
         assert_eq!(rows.len(), 1);
-        assert!((rows[0].target_weight - 12.5).abs() < 0.001);
+        assert!((rows[0].target_weight.expect("target_weight") - 12.5).abs() < 0.001);
     }
 
     #[test]
@@ -247,7 +247,7 @@ mod tests {
                    AAPL,Apple Inc.,stock,5,120,USD,60\n\
                    MSFT,Microsoft,stock,3,200,USD,50\n";
         let rows = parse_import_rows(csv).expect("rows should parse");
-        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        let total: f64 = rows.iter().filter_map(|r| r.target_weight).sum();
         assert!(
             total > 100.0,
             "expected total > 100 to trigger command-level guard, got {}",
@@ -261,7 +261,7 @@ mod tests {
                    AAPL,Apple Inc.,stock,5,120,USD,60\n\
                    MSFT,Microsoft,stock,3,200,USD,40\n";
         let rows = parse_import_rows(csv).expect("rows should parse");
-        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        let total: f64 = rows.iter().filter_map(|r| r.target_weight).sum();
         assert!(
             (total - 100.0).abs() < 0.001,
             "expected total == 100, got {}",
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn build_holdings_csv_includes_target_weight_column() {
         let mut holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
-        holding.target_weight = 22.5;
+        holding.target_weight = Some(22.5);
 
         let csv = build_holdings_csv(&[holding]).expect("build csv");
 
@@ -291,16 +291,16 @@ mod tests {
         let mut h1 = make_holding("AAPL", AssetType::Stock, 10.0, 155.25, "USD");
         h1.name = "Apple Inc.".to_string();
         h1.exchange = "NMS".to_string();
-        h1.target_weight = 25.0;
+        h1.target_weight = Some(25.0);
 
         let mut h2 = make_holding("XIU.TO", AssetType::Etf, 50.0, 34.5, "CAD");
         h2.name = "iShares S&P/TSX 60 Index ETF".to_string();
         h2.exchange = "TRT".to_string();
-        h2.target_weight = 15.0;
+        h2.target_weight = Some(15.0);
 
         let mut h3 = make_holding("BTC-USD", AssetType::Crypto, 0.5, 40000.0, "USD");
         h3.name = "Bitcoin USD".to_string();
-        h3.target_weight = 10.0;
+        h3.target_weight = Some(10.0);
 
         let holdings = vec![h1, h2, h3];
         let csv = build_holdings_csv(&holdings).expect("build csv");
@@ -316,7 +316,7 @@ mod tests {
         assert!((rows[0].cost_basis - 155.25).abs() < 0.001);
         assert_eq!(rows[0].currency, "USD");
         assert_eq!(rows[0].exchange, "NMS");
-        assert!((rows[0].target_weight - 25.0).abs() < 0.001);
+        assert!((rows[0].target_weight.expect("target_weight") - 25.0).abs() < 0.001);
 
         // Row 1 — XIU.TO (etf)
         assert_eq!(rows[1].symbol, "XIU.TO");
@@ -325,7 +325,7 @@ mod tests {
         assert!((rows[1].cost_basis - 34.5).abs() < 0.001);
         assert_eq!(rows[1].currency, "CAD");
         assert_eq!(rows[1].exchange, "TRT");
-        assert!((rows[1].target_weight - 15.0).abs() < 0.001);
+        assert!((rows[1].target_weight.expect("target_weight") - 15.0).abs() < 0.001);
 
         // Row 2 — BTC-USD (crypto)
         assert_eq!(rows[2].symbol, "BTC-USD");
@@ -333,7 +333,7 @@ mod tests {
         assert!((rows[2].quantity - 0.5).abs() < 0.001);
         assert!((rows[2].cost_basis - 40000.0).abs() < 0.001);
         assert_eq!(rows[2].currency, "USD");
-        assert!((rows[2].target_weight - 10.0).abs() < 0.001);
+        assert!((rows[2].target_weight.expect("target_weight") - 10.0).abs() < 0.001);
     }
 
     /// Exporting a single cash holding round-trips correctly.
@@ -341,7 +341,7 @@ mod tests {
     fn csv_round_trip_cash_holding() {
         let mut cash = make_holding("CAD-CASH", AssetType::Cash, 5000.0, 1.0, "CAD");
         cash.name = "CAD Cash".to_string();
-        cash.target_weight = 5.0;
+        cash.target_weight = Some(5.0);
 
         let csv = build_holdings_csv(&[cash]).expect("build csv");
         let rows = parse_import_rows(&csv).expect("parse csv");
@@ -352,7 +352,7 @@ mod tests {
         assert!((rows[0].quantity - 5000.0).abs() < 0.001);
         assert!((rows[0].cost_basis - 1.0).abs() < 0.001);
         assert_eq!(rows[0].currency, "CAD");
-        assert!((rows[0].target_weight - 5.0).abs() < 0.001);
+        assert!((rows[0].target_weight.expect("target_weight") - 5.0).abs() < 0.001);
     }
 
     /// An empty holdings slice produces a CSV that fails parsing (no data rows).
@@ -366,17 +366,18 @@ mod tests {
         assert!(result.unwrap_err().contains("empty"));
     }
 
-    /// Round-trip with target_weight = 0 (the default) is preserved as 0.
+    /// A holding with no target_weight set (the default) round-trips as unset,
+    /// not as an explicit 0.
     #[test]
-    fn csv_round_trip_zero_target_weight() {
+    fn csv_round_trip_unset_target_weight_stays_none() {
         let holding = make_holding("MSFT", AssetType::Stock, 3.0, 200.0, "USD");
-        // target_weight is already 0.0 from make_holding
+        // target_weight is None (unset) from make_holding
 
         let csv = build_holdings_csv(&[holding]).expect("build csv");
         let rows = parse_import_rows(&csv).expect("parse csv");
 
         assert_eq!(rows.len(), 1);
-        assert!((rows[0].target_weight - 0.0).abs() < 0.001);
+        assert_eq!(rows[0].target_weight, None);
     }
 
     #[test]
@@ -539,7 +540,7 @@ mod tests {
                    AAPL,Apple,stock,5,120,USD,60\n\
                    MSFT,Microsoft,stock,3,200,USD,50\n";
         let rows = parse_import_rows(csv).expect("parse ok");
-        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        let total: f64 = rows.iter().filter_map(|r| r.target_weight).sum();
         assert!(
             total > 100.0,
             "csv weight sum should exceed 100, got {:.1}",
@@ -560,7 +561,7 @@ mod tests {
                    AAPL,Apple,stock,5,120,USD,60\n\
                    MSFT,Microsoft,stock,3,200,USD,40\n";
         let rows = parse_import_rows(csv).expect("parse ok");
-        let total: f64 = rows.iter().map(|r| r.target_weight).sum();
+        let total: f64 = rows.iter().filter_map(|r| r.target_weight).sum();
         assert!(
             total <= 100.0,
             "csv weight sum should be <= 100, got {:.1}",
@@ -574,7 +575,7 @@ mod tests {
         let csv = "symbol,name,type,quantity,cost_basis,currency,target_weight\n\
                    GOOG,Alphabet,stock,2,150,USD,40\n";
         let rows = parse_import_rows(csv).expect("parse ok");
-        let csv_sum: f64 = rows.iter().map(|r| r.target_weight).sum();
+        let csv_sum: f64 = rows.iter().filter_map(|r| r.target_weight).sum();
         // csv_sum alone (40) is <= 100, so it passes the CSV-level guard
         assert!(csv_sum <= 100.0);
         // But combined with existing it exceeds 100

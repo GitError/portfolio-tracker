@@ -338,7 +338,9 @@ pub struct Holding {
     pub cost_basis: f64,
     pub currency: String,
     pub exchange: String,
-    pub target_weight: f64,
+    /// `None` means no target has been set; `Some(0.0)` means the user
+    /// explicitly targeted this holding at 0% (a "sell everything" signal).
+    pub target_weight: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
     pub indicated_annual_dividend: Option<f64>,
@@ -360,7 +362,7 @@ pub struct HoldingInput {
     pub cost_basis: f64,
     pub currency: String,
     pub exchange: String,
-    pub target_weight: f64,
+    pub target_weight: Option<f64>,
     pub indicated_annual_dividend: Option<f64>,
     pub indicated_annual_dividend_currency: Option<String>,
     pub dividend_frequency: Option<String>,
@@ -531,7 +533,7 @@ pub struct PreviewRow {
     pub exchange: String,
     pub quantity: f64,
     pub cost_basis: f64,
-    pub target_weight: f64,
+    pub target_weight: Option<f64>,
     /// "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed"
     pub status: String,
 }

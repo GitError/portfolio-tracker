@@ -29,7 +29,8 @@ export interface HoldingInput {
   costBasis: number;
   currency: string;
   exchange: string;
-  targetWeight: number;
+  /** `null` means no target has been set; `0` means explicitly targeted at 0% ("sell everything"). */
+  targetWeight: number | null;
   indicatedAnnualDividend: number | null;
   indicatedAnnualDividendCurrency: string | null;
   dividendFrequency: 'monthly' | 'quarterly' | 'semi-annual' | 'annual' | 'irregular' | null;
@@ -46,7 +47,8 @@ export interface Holding {
   costBasis: number; // per unit, in original currency
   currency: string; // ISO currency code
   exchange: string; // exchange code, e.g. "NYSE", "TSX"
-  targetWeight: number; // desired % of total portfolio value
+  /** `null` means no target has been set; `0` means explicitly targeted at 0% ("sell everything"). */
+  targetWeight: number | null;
   createdAt: string; // ISO 8601
   updatedAt: string; // ISO 8601
   indicatedAnnualDividend: number | null;
@@ -272,7 +274,7 @@ export interface PreviewRow {
   exchange: string;
   quantity: number;
   costBasis: number;
-  targetWeight: number;
+  targetWeight: number | null;
   status:
     | 'ready'
     | 'cash'

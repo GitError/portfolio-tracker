@@ -8,9 +8,9 @@ use crate::db;
 use crate::error::AppError;
 use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{
-    CountryWeight, HoldingId, HoldingWithPrice, PortfolioAnalytics, PortfolioRiskMetrics,
-    PortfolioSnapshot, RealizedGainsSummary, RebalanceSuggestion, SectorWeight, SymbolMetadata,
-    Transaction,
+    AssetType, CountryWeight, HoldingId, HoldingWithPrice, PortfolioAnalytics,
+    PortfolioRiskMetrics, PortfolioSnapshot, RealizedGainsSummary, RebalanceSuggestion,
+    SectorWeight, SymbolMetadata, Transaction,
 };
 
 use super::{get_base_currency, DbState, HttpClient, RealizedGainsCacheState};
@@ -191,9 +191,33 @@ pub(crate) async fn get_symbol_metadata_with_cache(
                 .and_then(|v| v.as_f64()),
         };
 
-        // Persist to cache (best-effort)
+        // Persist to cache (best-effort). Pull name/asset_type/exchange/currency
+        // from the same bulk quote response so a brand-new symbol_cache row gets
+        // real metadata instead of a hardcoded 'stock'/blank placeholder (#610).
+        let name = quote
+            .and_then(|q| q.get("longName").or_else(|| q.get("shortName")))
+            .and_then(|v| v.as_str());
+        let exchange = quote
+            .and_then(|q| q.get("fullExchangeName").or_else(|| q.get("exchange")))
+            .and_then(|v| v.as_str());
+        let currency = quote
+            .and_then(|q| q.get("currency"))
+            .and_then(|v| v.as_str());
+        // Mirrors the quoteType → AssetType mapping in search.rs's symbol search.
+        let asset_type = quote
+            .and_then(|q| q.get("quoteType"))
+            .and_then(|v| v.as_str())
+            .map(|quote_type| match quote_type {
+                "ETF" | "MUTUALFUND" => AssetType::Etf,
+                "CRYPTOCURRENCY" => AssetType::Crypto,
+                _ => AssetType::Stock,
+            });
+
         if let Some(pool) = pool {
-            if let Err(e) = db::upsert_symbol_fundamentals(pool, &meta).await {
+            if let Err(e) =
+                db::upsert_symbol_fundamentals(pool, &meta, name, asset_type, exchange, currency)
+                    .await
+            {
                 tracing::warn!("Failed to cache symbol fundamentals: {}", e);
             }
         }
@@ -456,9 +480,13 @@ pub async fn get_rebalance_suggestions(
 
 /// Pure computation behind `get_rebalance_suggestions`, split out for unit testing.
 ///
-/// A holding targeted at 0% is always a full-drift "sell everything" candidate:
-/// its drift equals its entire current weight, so it must bypass `drift_threshold`
-/// instead of being skipped like a holding that simply has no target set.
+/// `target_weight` is `None` when the user has never set a target for a holding,
+/// and `Some(w)` when they have (including `Some(0.0)` for an explicit 0% target).
+/// A holding with no target set is excluded from suggestions entirely — there is
+/// nothing to rebalance towards. A holding *explicitly* targeted at 0% is always
+/// a full-drift "sell everything" candidate: its drift equals its entire current
+/// weight, so it must bypass `drift_threshold` instead of being skipped like a
+/// normal below-threshold drift.
 fn compute_rebalance_suggestions(
     holdings: Vec<HoldingWithPrice>,
     total_value: f64,
@@ -468,14 +496,16 @@ fn compute_rebalance_suggestions(
         .into_iter()
         .filter(|h| h.asset_type.as_str() != "cash")
         .filter_map(|h| {
-            let is_zero_target = h.holding.target_weight == 0.0;
-            if is_zero_target && h.weight == 0.0 {
-                // Nothing held and nothing targeted — no suggestion to make.
+            // No target set at all — nothing to rebalance towards.
+            let target_weight = h.holding.target_weight?;
+            let is_explicit_zero_target = target_weight == 0.0;
+            if is_explicit_zero_target && h.weight == 0.0 {
+                // Explicitly targeted at 0% but never held — no suggestion to make.
                 return None;
             }
-            let target_value_cad = total_value * (h.target_weight / 100.0);
-            let drift = h.weight - h.target_weight;
-            if !is_zero_target && drift.abs() < drift_threshold {
+            let target_value_cad = total_value * (target_weight / 100.0);
+            let drift = h.weight - target_weight;
+            if !is_explicit_zero_target && drift.abs() < drift_threshold {
                 return None;
             }
             // positive = sell (over-weight), negative = buy (under-weight)
@@ -492,7 +522,7 @@ fn compute_rebalance_suggestions(
                 current_value_cad: h.market_value_cad,
                 target_value_cad,
                 current_weight: h.weight,
-                target_weight: h.holding.target_weight,
+                target_weight,
                 drift,
                 suggested_trade_cad,
                 suggested_units,
@@ -520,7 +550,7 @@ mod compute_rebalance_suggestions_tests {
     fn holding_with_price(
         symbol: &str,
         asset_type: AssetType,
-        target_weight: f64,
+        target_weight: Option<f64>,
         weight: f64,
         market_value_cad: f64,
         current_price_cad: f64,
@@ -563,13 +593,53 @@ mod compute_rebalance_suggestions_tests {
     }
 
     #[test]
-    fn zero_target_weight_always_suggests_selling_everything() {
-        // Held at 15% of the portfolio but targeted at 0% — should always appear,
-        // even with a drift_threshold far above its current weight.
+    fn no_target_set_is_excluded_even_when_held_and_above_threshold() {
+        // Regression guard for #608: held at 15% of the portfolio but the user
+        // never set a target (None) — must NOT be treated as a 0% target and
+        // must NOT produce a "sell everything" suggestion, even with a
+        // drift_threshold far below its current weight.
         let holdings = vec![holding_with_price(
             "XYZ",
             AssetType::Stock,
+            None,
+            15.0,
+            1500.0,
+            50.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 1.0);
+
+        assert!(
+            suggestions.is_empty(),
+            "holding with no target set must be excluded entirely, got: {:?}",
+            suggestions
+        );
+    }
+
+    #[test]
+    fn no_target_set_and_zero_weight_produces_no_suggestion() {
+        let holdings = vec![holding_with_price(
+            "NONE",
+            AssetType::Stock,
+            None,
             0.0,
+            0.0,
+            50.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 1.0);
+
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn explicit_zero_target_always_suggests_selling_everything() {
+        // Held at 15% of the portfolio but explicitly targeted at 0% — should
+        // always appear, even with a drift_threshold far above its current weight.
+        let holdings = vec![holding_with_price(
+            "XYZ",
+            AssetType::Stock,
+            Some(0.0),
             15.0,
             1500.0,
             50.0,
@@ -588,12 +658,12 @@ mod compute_rebalance_suggestions_tests {
     }
 
     #[test]
-    fn zero_target_and_zero_weight_produces_no_suggestion() {
-        // Never held and never targeted — nothing to suggest.
+    fn explicit_zero_target_and_zero_weight_produces_no_suggestion() {
+        // Explicitly targeted at 0% but never held — nothing to suggest.
         let holdings = vec![holding_with_price(
             "NONE",
             AssetType::Stock,
-            0.0,
+            Some(0.0),
             0.0,
             0.0,
             50.0,
@@ -609,7 +679,7 @@ mod compute_rebalance_suggestions_tests {
         let holdings = vec![holding_with_price(
             "CASH",
             AssetType::Cash,
-            0.0,
+            Some(0.0),
             15.0,
             1500.0,
             1.0,
@@ -626,7 +696,7 @@ mod compute_rebalance_suggestions_tests {
         let holdings = vec![holding_with_price(
             "ABC",
             AssetType::Stock,
-            20.0,
+            Some(20.0),
             22.0,
             2200.0,
             50.0,
@@ -644,7 +714,7 @@ mod compute_rebalance_suggestions_tests {
         let holdings = vec![holding_with_price(
             "NEW",
             AssetType::Stock,
-            10.0,
+            Some(10.0),
             0.0,
             0.0,
             50.0,

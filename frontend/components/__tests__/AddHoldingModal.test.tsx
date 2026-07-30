@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AddHoldingModal } from '../AddHoldingModal';
 import { ToastProvider } from '../ui/Toast';
 
@@ -178,5 +178,51 @@ describe('AddHoldingModal', () => {
     renderModal({ onClose });
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits targetWeight as null when the Target Weight field is left blank', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderModal({ onSave });
+
+    fireEvent.change(screen.getByTestId('symbol-search'), { target: { value: 'AAPL' } });
+    fireEvent.change(screen.getByPlaceholderText('Apple Inc.'), {
+      target: { value: 'Apple Inc.' },
+    });
+
+    // Column order in the form is: Quantity, Cost Per Unit, Target Weight %
+    const numberInputs = screen.getAllByRole('spinbutton');
+    expect(numberInputs.length).toBeGreaterThanOrEqual(3);
+    fireEvent.change(numberInputs[0]!, { target: { value: '10' } });
+    fireEvent.change(numberInputs[1]!, { target: { value: '150' } });
+    // Target Weight (numberInputs[2]) is intentionally left blank — no target set.
+
+    const submitBtn = screen.getByRole('button', { name: /add holding/i });
+    expect(submitBtn).not.toBeDisabled();
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ targetWeight: null });
+  });
+
+  it('submits an explicit targetWeight of 0 as 0, not null', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    renderModal({ onSave });
+
+    fireEvent.change(screen.getByTestId('symbol-search'), { target: { value: 'AAPL' } });
+    fireEvent.change(screen.getByPlaceholderText('Apple Inc.'), {
+      target: { value: 'Apple Inc.' },
+    });
+
+    const numberInputs = screen.getAllByRole('spinbutton');
+    expect(numberInputs.length).toBeGreaterThanOrEqual(3);
+    fireEvent.change(numberInputs[0]!, { target: { value: '10' } });
+    fireEvent.change(numberInputs[1]!, { target: { value: '150' } });
+    fireEvent.change(numberInputs[2]!, { target: { value: '0' } });
+
+    const submitBtn = screen.getByRole('button', { name: /add holding/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ targetWeight: 0 });
   });
 });

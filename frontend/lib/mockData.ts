@@ -346,9 +346,9 @@ function buildSnapshot(): PortfolioSnapshot {
   const holdings: HoldingWithPrice[] = RAW_HOLDINGS.map((h) => ({
     ...h,
     weight: (h.marketValueCad / totalValue) * 100,
-    targetValue: totalValue * (h.targetWeight / 100),
-    targetDeltaValue: totalValue * (h.targetWeight / 100) - h.marketValueCad,
-    targetDeltaPercent: h.targetWeight - (h.marketValueCad / totalValue) * 100,
+    targetValue: totalValue * ((h.targetWeight ?? 0) / 100),
+    targetDeltaValue: totalValue * ((h.targetWeight ?? 0) / 100) - h.marketValueCad,
+    targetDeltaPercent: (h.targetWeight ?? 0) - (h.marketValueCad / totalValue) * 100,
   }));
 
   const totalGainLoss = totalValue - totalCost;
@@ -368,7 +368,7 @@ function buildSnapshot(): PortfolioSnapshot {
     dailyPnl,
     lastUpdated: new Date().toISOString(),
     baseCurrency: 'CAD',
-    totalTargetWeight: holdings.reduce((sum, h) => sum + h.targetWeight, 0),
+    totalTargetWeight: holdings.reduce((sum, h) => sum + (h.targetWeight ?? 0), 0),
     targetCashDelta: holdings
       .filter((holding) => holding.assetType === 'cash')
       .reduce((sum, holding) => sum + (holding.marketValueCad - holding.targetValue), 0),

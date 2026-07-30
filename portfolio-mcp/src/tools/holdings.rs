@@ -32,8 +32,8 @@ pub struct AddHoldingParams {
     pub currency: String,
     /// Exchange identifier (e.g. "TSX", "NASDAQ").
     pub exchange: String,
-    /// Target portfolio weight as a percentage (0–100).
-    pub target_weight: f64,
+    /// Target portfolio weight as a percentage (0–100). Omit to leave unset.
+    pub target_weight: Option<f64>,
     /// Indicated annual dividend per unit in the dividend currency.
     pub indicated_annual_dividend: Option<f64>,
     pub indicated_annual_dividend_currency: Option<String>,

@@ -79,7 +79,9 @@ pub fn build_portfolio_snapshot(
             (1.0f64, 0.0f64, false)
         } else {
             match price_map.get(&holding.symbol) {
-                Some(p) => {
+                // A cached price of 0.0 or negative is invalid — treat it the
+                // same as a cache miss rather than using it in calculations.
+                Some(p) if p.price > 0.0 => {
                     let stale = DateTime::parse_from_rfc3339(&p.updated_at)
                         .ok()
                         .map(|t| {
@@ -91,7 +93,7 @@ pub fn build_portfolio_snapshot(
                         .unwrap_or(true);
                     (p.price, p.change_percent, stale)
                 }
-                None => (holding.cost_basis, 0.0, true),
+                _ => (holding.cost_basis, 0.0, true),
             }
         };
 
@@ -177,7 +179,7 @@ pub fn build_portfolio_snapshot(
         });
     }
 
-    let total_target_weight: f64 = holdings.iter().map(|h| h.target_weight).sum();
+    let total_target_weight: f64 = holdings.iter().filter_map(|h| h.target_weight).sum();
     let mut target_cash_delta = 0.0f64;
 
     for hwp in &mut holdings_with_price {
@@ -186,9 +188,10 @@ pub fn build_portfolio_snapshot(
         } else {
             0.0
         };
-        hwp.target_value = total_value * (hwp.target_weight / 100.0);
+        let effective_target_weight = hwp.target_weight.unwrap_or(0.0);
+        hwp.target_value = total_value * (effective_target_weight / 100.0);
         hwp.target_delta_value = hwp.target_value - hwp.market_value_cad;
-        hwp.target_delta_percent = hwp.target_weight - hwp.weight;
+        hwp.target_delta_percent = effective_target_weight - hwp.weight;
 
         if hwp.asset_type.as_str() == "cash" {
             target_cash_delta += hwp.market_value_cad - hwp.target_value;

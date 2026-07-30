@@ -8,7 +8,7 @@ originalSymbol: string,
 /**
  * Resolved Yahoo Finance symbol (e.g. "BMO.TO"), empty when unresolvable
  */
-resolvedSymbol: string, name: string, assetType: string, currency: string, exchange: string, quantity: number, costBasis: number, targetWeight: number, 
+resolvedSymbol: string, name: string, assetType: string, currency: string, exchange: string, quantity: number, costBasis: number, targetWeight: number | null, 
 /**
  * "ready" | "cash" | "duplicate" | "invalid_symbol" | "validation_failed"
  */
