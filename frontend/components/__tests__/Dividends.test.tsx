@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { Dividends } from '../Dividends';
 
 // Initialize i18n (Dividends uses useTranslation)
-import '../../lib/i18n';
+import i18next from '../../lib/i18n';
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => false,
@@ -33,12 +33,14 @@ vi.mock('../../hooks/usePortfolio', () => ({
   }),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
+  // Pin language so English-text assertions don't break if the default locale changes.
+  await i18next.changeLanguage('en');
 });
 
 function renderDividends() {

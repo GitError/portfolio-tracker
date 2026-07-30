@@ -1,7 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-import '../../lib/i18n';
+import i18next from '../../lib/i18n';
+
+// Pin language so English-text assertions don't break if the default locale changes.
+beforeEach(async () => {
+  await i18next.changeLanguage('en');
+});
 
 // ─── ResilienceSummary ────────────────────────────────────────────────────────
 import { ResilienceSummary } from '../ResilienceSummary';

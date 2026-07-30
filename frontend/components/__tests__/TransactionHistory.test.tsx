@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-import '../../lib/i18n';
+import i18next from '../../lib/i18n';
 import { TransactionHistory } from '../TransactionHistory';
 
 const mockTransactions = [
@@ -144,12 +144,14 @@ vi.mock('../../hooks/usePortfolio', () => ({
   }),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
+  // Pin language so English-text assertions don't break if the default locale changes.
+  await i18next.changeLanguage('en');
 });
 
 function renderTxHistory() {
