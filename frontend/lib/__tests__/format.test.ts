@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { formatCurrency, formatPercent, formatNumber, formatCompact } from '../format';
+import {
+  formatCurrency,
+  formatPercent,
+  formatNumber,
+  formatCompact,
+  formatMonthYear,
+  formatShortDate,
+} from '../format';
 
 const EM_DASH = '—';
 
@@ -172,5 +179,37 @@ describe('formatCompact', () => {
     it('formats zero', () => {
       expect(formatCompact(0)).toBe('$0.00');
     });
+  });
+});
+
+describe('formatMonthYear', () => {
+  it('returns em dash for null/undefined/invalid', () => {
+    expect(formatMonthYear(null)).toBe('—');
+    expect(formatMonthYear(undefined)).toBe('—');
+    expect(formatMonthYear('not-a-date')).toBe('—');
+  });
+
+  it('formats using the default (en) locale', () => {
+    expect(formatMonthYear('2026-01-15T12:00:00Z')).toBe('Jan 2026');
+  });
+
+  it('formats using an explicit locale override, not the hardcoded en locale', () => {
+    expect(formatMonthYear('2026-01-15T12:00:00Z', 'de')).toBe('Jan. 2026');
+  });
+});
+
+describe('formatShortDate', () => {
+  it('returns em dash for null/undefined/invalid', () => {
+    expect(formatShortDate(null)).toBe('—');
+    expect(formatShortDate(undefined)).toBe('—');
+    expect(formatShortDate('not-a-date')).toBe('—');
+  });
+
+  it('formats using the default (en) locale', () => {
+    expect(formatShortDate('2026-01-05T12:00:00Z')).toBe('Jan 5, 2026');
+  });
+
+  it('formats using an explicit locale override, not the hardcoded en locale', () => {
+    expect(formatShortDate('2026-01-14T12:00:00Z', 'de')).toBe('14. Jan. 2026');
   });
 });

@@ -53,19 +53,27 @@ export function isPriceStale(
 }
 
 /** Formats a date string as "Dec 2025". Returns "—" for null/invalid. */
-export function formatMonthYear(dateStr: string | null | undefined): string {
+export function formatMonthYear(
+  dateStr: string | null | undefined,
+  localeOverride?: string
+): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en', { month: 'short', year: 'numeric' });
+  const locale = localeOverride || i18next.language || 'en';
+  return d.toLocaleDateString(locale, { month: 'short', year: 'numeric' });
 }
 
 /** Formats a date string as "Jan 5, 2025". Returns "—" for null/invalid. */
-export function formatShortDate(dateStr: string | null | undefined): string {
+export function formatShortDate(
+  dateStr: string | null | undefined,
+  localeOverride?: string
+): string {
   if (!dateStr) return '—';
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
+  const locale = localeOverride || i18next.language || 'en';
+  return d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function formatCompact(n: number | null | undefined): string {

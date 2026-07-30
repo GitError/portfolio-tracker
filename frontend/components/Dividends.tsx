@@ -10,6 +10,7 @@ import type {
 } from '../types/portfolio';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { formatCurrency, formatNumber } from '../lib/format';
+import { summarizeDividendsBySymbol } from '../lib/dividendSummary';
 import { MOCK_DIVIDENDS, MOCK_HOLDINGS } from '../lib/mockData';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
@@ -267,20 +268,12 @@ export function Dividends() {
       }));
   }, [portfolio]);
 
-  // Summary stats: total cash received (amountPerUnit x quantity), not the raw per-unit amount
-  const summary = useMemo(() => {
-    const bySymbol: Record<string, { total: number; currency: string; count: number }> = {};
-    for (const div of dividends) {
-      if (!bySymbol[div.symbol]) {
-        bySymbol[div.symbol] = { total: 0, currency: div.currency, count: 0 };
-      }
-      const holding = holdings.find((h) => h.id === div.holdingId);
-      const entry = bySymbol[div.symbol]!;
-      entry.total += div.amountPerUnit * (holding?.quantity ?? 0);
-      entry.count += 1;
-    }
-    return bySymbol;
-  }, [dividends, holdings]);
+  // Summary stats: total cash received per symbol. See summarizeDividendsBySymbol for the
+  // known limitation around using current (not pay-date) quantity — tracked as #602.
+  const summary = useMemo(
+    () => summarizeDividendsBySymbol(dividends, holdings),
+    [dividends, holdings]
+  );
 
   if (loading) {
     return (
