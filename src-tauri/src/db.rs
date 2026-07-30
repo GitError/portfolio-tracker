@@ -112,7 +112,6 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> Result<Ho
 }
 
 /// Same as `insert_holding` but operates on an existing transaction connection,
-
 /// enabling atomic bulk inserts (e.g. CSV import).
 pub async fn insert_holding_in_tx(
     conn: &mut SqliteConnection,
