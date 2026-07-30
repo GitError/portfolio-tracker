@@ -12,6 +12,8 @@ mod portfolio;
 mod price;
 mod search;
 mod stress;
+#[cfg(test)]
+mod test_helpers;
 mod types;
 
 #[cfg(test)]
