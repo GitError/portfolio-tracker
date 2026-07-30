@@ -3,6 +3,7 @@ mod snapshot;
 mod stress;
 mod tools;
 mod types;
+mod validation;
 
 use anyhow::Result;
 use rmcp::{transport::stdio, ServiceExt};

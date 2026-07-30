@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 use crate::{
     db,
     types::{AccountType, AssetType, Holding, HoldingId, HoldingInput},
+    validation,
 };
 
 use super::PortfolioMcpServer;
@@ -68,6 +69,19 @@ pub async fn add_holding(pool: &SqlitePool, params: AddHoldingParams) -> Result<
         .parse::<AccountType>()
         .map_err(|e| McpError::invalid_params(e, None))?;
 
+    validation::validate_non_empty("symbol", &params.symbol)?;
+    validation::validate_non_empty("name", &params.name)?;
+    let currency =
+        validation::validate_holding_fields(params.quantity, params.cost_basis, &params.currency)?;
+    validation::validate_target_weight(params.target_weight)?;
+
+    if let Some(target_weight) = params.target_weight {
+        let existing_sum = db::sum_target_weights(pool, None)
+            .await
+            .map_err(PortfolioMcpServer::tool_error)?;
+        validation::validate_target_weight_budget(Some(target_weight), existing_sum)?;
+    }
+
     let input = HoldingInput {
         symbol: params.symbol,
         name: params.name,
@@ -76,7 +90,7 @@ pub async fn add_holding(pool: &SqlitePool, params: AddHoldingParams) -> Result<
         account_id: params.account_id,
         quantity: params.quantity,
         cost_basis: params.cost_basis,
-        currency: params.currency,
+        currency,
         exchange: params.exchange,
         target_weight: params.target_weight,
         indicated_annual_dividend: params.indicated_annual_dividend,

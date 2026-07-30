@@ -23,11 +23,14 @@ pub struct ParsedImportRow {
 }
 
 /// Neutralize CSV/spreadsheet formula injection: values starting with `=`, `+`,
-/// `-`, or `@` are interpreted as formulas by Excel/LibreOffice/Google Sheets
-/// when the exported file is opened. Prefixing with a single quote forces the
-/// cell to be treated as literal text instead of being evaluated.
+/// `-`, `@`, tab, or carriage return are interpreted as formulas by
+/// Excel/LibreOffice/Google Sheets when the exported file is opened (tab/CR
+/// prefixes are stripped or otherwise treated as leading whitespace by some
+/// parsers, exposing a `=`/`+`/`-`/`@` character beneath them). Prefixing with
+/// a single quote forces the cell to be treated as literal text instead of
+/// being evaluated.
 fn neutralize_formula_injection(s: &str) -> String {
-    if s.starts_with(['=', '+', '-', '@']) {
+    if s.starts_with(['=', '+', '-', '@', '\t', '\r']) {
         format!("'{}", s)
     } else {
         s.to_string()
@@ -526,6 +529,62 @@ mod tests {
         assert_eq!(&record[1], "'+SUM(1,1)");
         assert_eq!(&record[7], "'-2+3");
         assert_eq!(&record[10], "'@SUM");
+    }
+
+    #[test]
+    fn build_holdings_csv_neutralizes_tab_prefixed_formula_injection() {
+        let mut holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
+        holding.name = "\t=DANGEROUS".to_string();
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+        let mut reader = ReaderBuilder::new().from_reader(csv.as_bytes());
+        let record = reader
+            .records()
+            .next()
+            .expect("data row")
+            .expect("valid csv row");
+
+        assert_eq!(&record[1], "'\t=DANGEROUS");
+    }
+
+    #[test]
+    fn build_holdings_csv_neutralizes_cr_prefixed_formula_injection() {
+        let mut holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
+        holding.name = "\r=DANGEROUS".to_string();
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+        let mut reader = ReaderBuilder::new().from_reader(csv.as_bytes());
+        let record = reader
+            .records()
+            .next()
+            .expect("data row")
+            .expect("valid csv row");
+
+        assert_eq!(&record[1], "'\r=DANGEROUS");
+    }
+
+    #[test]
+    fn build_holdings_csv_neutralizes_tab_and_cr_across_all_string_fields() {
+        let mut holding = make_holding("\tAAPL", AssetType::Stock, 5.0, 120.0, "\rUSD");
+        holding.name = "\t=SUM(A1)".to_string();
+        holding.exchange = "\rNASDAQ".to_string();
+        holding.indicated_annual_dividend_currency = Some("\tUSD".to_string());
+        holding.maturity_date = Some("\r2030-01-01".to_string());
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+        let mut reader = ReaderBuilder::new().from_reader(csv.as_bytes());
+        let record = reader
+            .records()
+            .next()
+            .expect("data row")
+            .expect("valid csv row");
+
+        assert_eq!(&record[0], "'\tAAPL");
+        assert_eq!(&record[1], "'\t=SUM(A1)");
+        assert_eq!(&record[6], "'\rUSD");
+        assert_eq!(&record[7], "'\rNASDAQ");
+        assert_eq!(&record[10], "'\tUSD");
+        assert_eq!(&record[12], "'\r2030-01-01");
     }
 
     #[test]
