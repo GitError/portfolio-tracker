@@ -146,7 +146,7 @@ pub async fn import_holdings_csv(
     // Weight validation runs after deduplication so that re-importing an existing
     // portfolio (all rows skipped as duplicates) never triggers a false overflow.
     // All pending inputs (cash and non-cash alike) are included in this sum.
-    let import_weight_sum: f64 = pending_inputs.iter().map(|h| h.target_weight).sum();
+    let import_weight_sum: f64 = pending_inputs.iter().filter_map(|h| h.target_weight).sum();
     if import_weight_sum > 100.0 + WEIGHT_EPSILON {
         return Err(AppError::Validation(format!(
             "Combined target weights ({:.2}%) exceed 100%",

@@ -13,4 +13,9 @@ fxStale: boolean,
  * True when the cached price for this holding is older than the staleness
  * threshold (currently 24 hours). Cash holdings are always false.
  */
-priceIsStale: boolean, id: HoldingId, symbol: string, name: string, assetType: AssetType, account: AccountType, accountId: string | null, accountName: string | null, quantity: number, costBasis: number, currency: string, exchange: string, targetWeight: number, createdAt: string, updatedAt: string, indicatedAnnualDividend: number | null, indicatedAnnualDividendCurrency: string | null, dividendFrequency: string | null, maturityDate: string | null, };
+priceIsStale: boolean, id: HoldingId, symbol: string, name: string, assetType: AssetType, account: AccountType, accountId: string | null, accountName: string | null, quantity: number, costBasis: number, currency: string, exchange: string, 
+/**
+ * `None` means no target has been set; `Some(0.0)` means the user
+ * explicitly targeted this holding at 0% (a "sell everything" signal).
+ */
+targetWeight: number | null, createdAt: string, updatedAt: string, indicatedAnnualDividend: number | null, indicatedAnnualDividendCurrency: string | null, dividendFrequency: string | null, maturityDate: string | null, };

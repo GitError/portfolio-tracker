@@ -26,7 +26,7 @@ mod tests {
             cost_basis: 150.0,
             currency: "CAD".to_string(),
             exchange: "TSX".to_string(),
-            target_weight: 0.0,
+            target_weight: None,
             indicated_annual_dividend: None,
             indicated_annual_dividend_currency: None,
             dividend_frequency: None,
@@ -376,11 +376,11 @@ mod tests {
         let pool = crate::db::open_test_db().await;
 
         let mut h1 = holding_input("A");
-        h1.target_weight = 40.0;
+        h1.target_weight = Some(40.0);
         db::insert_holding(&pool, h1).await.expect("insert A");
 
         let mut h2 = holding_input("B");
-        h2.target_weight = 35.0;
+        h2.target_weight = Some(35.0);
         db::insert_holding(&pool, h2).await.expect("insert B");
 
         let sum = db::sum_target_weights(&pool, None)

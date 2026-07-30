@@ -110,14 +110,16 @@ pub async fn add_holding(
 ) -> Result<Holding, AppError> {
     validate_holding_fields(holding.quantity, holding.cost_basis, &holding.currency)?;
     let pool = &db.0;
-    if holding.target_weight > 0.0 {
-        let current_sum = db::sum_target_weights(pool, None).await?;
-        let new_total = current_sum + holding.target_weight;
-        if new_total > 100.0 + WEIGHT_EPSILON {
-            return Err(AppError::Validation(format!(
-                "Total target weight would exceed 100% (currently {:.1}%). Adjust existing allocations before adding this holding.",
-                current_sum
-            )));
+    if let Some(target_weight) = holding.target_weight {
+        if target_weight > 0.0 {
+            let current_sum = db::sum_target_weights(pool, None).await?;
+            let new_total = current_sum + target_weight;
+            if new_total > 100.0 + WEIGHT_EPSILON {
+                return Err(AppError::Validation(format!(
+                    "Total target weight would exceed 100% (currently {:.1}%). Adjust existing allocations before adding this holding.",
+                    current_sum
+                )));
+            }
         }
     }
     db::insert_holding(pool, holding)
@@ -129,14 +131,16 @@ pub async fn add_holding(
 pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, AppError> {
     validate_holding_fields(holding.quantity, holding.cost_basis, &holding.currency)?;
     let pool = &db.0;
-    if holding.target_weight > 0.0 {
-        let current_sum = db::sum_target_weights(pool, Some(holding.id.0.as_str())).await?;
-        let new_total = current_sum + holding.target_weight;
-        if new_total > 100.0 + WEIGHT_EPSILON {
-            return Err(AppError::Validation(format!(
-                "Total target weight would exceed 100% (currently {:.1}% across other holdings). Adjust existing allocations before saving.",
-                current_sum
-            )));
+    if let Some(target_weight) = holding.target_weight {
+        if target_weight > 0.0 {
+            let current_sum = db::sum_target_weights(pool, Some(holding.id.0.as_str())).await?;
+            let new_total = current_sum + target_weight;
+            if new_total > 100.0 + WEIGHT_EPSILON {
+                return Err(AppError::Validation(format!(
+                    "Total target weight would exceed 100% (currently {:.1}% across other holdings). Adjust existing allocations before saving.",
+                    current_sum
+                )));
+            }
         }
     }
     db::update_holding(pool, holding)

@@ -2,4 +2,4 @@
 import type { AccountType } from "./AccountType";
 import type { AssetType } from "./AssetType";
 
-export type HoldingInput = { symbol: string, name: string, assetType: AssetType, account: AccountType, accountId: string | null, quantity: number, costBasis: number, currency: string, exchange: string, targetWeight: number, indicatedAnnualDividend: number | null, indicatedAnnualDividendCurrency: string | null, dividendFrequency: string | null, maturityDate: string | null, };
+export type HoldingInput = { symbol: string, name: string, assetType: AssetType, account: AccountType, accountId: string | null, quantity: number, costBasis: number, currency: string, exchange: string, targetWeight: number | null, indicatedAnnualDividend: number | null, indicatedAnnualDividendCurrency: string | null, dividendFrequency: string | null, maturityDate: string | null, };

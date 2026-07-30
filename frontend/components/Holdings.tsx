@@ -402,7 +402,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     () => ({
       marketValueCad: rows.reduce((s, r) => s + r.marketValueCad, 0),
       gainLoss: rows.reduce((s, r) => s + r.gainLoss, 0),
-      targetWeight: rows.reduce((s, r) => s + r.targetWeight, 0),
+      targetWeight: rows.reduce((s, r) => s + (r.targetWeight ?? 0), 0),
       targetDeltaValue: rows.reduce((s, r) => s + r.targetDeltaValue, 0),
       gainLossPercent: portfolio
         ? (rows.reduce((s, r) => s + r.gainLoss, 0) /
@@ -425,10 +425,10 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       .filter((row) => row.targetDeltaValue < -0.01)
       .reduce((sum, row) => sum + Math.abs(row.targetDeltaValue), 0);
     return {
-      totalTargetWeight: rows.reduce((sum, row) => sum + row.targetWeight, 0),
+      totalTargetWeight: rows.reduce((sum, row) => sum + (row.targetWeight ?? 0), 0),
       unassignedTargetWeight: Math.max(
         0,
-        100 - rows.reduce((sum, row) => sum + row.targetWeight, 0)
+        100 - rows.reduce((sum, row) => sum + (row.targetWeight ?? 0), 0)
       ),
       deployableCash: rows
         .filter((row) => row.assetType === 'cash')
@@ -1150,12 +1150,14 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                       textAlign: 'right',
                                       fontFamily: 'var(--font-mono)',
                                       color:
-                                        h.targetWeight > 0
+                                        (h.targetWeight ?? 0) > 0
                                           ? 'var(--text-primary)'
                                           : 'var(--text-muted)',
                                     }}
                                   >
-                                    {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
+                                    {(h.targetWeight ?? 0) > 0
+                                      ? `${(h.targetWeight ?? 0).toFixed(1)}%`
+                                      : '—'}
                                   </td>
                                   <td
                                     style={{
@@ -1165,7 +1167,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                       color: pnlColor(h.targetDeltaPercent),
                                     }}
                                   >
-                                    {h.targetWeight > 0 || h.assetType === 'cash'
+                                    {(h.targetWeight ?? 0) > 0 || h.assetType === 'cash'
                                       ? formatPercent(h.targetDeltaPercent)
                                       : '—'}
                                   </td>
@@ -1178,7 +1180,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                       fontWeight: 600,
                                     }}
                                   >
-                                    {h.targetWeight > 0 || h.assetType === 'cash'
+                                    {(h.targetWeight ?? 0) > 0 || h.assetType === 'cash'
                                       ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
                                       : '—'}
                                   </td>
@@ -1753,10 +1755,14 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               textAlign: 'right',
                               fontFamily: 'var(--font-mono)',
                               color:
-                                h.targetWeight > 0 ? 'var(--text-primary)' : 'var(--text-muted)',
+                                (h.targetWeight ?? 0) > 0
+                                  ? 'var(--text-primary)'
+                                  : 'var(--text-muted)',
                             }}
                           >
-                            {h.targetWeight > 0 ? `${h.targetWeight.toFixed(1)}%` : '—'}
+                            {(h.targetWeight ?? 0) > 0
+                              ? `${(h.targetWeight ?? 0).toFixed(1)}%`
+                              : '—'}
                           </td>
                         )}
                         {!hiddenColumns.has('targetDeltaPercent') && (
@@ -1768,7 +1774,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               color: pnlColor(h.targetDeltaPercent),
                             }}
                           >
-                            {h.targetWeight > 0 || h.assetType === 'cash'
+                            {(h.targetWeight ?? 0) > 0 || h.assetType === 'cash'
                               ? formatPercent(h.targetDeltaPercent)
                               : '—'}
                           </td>
@@ -1783,7 +1789,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               fontWeight: 600,
                             }}
                           >
-                            {h.targetWeight > 0 || h.assetType === 'cash'
+                            {(h.targetWeight ?? 0) > 0 || h.assetType === 'cash'
                               ? `${h.targetDeltaValue >= 0 ? '+' : ''}${formatCurrency(h.targetDeltaValue, baseCurrency)}`
                               : '—'}
                           </td>

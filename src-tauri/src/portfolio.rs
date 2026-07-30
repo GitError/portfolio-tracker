@@ -57,7 +57,10 @@ pub fn build_portfolio_snapshot(
             (1.0f64, 0.0f64, false)
         } else {
             match price_map.get(&holding.symbol) {
-                Some(p) => {
+                // A cached price of 0.0 or negative is invalid (e.g. a bad API
+                // response written to the cache) — treat it the same as a
+                // cache miss rather than using it in market_value_cad/gain_loss.
+                Some(p) if p.price > 0.0 => {
                     let stale = DateTime::parse_from_rfc3339(&p.updated_at)
                         .ok()
                         .map(|t| {
@@ -69,7 +72,7 @@ pub fn build_portfolio_snapshot(
                         .unwrap_or(true); // if timestamp unparseable, treat as stale
                     (p.price, p.change_percent, stale)
                 }
-                None => (holding.cost_basis, 0.0, true),
+                _ => (holding.cost_basis, 0.0, true),
             }
         };
 
@@ -158,7 +161,10 @@ pub fn build_portfolio_snapshot(
         });
     }
 
-    let total_target_weight: f64 = holdings.iter().map(|holding| holding.target_weight).sum();
+    let total_target_weight: f64 = holdings
+        .iter()
+        .filter_map(|holding| holding.target_weight)
+        .sum();
     let mut target_cash_delta = 0.0f64;
 
     for holding in &mut holdings_with_price {
@@ -167,9 +173,10 @@ pub fn build_portfolio_snapshot(
         } else {
             0.0
         };
-        holding.target_value = total_value * (holding.target_weight / 100.0);
+        let effective_target_weight = holding.target_weight.unwrap_or(0.0);
+        holding.target_value = total_value * (effective_target_weight / 100.0);
         holding.target_delta_value = holding.target_value - holding.market_value_cad;
-        holding.target_delta_percent = holding.target_weight - holding.weight;
+        holding.target_delta_percent = effective_target_weight - holding.weight;
 
         if holding.asset_type.as_str() == "cash" {
             target_cash_delta += holding.market_value_cad - holding.target_value;
@@ -325,8 +332,8 @@ mod tests {
             make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD"),
             make_holding("CAD-CASH", AssetType::Cash, 500.0, 1.0, "CAD"),
         ];
-        holdings[0].target_weight = 60.0;
-        holdings[1].target_weight = 10.0;
+        holdings[0].target_weight = Some(60.0);
+        holdings[1].target_weight = Some(10.0);
 
         let prices = vec![PriceData {
             symbol: "AAPL".to_string(),
@@ -610,6 +617,72 @@ mod tests {
         );
 
         assert!((snapshot.holdings[0].current_price - 180.0).abs() < 0.001);
+        assert!(snapshot.holdings[0].price_is_stale);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_cached_zero_price_falls_back_to_cost_basis() {
+        // Regression guard for #609: a cached price of 0.0 (e.g. a bad API
+        // response written to the cache) must be treated as if no price
+        // exists at all — fall back to cost_basis rather than using 0.0,
+        // which would otherwise wipe out market_value_cad and produce a
+        // bogus -100% gain_loss_percent.
+        let holding = make_holding("BADPRICE", AssetType::Stock, 10.0, 50.0, "USD");
+        let prices = vec![PriceData {
+            symbol: "BADPRICE".to_string(),
+            price: 0.0,
+            currency: "USD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "USD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!((snapshot.holdings[0].current_price - 50.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].market_value_cad - 500.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].gain_loss).abs() < 0.001);
+        assert!(snapshot.holdings[0].price_is_stale);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_cached_negative_price_falls_back_to_cost_basis() {
+        // Regression guard for #609: negative cached prices are equally invalid.
+        let holding = make_holding("BADPRICE", AssetType::Stock, 10.0, 50.0, "USD");
+        let prices = vec![PriceData {
+            symbol: "BADPRICE".to_string(),
+            price: -5.0,
+            currency: "USD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "USD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!((snapshot.holdings[0].current_price - 50.0).abs() < 0.001);
         assert!(snapshot.holdings[0].price_is_stale);
     }
 

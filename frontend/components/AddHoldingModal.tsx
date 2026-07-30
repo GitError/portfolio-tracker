@@ -74,7 +74,7 @@ const EMPTY_FORM: FormState = {
   costBasis: '',
   currency: 'USD',
   exchange: '',
-  targetWeight: '0',
+  targetWeight: '',
   indicatedAnnualDividend: '',
   indicatedAnnualDividendCurrency: '',
   dividendFrequency: '',
@@ -201,7 +201,8 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           costBasis: String(editingHolding.costBasis),
           currency: editingHolding.currency,
           exchange: editingHolding.exchange,
-          targetWeight: String(editingHolding.targetWeight ?? 0),
+          targetWeight:
+            editingHolding.targetWeight != null ? String(editingHolding.targetWeight) : '',
           indicatedAnnualDividend:
             editingHolding.indicatedAnnualDividend != null
               ? String(editingHolding.indicatedAnnualDividend)
@@ -284,9 +285,11 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
     if (isNaN(qty) || qty <= 0) next.quantity = 'Quantity must be > 0';
     const cost = parseFloat(form.costBasis);
     if (isNaN(cost) || cost <= 0) next.costBasis = 'Cost basis must be > 0';
-    const targetWeight = parseFloat(form.targetWeight);
-    if (isNaN(targetWeight) || targetWeight < 0 || targetWeight > 100) {
-      next.targetWeight = 'Target weight must be between 0 and 100';
+    if (form.targetWeight.trim() !== '') {
+      const targetWeight = parseFloat(form.targetWeight);
+      if (isNaN(targetWeight) || targetWeight < 0 || targetWeight > 100) {
+        next.targetWeight = 'Target weight must be between 0 and 100';
+      }
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -316,7 +319,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
         costBasis: parseFloat(form.costBasis),
         currency: form.currency,
         exchange: form.exchange.toUpperCase(),
-        targetWeight: thisWeight,
+        targetWeight: form.targetWeight.trim() === '' ? null : thisWeight,
         indicatedAnnualDividend:
           isNaN(iadRaw) || form.indicatedAnnualDividend === '' ? null : iadRaw,
         indicatedAnnualDividendCurrency:
@@ -364,13 +367,16 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
 
   if (!isOpen) return null;
 
+  const targetWeightValid =
+    form.targetWeight.trim() === '' ||
+    (parseFloat(form.targetWeight) >= 0 && parseFloat(form.targetWeight) <= 100);
+
   const isValid =
     (isCash || form.symbol.trim()) &&
     form.name.trim() &&
     parseFloat(form.quantity) > 0 &&
     parseFloat(form.costBasis) > 0 &&
-    parseFloat(form.targetWeight) >= 0 &&
-    parseFloat(form.targetWeight) <= 100;
+    targetWeightValid;
 
   return (
     <div
@@ -546,7 +552,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
                 type="number"
                 value={form.targetWeight}
                 onChange={set('targetWeight')}
-                placeholder="0.0"
+                placeholder="No target"
                 min="0"
                 max="100"
                 step="0.1"
