@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 use crate::{
     db,
     types::{HoldingId, Transaction, TransactionId, TransactionInput, TransactionType},
+    validation,
 };
 
 use super::PortfolioMcpServer;
@@ -48,6 +49,9 @@ pub async fn add_transaction(
         .transaction_type
         .parse::<TransactionType>()
         .map_err(|e| McpError::invalid_params(e, None))?;
+
+    validation::validate_non_empty("holdingId", &params.holding_id)?;
+    validation::validate_transaction_fields(params.quantity, params.price)?;
 
     let input = TransactionInput {
         holding_id: HoldingId(params.holding_id),

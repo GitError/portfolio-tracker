@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
 use crate::db;
+use crate::validation;
 
 use super::PortfolioMcpServer;
 
@@ -59,13 +60,20 @@ pub async fn set_config(
     pool: &SqlitePool,
     params: SetConfigParams,
 ) -> Result<SetConfigResult, McpError> {
-    db::set_config(pool, &params.key, &params.value)
+    validation::validate_config_key(&params.key)?;
+    let value = if params.key == "cost_basis_method" {
+        params.value.to_lowercase()
+    } else {
+        params.value
+    };
+
+    db::set_config(pool, &params.key, &value)
         .await
         .map_err(PortfolioMcpServer::tool_error)?;
 
     Ok(SetConfigResult {
         key: params.key,
-        value: params.value,
+        value,
         ok: true,
     })
 }

@@ -186,6 +186,35 @@ pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> anyhow::R
     })
 }
 
+/// Sum of `target_weight` across all non-deleted holdings, optionally excluding
+/// one holding (used when validating an update to that holding).
+pub async fn sum_target_weights(
+    pool: &SqlitePool,
+    exclude_id: Option<&str>,
+) -> anyhow::Result<f64> {
+    use sqlx::Row;
+    let sum: f64 = match exclude_id {
+        Some(id) => {
+            sqlx::query(
+                "SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE id != $1 AND deleted_at IS NULL",
+            )
+            .bind(id)
+            .fetch_one(pool)
+            .await?
+            .get::<f64, _>(0)
+        }
+        None => {
+            sqlx::query(
+                "SELECT COALESCE(SUM(target_weight), 0.0) FROM holdings WHERE deleted_at IS NULL",
+            )
+            .fetch_one(pool)
+            .await?
+            .get::<f64, _>(0)
+        }
+    };
+    Ok(sum)
+}
+
 pub async fn delete_holding(pool: &SqlitePool, id: &HoldingId) -> anyhow::Result<bool> {
     let result = sqlx::query(
         "UPDATE holdings SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",

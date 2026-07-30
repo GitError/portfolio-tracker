@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 use crate::{
     db,
     types::{AlertDirection, AlertId, PriceAlert, PriceAlertInput},
+    validation,
 };
 
 use super::PortfolioMcpServer;
@@ -52,6 +53,9 @@ pub async fn add_alert(pool: &SqlitePool, params: AddAlertParams) -> Result<Pric
         .direction
         .parse::<AlertDirection>()
         .map_err(|e| McpError::invalid_params(e, None))?;
+
+    validation::validate_non_empty("symbol", &params.symbol)?;
+    validation::validate_alert_threshold(params.threshold)?;
 
     let input = PriceAlertInput {
         symbol: params.symbol,
