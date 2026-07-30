@@ -20,6 +20,18 @@ pub struct ParsedImportRow {
     pub maturity_date: Option<String>,
 }
 
+/// Neutralize CSV/spreadsheet formula injection: values starting with `=`, `+`,
+/// `-`, or `@` are interpreted as formulas by Excel/LibreOffice/Google Sheets
+/// when the exported file is opened. Prefixing with a single quote forces the
+/// cell to be treated as literal text instead of being evaluated.
+fn neutralize_formula_injection(s: &str) -> String {
+    if s.starts_with(['=', '+', '-', '@']) {
+        format!("'{}", s)
+    } else {
+        s.to_string()
+    }
+}
+
 pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
     let mut writer = WriterBuilder::new().from_writer(vec![]);
     writer
@@ -43,14 +55,14 @@ pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
     for holding in holdings {
         writer
             .write_record([
-                holding.symbol.clone(),
-                holding.name.clone(),
+                neutralize_formula_injection(&holding.symbol),
+                neutralize_formula_injection(&holding.name),
                 holding.asset_type.as_str().to_string(),
                 holding.account.as_str().to_string(),
                 holding.quantity.to_string(),
                 holding.cost_basis.to_string(),
-                holding.currency.clone(),
-                holding.exchange.clone(),
+                neutralize_formula_injection(&holding.currency),
+                neutralize_formula_injection(&holding.exchange),
                 holding.target_weight.to_string(),
                 holding
                     .indicated_annual_dividend
@@ -58,14 +70,19 @@ pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
                     .unwrap_or_default(),
                 holding
                     .indicated_annual_dividend_currency
-                    .clone()
+                    .as_deref()
+                    .map(neutralize_formula_injection)
                     .unwrap_or_default(),
                 holding
                     .dividend_frequency
                     .as_ref()
-                    .map(|f| f.as_str().to_string())
+                    .map(|f| neutralize_formula_injection(f.as_str()))
                     .unwrap_or_default(),
-                holding.maturity_date.clone().unwrap_or_default(),
+                holding
+                    .maturity_date
+                    .as_deref()
+                    .map(neutralize_formula_injection)
+                    .unwrap_or_default(),
             ])
             .map_err(|e| e.to_string())?;
     }
@@ -491,6 +508,55 @@ mod tests {
             "expected total == 100, got {}",
             total
         );
+    }
+
+    #[test]
+    fn build_holdings_csv_neutralizes_formula_injection_in_name() {
+        let mut holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
+        holding.name = "=DANGEROUS".to_string();
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+
+        assert!(
+            csv.contains("'=DANGEROUS"),
+            "expected neutralized name in csv, got: {}",
+            csv
+        );
+        assert!(
+            !csv.contains(",=DANGEROUS"),
+            "raw formula-injection value must not appear unescaped, got: {}",
+            csv
+        );
+    }
+
+    #[test]
+    fn build_holdings_csv_neutralizes_formula_injection_in_all_string_fields() {
+        let mut holding = make_holding("=CMD|' /C calc'!A0", AssetType::Stock, 5.0, 120.0, "USD");
+        holding.name = "+SUM(1,1)".to_string();
+        holding.exchange = "-2+3".to_string();
+        holding.indicated_annual_dividend_currency = Some("@SUM".to_string());
+        holding.dividend_frequency = Some("quarterly".to_string());
+        holding.maturity_date = Some("2030-01-01".to_string());
+
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+        let mut reader = ReaderBuilder::new().from_reader(csv.as_bytes());
+        let record = reader
+            .records()
+            .next()
+            .expect("data row")
+            .expect("valid csv row");
+
+        assert_eq!(&record[0], "'=CMD|' /C calc'!A0");
+        assert_eq!(&record[1], "'+SUM(1,1)");
+        assert_eq!(&record[7], "'-2+3");
+        assert_eq!(&record[10], "'@SUM");
+    }
+
+    #[test]
+    fn build_holdings_csv_does_not_alter_benign_values() {
+        let holding = make_holding("AAPL", AssetType::Stock, 5.0, 120.0, "USD");
+        let csv = build_holdings_csv(&[holding]).expect("build csv");
+        assert!(csv.contains("AAPL,AAPL,stock"));
     }
 
     #[test]

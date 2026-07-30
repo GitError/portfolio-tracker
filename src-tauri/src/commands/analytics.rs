@@ -8,8 +8,9 @@ use crate::db;
 use crate::error::AppError;
 use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{
-    CountryWeight, HoldingId, PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot,
-    RealizedGainsSummary, RebalanceSuggestion, SectorWeight, SymbolMetadata, Transaction,
+    CountryWeight, HoldingId, HoldingWithPrice, PortfolioAnalytics, PortfolioRiskMetrics,
+    PortfolioSnapshot, RealizedGainsSummary, RebalanceSuggestion, SectorWeight, SymbolMetadata,
+    Transaction,
 };
 
 use super::{get_base_currency, DbState, HttpClient, RealizedGainsCacheState};
@@ -446,19 +447,35 @@ pub async fn get_rebalance_suggestions(
         0.0,
     );
 
-    let total_value = snapshot.total_value;
+    Ok(compute_rebalance_suggestions(
+        snapshot.holdings,
+        snapshot.total_value,
+        drift_threshold,
+    ))
+}
 
-    let mut suggestions: Vec<RebalanceSuggestion> = snapshot
-        .holdings
+/// Pure computation behind `get_rebalance_suggestions`, split out for unit testing.
+///
+/// A holding targeted at 0% is always a full-drift "sell everything" candidate:
+/// its drift equals its entire current weight, so it must bypass `drift_threshold`
+/// instead of being skipped like a holding that simply has no target set.
+fn compute_rebalance_suggestions(
+    holdings: Vec<HoldingWithPrice>,
+    total_value: f64,
+    drift_threshold: f64,
+) -> Vec<RebalanceSuggestion> {
+    let mut suggestions: Vec<RebalanceSuggestion> = holdings
         .into_iter()
-        .filter(|h| {
-            // Exclude cash holdings and holdings with no target weight
-            h.asset_type.as_str() != "cash" && h.target_weight > 0.0
-        })
+        .filter(|h| h.asset_type.as_str() != "cash")
         .filter_map(|h| {
+            let is_zero_target = h.holding.target_weight == 0.0;
+            if is_zero_target && h.weight == 0.0 {
+                // Nothing held and nothing targeted — no suggestion to make.
+                return None;
+            }
             let target_value_cad = total_value * (h.target_weight / 100.0);
             let drift = h.weight - h.target_weight;
-            if drift.abs() < drift_threshold {
+            if !is_zero_target && drift.abs() < drift_threshold {
                 return None;
             }
             // positive = sell (over-weight), negative = buy (under-weight)
@@ -492,5 +509,151 @@ pub async fn get_rebalance_suggestions(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
-    Ok(suggestions)
+    suggestions
+}
+
+#[cfg(test)]
+mod compute_rebalance_suggestions_tests {
+    use super::compute_rebalance_suggestions;
+    use crate::types::{AccountType, AssetType, Holding, HoldingId, HoldingWithPrice};
+
+    fn holding_with_price(
+        symbol: &str,
+        asset_type: AssetType,
+        target_weight: f64,
+        weight: f64,
+        market_value_cad: f64,
+        current_price_cad: f64,
+    ) -> HoldingWithPrice {
+        HoldingWithPrice {
+            holding: Holding {
+                id: HoldingId(symbol.to_string()),
+                symbol: symbol.to_string(),
+                name: symbol.to_string(),
+                asset_type,
+                account: AccountType::Taxable,
+                account_id: None,
+                account_name: None,
+                quantity: 10.0,
+                cost_basis: 10.0,
+                currency: "CAD".to_string(),
+                exchange: String::new(),
+                target_weight,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                updated_at: "2024-01-01T00:00:00Z".to_string(),
+                indicated_annual_dividend: None,
+                indicated_annual_dividend_currency: None,
+                dividend_frequency: None,
+                maturity_date: None,
+            },
+            current_price: current_price_cad,
+            current_price_cad,
+            market_value_cad,
+            cost_value_cad: market_value_cad,
+            gain_loss: 0.0,
+            gain_loss_percent: 0.0,
+            weight,
+            target_value: 0.0,
+            target_delta_value: 0.0,
+            target_delta_percent: 0.0,
+            daily_change_percent: 0.0,
+            fx_stale: false,
+            price_is_stale: false,
+        }
+    }
+
+    #[test]
+    fn zero_target_weight_always_suggests_selling_everything() {
+        // Held at 15% of the portfolio but targeted at 0% — should always appear,
+        // even with a drift_threshold far above its current weight.
+        let holdings = vec![holding_with_price(
+            "XYZ",
+            AssetType::Stock,
+            0.0,
+            15.0,
+            1500.0,
+            50.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 50.0);
+
+        assert_eq!(suggestions.len(), 1);
+        let s = &suggestions[0];
+        assert_eq!(s.symbol, "XYZ");
+        assert_eq!(s.target_weight, 0.0);
+        assert_eq!(s.target_value_cad, 0.0);
+        // Drift equals the full current weight — a "sell everything" signal.
+        assert_eq!(s.drift, 15.0);
+        assert_eq!(s.suggested_trade_cad, 1500.0);
+    }
+
+    #[test]
+    fn zero_target_and_zero_weight_produces_no_suggestion() {
+        // Never held and never targeted — nothing to suggest.
+        let holdings = vec![holding_with_price(
+            "NONE",
+            AssetType::Stock,
+            0.0,
+            0.0,
+            0.0,
+            50.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 1.0);
+
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn cash_holdings_are_always_excluded() {
+        let holdings = vec![holding_with_price(
+            "CASH",
+            AssetType::Cash,
+            0.0,
+            15.0,
+            1500.0,
+            1.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 1.0);
+
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn positive_target_below_drift_threshold_is_still_skipped() {
+        // Regression guard: non-zero targets must keep respecting drift_threshold.
+        let holdings = vec![holding_with_price(
+            "ABC",
+            AssetType::Stock,
+            20.0,
+            22.0,
+            2200.0,
+            50.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 5.0);
+
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn buy_suggestion_still_fires_for_unheld_target() {
+        // Regression guard: a holding not yet owned (weight 0) but with a real
+        // target must still generate a buy suggestion.
+        let holdings = vec![holding_with_price(
+            "NEW",
+            AssetType::Stock,
+            10.0,
+            0.0,
+            0.0,
+            50.0,
+        )];
+
+        let suggestions = compute_rebalance_suggestions(holdings, 10_000.0, 1.0);
+
+        assert_eq!(suggestions.len(), 1);
+        assert_eq!(suggestions[0].drift, -10.0);
+        assert_eq!(suggestions[0].suggested_trade_cad, -1000.0);
+    }
 }
