@@ -4,6 +4,7 @@ import { Spinner } from './ui/Spinner';
 import { formatPercent } from '../lib/format';
 import { useFormatCurrency, useFormatNumber } from '../hooks/useFormatters';
 import { tauriInvoke } from '../lib/tauri';
+import { buildCsvContent } from '../lib/rebalanceCsv';
 import type { RebalanceSuggestion } from '../types/portfolio';
 
 const DEFAULT_DRIFT_THRESHOLD = 5;
@@ -45,39 +46,6 @@ function TradeCell({ suggestion }: { suggestion: RebalanceSuggestion }) {
       {action} {formatNumber(units, 4)} units
     </span>
   );
-}
-
-function buildCsvContent(suggestions: RebalanceSuggestion[]): string {
-  const header = [
-    'symbol',
-    'name',
-    'current_weight_%',
-    'target_weight_%',
-    'drift_pp',
-    'action',
-    'units',
-    'amount_cad',
-    'current_price_cad',
-  ].join(',');
-
-  const rows = suggestions.map((s) => {
-    const action = s.suggestedTradeCad > 0 ? 'sell' : 'buy';
-    const units = Math.abs(s.suggestedUnits).toFixed(4);
-    const amount = Math.abs(s.suggestedTradeCad).toFixed(2);
-    return [
-      s.symbol,
-      `"${s.name.replace(/"/g, '""')}"`,
-      s.currentWeight.toFixed(2),
-      s.targetWeight.toFixed(2),
-      s.drift.toFixed(2),
-      action,
-      units,
-      amount,
-      s.currentPriceCad.toFixed(4),
-    ].join(',');
-  });
-
-  return [header, ...rows].join('\n');
 }
 
 export function Rebalance() {
