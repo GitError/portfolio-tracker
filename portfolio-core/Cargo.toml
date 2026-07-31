@@ -1,0 +1,13 @@
+[package]
+name = "portfolio-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+ts-rs = { version = "12", features = ["serde-compat"], optional = true }
+
+[features]
+ts = ["dep:ts-rs"]

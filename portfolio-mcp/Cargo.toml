@@ -8,6 +8,7 @@ name = "portfolio-mcp"
 path = "src/main.rs"
 
 [dependencies]
+portfolio-core = { path = "../portfolio-core" }
 rmcp = { version = "0.1", features = ["server", "transport-io"] }
 sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "chrono", "uuid", "macros"] }
 tokio = { version = "1", features = ["full"] }
