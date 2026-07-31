@@ -75,6 +75,13 @@ function parseCSVLine(line: string, delimiter: string): string[] {
   return result;
 }
 
+/** Parses a CSV cell as a number, preserving an explicit "0" instead of coercing it to null. */
+function parseNullableNumber(cell: string | undefined): number | null {
+  if (!cell || cell.trim() === '') return null;
+  const n = Number(cell);
+  return Number.isFinite(n) ? n : null;
+}
+
 function parseMockCsv(csvContent: string): HoldingInput[] {
   const lines = csvContent
     .trim()
@@ -107,9 +114,7 @@ function parseMockCsv(csvContent: string): HoldingInput[] {
       costBasis: Number(cells[columnIndex('cost_basis')]),
       currency,
       exchange: (cells[columnIndex('exchange')] ?? '').toUpperCase(),
-      targetWeight: cells[columnIndex('target_weight')]
-        ? Number(cells[columnIndex('target_weight')]) || null
-        : null,
+      targetWeight: parseNullableNumber(cells[columnIndex('target_weight')]),
       indicatedAnnualDividend: cells[columnIndex('indicated_annual_dividend')]
         ? Number(cells[columnIndex('indicated_annual_dividend')]) || null
         : null,

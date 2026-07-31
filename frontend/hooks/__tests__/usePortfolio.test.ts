@@ -131,6 +131,52 @@ describe('usePortfolio hook (mock/browser path)', () => {
     expect(importResult!.totalRows).toBe(1);
   });
 
+  it('previewImportCsv preserves an explicit target_weight of 0 (not null)', async () => {
+    const { usePortfolio, PortfolioProvider } = await import('../../hooks/usePortfolio');
+    const { createElement } = await import('react');
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(PortfolioProvider, null, children);
+
+    const { result } = renderHook(() => usePortfolio(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 2000 });
+
+    const csvContent = [
+      'symbol,name,type,account,quantity,cost_basis,currency,exchange,target_weight',
+      'GOOG,Alphabet Inc.,stock,taxable,5,120,USD,NASDAQ,0',
+    ].join('\n');
+
+    let preview: Awaited<ReturnType<typeof result.current.previewImportCsv>>;
+    await act(async () => {
+      preview = await result.current.previewImportCsv(csvContent);
+    });
+
+    expect(preview!.rows[0]!.targetWeight).toBe(0);
+  });
+
+  it('previewImportCsv maps a blank target_weight cell to null', async () => {
+    const { usePortfolio, PortfolioProvider } = await import('../../hooks/usePortfolio');
+    const { createElement } = await import('react');
+
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      createElement(PortfolioProvider, null, children);
+
+    const { result } = renderHook(() => usePortfolio(), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 2000 });
+
+    const csvContent = [
+      'symbol,name,type,account,quantity,cost_basis,currency,exchange,target_weight',
+      'GOOG,Alphabet Inc.,stock,taxable,5,120,USD,NASDAQ,',
+    ].join('\n');
+
+    let preview: Awaited<ReturnType<typeof result.current.previewImportCsv>>;
+    await act(async () => {
+      preview = await result.current.previewImportCsv(csvContent);
+    });
+
+    expect(preview!.rows[0]!.targetWeight).toBeNull();
+  });
+
   it('exports CSV with correct headers when holdings exist', async () => {
     const { usePortfolio, PortfolioProvider } = await import('../../hooks/usePortfolio');
     const { createElement } = await import('react');

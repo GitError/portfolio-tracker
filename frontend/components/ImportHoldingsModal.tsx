@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ImportResult, PreviewImportResult, PreviewRow } from '../types/portfolio';
 import { ASSET_TYPE_CONFIG } from '../lib/constants';
 import { useFormatNumber } from '../hooks/useFormatters';
+import { formatTargetWeight } from '../lib/format';
 import { Badge } from './ui/Badge';
 
 interface Props {
@@ -170,7 +171,7 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
                 {formatNumber(r.costBasis, 2)}
               </td>
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
-                {formatNumber(r.targetWeight, 1)}%
+                {formatTargetWeight(r.targetWeight)}
               </td>
               <td style={TD}>{statusCell(r)}</td>
             </tr>
