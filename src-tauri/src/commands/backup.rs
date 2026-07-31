@@ -1,3 +1,4 @@
+use sqlx::SqlitePool;
 use tauri::Manager;
 
 use crate::error::AppError;
@@ -165,37 +166,301 @@ pub async fn restore_database(
         .map_err(|e| format!("Could not resolve app data dir: {e}"))?;
 
     let dest = app_data_dir.join(crate::config::DB_FILE_NAME);
+    let wal_path = app_data_dir.join(format!("{}-wal", crate::config::DB_FILE_NAME));
+    let shm_path = app_data_dir.join(format!("{}-shm", crate::config::DB_FILE_NAME));
+    let bak_path = app_data_dir.join(format!("{}.bak", crate::config::DB_FILE_NAME));
 
+    quiesce_and_restore_file(&state.0, &src, &dest, &wal_path, &shm_path, &bak_path).await?;
+
+    Ok("Database restored. Please restart the app to apply changes.".to_string())
+}
+
+/// Quiesces `pool`, atomically replaces `dest` with `backup_src` on disk, and
+/// verifies the restored file with an integrity check.
+///
+/// Merely checkpointing the WAL before the copy is not enough: pooled SQLite
+/// connections keep their own schema cache and hold open handles to `dest`
+/// and its `-wal`/`-shm` companions, so overwriting the file on disk while a
+/// connection is still live risks the old WAL being replayed over the
+/// restored data. Closing the pool removes every such handle before the copy
+/// runs. The pool must not be used again after this returns — the caller's
+/// "restart the app to apply changes" response covers re-opening it.
+async fn quiesce_and_restore_file(
+    pool: &SqlitePool,
+    backup_src: &std::path::Path,
+    dest: &std::path::Path,
+    wal_path: &std::path::Path,
+    shm_path: &std::path::Path,
+    bak_path: &std::path::Path,
+) -> Result<(), AppError> {
     // Flush and truncate the WAL so the live DB file on disk is fully
-    // self-contained before we overwrite it.  This prevents the old WAL from
-    // being replayed over the newly restored data when the pool reconnects.
+    // self-contained before we quiesce the pool.
     sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-        .execute(&state.0)
+        .execute(pool)
         .await
         .map_err(|e| format!("WAL checkpoint failed: {e}"))?;
 
-    // Before overwriting the live database, create a safety backup.  If the
+    // Drain and close every pooled connection so nothing can read or write
+    // `dest` while we overwrite it out from under them.
+    pool.close().await;
+
+    // Before overwriting the live database, create a safety backup. If the
     // copy fails we abort immediately so the live data is never touched.
     if dest.exists() {
-        let bak = app_data_dir.join(format!("{}.bak", crate::config::DB_FILE_NAME));
-        std::fs::copy(&dest, &bak)
+        std::fs::copy(dest, bak_path)
             .map_err(|e| format!("Could not create safety backup before restore: {e}"))?;
     }
 
-    std::fs::copy(&src, &dest).map_err(|e| format!("Failed to restore database: {e}"))?;
+    std::fs::copy(backup_src, dest).map_err(|e| format!("Failed to restore database: {e}"))?;
 
     // Remove stale WAL and SHM companion files so the restored DB starts
     // clean and SQLite does not attempt to replay the old journal.
-    let wal_path = app_data_dir.join(format!("{}-wal", crate::config::DB_FILE_NAME));
-    let shm_path = app_data_dir.join(format!("{}-shm", crate::config::DB_FILE_NAME));
     if wal_path.exists() {
-        std::fs::remove_file(&wal_path)
+        std::fs::remove_file(wal_path)
             .map_err(|e| format!("Could not remove WAL file after restore: {e}"))?;
     }
     if shm_path.exists() {
-        std::fs::remove_file(&shm_path)
+        std::fs::remove_file(shm_path)
             .map_err(|e| format!("Could not remove SHM file after restore: {e}"))?;
     }
 
-    Ok("Database restored. Please restart the app to apply changes.".to_string())
+    verify_sqlite_integrity(dest).await
+}
+
+/// Opens `path` read-only via a dedicated connection (not the app pool) and
+/// returns an error unless `PRAGMA integrity_check` reports "ok".
+async fn verify_sqlite_integrity(path: &std::path::Path) -> Result<(), AppError> {
+    use sqlx::Row;
+
+    let url = format!("sqlite:{}?mode=ro", path.to_string_lossy());
+    let pool = sqlx::SqlitePool::connect(&url)
+        .await
+        .map_err(|e| format!("Cannot open restored database for integrity check: {e}"))?;
+
+    let result = sqlx::query("PRAGMA integrity_check")
+        .fetch_one(&pool)
+        .await
+        .map_err(|e| format!("Integrity check failed on restored database: {e}"));
+
+    let row = match result {
+        Ok(row) => row,
+        Err(e) => {
+            pool.close().await;
+            return Err(e.into());
+        }
+    };
+    let integrity_result: String = row.get(0);
+    pool.close().await;
+
+    if integrity_result != "ok" {
+        return Err(AppError::Validation(format!(
+            "Integrity check failed on restored database: {}",
+            integrity_result
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::Row;
+    use std::path::PathBuf;
+
+    /// Creates a unique scratch directory under the OS temp dir for a single test,
+    /// so tests can run in parallel without clobbering each other's DB files.
+    struct ScratchDir(PathBuf);
+
+    impl ScratchDir {
+        fn new(label: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "portfolio-tracker-restore-test-{}-{}-{}",
+                label,
+                std::process::id(),
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::create_dir_all(&dir).expect("create scratch dir");
+            ScratchDir(dir)
+        }
+
+        fn path(&self, name: &str) -> PathBuf {
+            self.0.join(name)
+        }
+    }
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// Opens (creating if needed) a file-backed WAL-mode SQLite pool with
+    /// migrations applied, mirroring how the real app opens its DB.
+    async fn open_file_db(path: &std::path::Path) -> SqlitePool {
+        let url = format!("sqlite:{}", path.to_string_lossy());
+        let options = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(path)
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+        let pool = SqlitePool::connect_with(options)
+            .await
+            .unwrap_or_else(|e| panic!("open file db at {}: {e}", url));
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations");
+        pool
+    }
+
+    async fn set_marker(pool: &SqlitePool, value: &str) {
+        sqlx::query("INSERT OR REPLACE INTO app_config (key, value) VALUES ('marker', ?)")
+            .bind(value)
+            .execute(pool)
+            .await
+            .expect("insert marker");
+    }
+
+    async fn get_marker(path: &std::path::Path) -> Option<String> {
+        let url = format!("sqlite:{}?mode=ro", path.to_string_lossy());
+        let pool = SqlitePool::connect(&url).await.expect("open for read");
+        let row = sqlx::query("SELECT value FROM app_config WHERE key = 'marker'")
+            .fetch_optional(&pool)
+            .await
+            .expect("select marker");
+        pool.close().await;
+        row.map(|r| r.get::<String, _>(0))
+    }
+
+    #[tokio::test]
+    async fn quiesce_and_restore_file_replaces_dest_with_backup_contents() {
+        let scratch = ScratchDir::new("happy-path");
+        let backup_path = scratch.path("backup.db");
+        let dest_path = scratch.path("live.db");
+        let wal_path = scratch.path("live.db-wal");
+        let shm_path = scratch.path("live.db-shm");
+        let bak_path = scratch.path("live.db.bak");
+
+        let backup_pool = open_file_db(&backup_path).await;
+        set_marker(&backup_pool, "from-backup").await;
+        backup_pool.close().await;
+
+        let live_pool = open_file_db(&dest_path).await;
+        set_marker(&live_pool, "from-live").await;
+
+        quiesce_and_restore_file(
+            &live_pool,
+            &backup_path,
+            &dest_path,
+            &wal_path,
+            &shm_path,
+            &bak_path,
+        )
+        .await
+        .expect("restore should succeed");
+
+        assert_eq!(
+            get_marker(&dest_path).await.as_deref(),
+            Some("from-backup"),
+            "dest should now contain the backup's data"
+        );
+    }
+
+    #[tokio::test]
+    async fn quiesce_and_restore_file_closes_the_pool() {
+        let scratch = ScratchDir::new("closes-pool");
+        let backup_path = scratch.path("backup.db");
+        let dest_path = scratch.path("live.db");
+        let wal_path = scratch.path("live.db-wal");
+        let shm_path = scratch.path("live.db-shm");
+        let bak_path = scratch.path("live.db.bak");
+
+        let backup_pool = open_file_db(&backup_path).await;
+        backup_pool.close().await;
+
+        let live_pool = open_file_db(&dest_path).await;
+
+        quiesce_and_restore_file(
+            &live_pool,
+            &backup_path,
+            &dest_path,
+            &wal_path,
+            &shm_path,
+            &bak_path,
+        )
+        .await
+        .expect("restore should succeed");
+
+        assert!(
+            live_pool.is_closed(),
+            "pool must be closed so no connection can write over the restored file before restart"
+        );
+    }
+
+    #[tokio::test]
+    async fn quiesce_and_restore_file_writes_safety_backup_of_prior_dest() {
+        let scratch = ScratchDir::new("safety-backup");
+        let backup_path = scratch.path("backup.db");
+        let dest_path = scratch.path("live.db");
+        let wal_path = scratch.path("live.db-wal");
+        let shm_path = scratch.path("live.db-shm");
+        let bak_path = scratch.path("live.db.bak");
+
+        let backup_pool = open_file_db(&backup_path).await;
+        set_marker(&backup_pool, "from-backup").await;
+        backup_pool.close().await;
+
+        let live_pool = open_file_db(&dest_path).await;
+        set_marker(&live_pool, "original-live-data").await;
+
+        quiesce_and_restore_file(
+            &live_pool,
+            &backup_path,
+            &dest_path,
+            &wal_path,
+            &shm_path,
+            &bak_path,
+        )
+        .await
+        .expect("restore should succeed");
+
+        assert!(
+            bak_path.exists(),
+            "safety backup of the live DB should be written"
+        );
+        assert_eq!(
+            get_marker(&bak_path).await.as_deref(),
+            Some("original-live-data"),
+            "safety backup should preserve the pre-restore live data"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_sqlite_integrity_rejects_non_sqlite_file() {
+        let scratch = ScratchDir::new("integrity-check");
+        let bogus_path = scratch.path("not-a-db.db");
+        std::fs::write(&bogus_path, b"not a sqlite file at all").expect("write bogus file");
+
+        let result = verify_sqlite_integrity(&bogus_path).await;
+
+        assert!(
+            result.is_err(),
+            "a non-SQLite file must fail the integrity check"
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_sqlite_integrity_accepts_a_healthy_database() {
+        let scratch = ScratchDir::new("integrity-check-healthy");
+        let db_path = scratch.path("healthy.db");
+        let pool = open_file_db(&db_path).await;
+        pool.close().await;
+
+        let result = verify_sqlite_integrity(&db_path).await;
+
+        assert!(
+            result.is_ok(),
+            "a freshly migrated database should pass integrity check"
+        );
+    }
 }
