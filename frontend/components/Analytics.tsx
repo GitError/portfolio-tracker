@@ -17,7 +17,8 @@ import {
 } from 'recharts';
 import { Spinner } from './ui/Spinner';
 import { EmptyState } from './ui/EmptyState';
-import { formatNumber, formatPercent } from '../lib/format';
+import { formatPercent } from '../lib/format';
+import { useFormatNumber } from '../hooks/useFormatters';
 import type { PortfolioAnalytics, SymbolMetadata } from '../types/portfolio';
 
 // Chart color palette using design tokens + extended palette for extra sectors
@@ -188,6 +189,7 @@ function formatMarketCap(cap?: number, currency = 'USD'): string {
 
 export function Analytics() {
   const { t } = useTranslation();
+  const formatNumber = useFormatNumber();
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -385,18 +387,19 @@ export function Analytics() {
                 label={t('analytics.portfolioBeta')}
                 value={
                   analytics.riskMetrics.weightedBeta != null
-                    ? analytics.riskMetrics.weightedBeta.toFixed(2)
+                    ? formatNumber(analytics.riskMetrics.weightedBeta, 2)
                     : 'N/A'
                 }
                 sub={t('analytics.weightedAverageBeta')}
               />
               <RiskCard
                 label={t('analytics.dividendYield')}
-                value={
+                value={`${formatNumber(
                   analytics.riskMetrics.portfolioYield > 0
-                    ? `${(analytics.riskMetrics.portfolioYield * 100).toFixed(2)}%`
-                    : '0.00%'
-                }
+                    ? analytics.riskMetrics.portfolioYield * 100
+                    : 0,
+                  2
+                )}%`}
                 sub={t('analytics.weightedPortfolioYield')}
               />
               <RiskCard
@@ -406,7 +409,7 @@ export function Analytics() {
               />
               <RiskCard
                 label={t('analytics.largestPosition')}
-                value={`${analytics.riskMetrics.largestPositionWeight.toFixed(2)}%`}
+                value={`${formatNumber(analytics.riskMetrics.largestPositionWeight, 2)}%`}
                 sub={analytics.riskMetrics.topSector ?? ''}
               />
             </div>
@@ -452,7 +455,7 @@ export function Analytics() {
                       cx="50%"
                       cy="50%"
                       outerRadius={90}
-                      label={({ name, value }) => `${name} ${(value as number).toFixed(1)}%`}
+                      label={({ name, value }) => `${name} ${formatNumber(value as number, 1)}%`}
                       labelLine={false}
                     >
                       {pieData.map((_, index) => (
@@ -461,7 +464,7 @@ export function Analytics() {
                     </Pie>
                     <Tooltip
                       formatter={(value) => [
-                        `${(value as number).toFixed(2)}%`,
+                        `${formatNumber(value as number, 2)}%`,
                         t('holdings.columns.weight'),
                       ]}
                       contentStyle={{
@@ -542,7 +545,7 @@ export function Analytics() {
                       />
                       <Tooltip
                         formatter={(value) => [
-                          `${(value as number).toFixed(2)}%`,
+                          `${formatNumber(value as number, 2)}%`,
                           t('holdings.columns.weight'),
                         ]}
                         contentStyle={{
@@ -690,9 +693,11 @@ export function Analytics() {
                       <MetaCell value={meta.sector} />
                       <MetaCell value={meta.industry} />
                       <MetaCell value={meta.country} />
-                      <MetaCell value={meta.beta != null ? meta.beta.toFixed(2) : undefined} />
                       <MetaCell
-                        value={meta.peRatio != null ? meta.peRatio.toFixed(2) : undefined}
+                        value={meta.beta != null ? formatNumber(meta.beta, 2) : undefined}
+                      />
+                      <MetaCell
+                        value={meta.peRatio != null ? formatNumber(meta.peRatio, 2) : undefined}
                       />
                       <MetaCell
                         value={
