@@ -16,8 +16,8 @@ pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[Fx
     // Try the direct pair first: e.g. USDCAD when converting USD → CAD
     let direct_pair = format!("{}{}", from_upper, base_upper);
     if let Some(rate) = rates.iter().find(|r| r.pair == direct_pair) {
-        if rate.rate == 0.0 {
-            tracing::warn!(pair = %rate.pair, "FX rate is zero; returning amount with fxStale=true");
+        if !rate.rate.is_finite() || rate.rate == 0.0 {
+            tracing::warn!(pair = %rate.pair, rate = rate.rate, "FX rate is zero or non-finite; returning amount with fxStale=true");
             return None;
         }
         return Some(amount * rate.rate);
@@ -27,7 +27,7 @@ pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[Fx
     // but base=CAD was previously cached as USDCAD. Invert the stored rate.
     let inverted_pair = format!("{}{}", base_upper, from_upper);
     if let Some(rate) = rates.iter().find(|r| r.pair == inverted_pair) {
-        if rate.rate != 0.0 {
+        if rate.rate.is_finite() && rate.rate != 0.0 {
             return Some(amount / rate.rate);
         }
     }
@@ -99,6 +99,28 @@ mod tests {
             result, None,
             "zero direct rate should be treated as unavailable, not a valid 0 conversion"
         );
+    }
+
+    #[test]
+    fn direct_pair_infinite_rate_returns_none() {
+        // Regression guard for #638: an infinite direct rate must be rejected too.
+        let rates = vec![make_rate("USDCAD", f64::INFINITY)];
+        let result = convert_to_base(100.0, "USD", "CAD", &rates);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn direct_pair_nan_rate_returns_none() {
+        let rates = vec![make_rate("USDCAD", f64::NAN)];
+        let result = convert_to_base(100.0, "USD", "CAD", &rates);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn inverted_pair_infinite_rate_returns_none() {
+        let rates = vec![make_rate("CADUSD", f64::INFINITY)];
+        let result = convert_to_base(100.0, "USD", "CAD", &rates);
+        assert_eq!(result, None);
     }
 
     #[test]

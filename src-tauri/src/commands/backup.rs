@@ -169,8 +169,12 @@ pub async fn restore_database(
     let wal_path = app_data_dir.join(format!("{}-wal", crate::config::DB_FILE_NAME));
     let shm_path = app_data_dir.join(format!("{}-shm", crate::config::DB_FILE_NAME));
     let bak_path = app_data_dir.join(format!("{}.bak", crate::config::DB_FILE_NAME));
+    let tmp_path = app_data_dir.join(format!("{}.restore_tmp", crate::config::DB_FILE_NAME));
 
-    quiesce_and_restore_file(&state.0, &src, &dest, &wal_path, &shm_path, &bak_path).await?;
+    quiesce_and_restore_file(
+        &state.0, &src, &dest, &wal_path, &shm_path, &bak_path, &tmp_path,
+    )
+    .await?;
 
     Ok("Database restored. Please restart the app to apply changes.".to_string())
 }
@@ -192,6 +196,7 @@ async fn quiesce_and_restore_file(
     wal_path: &std::path::Path,
     shm_path: &std::path::Path,
     bak_path: &std::path::Path,
+    tmp_path: &std::path::Path,
 ) -> Result<(), AppError> {
     // Flush and truncate the WAL so the live DB file on disk is fully
     // self-contained before we quiesce the pool.
@@ -211,7 +216,23 @@ async fn quiesce_and_restore_file(
             .map_err(|e| format!("Could not create safety backup before restore: {e}"))?;
     }
 
-    std::fs::copy(backup_src, dest).map_err(|e| format!("Failed to restore database: {e}"))?;
+    // Stage the backup into a temp file in the same directory as `dest` and
+    // verify its integrity BEFORE touching the live database. `dest` is only
+    // ever replaced by an atomic rename once the staged file is known-good,
+    // so a crash mid-copy or a backup that fails verification never leaves
+    // `dest` in a corrupted or partially-written state.
+    std::fs::copy(backup_src, tmp_path)
+        .map_err(|e| format!("Failed to stage restore file: {e}"))?;
+
+    if let Err(e) = verify_sqlite_integrity(tmp_path).await {
+        let _ = std::fs::remove_file(tmp_path);
+        return Err(e);
+    }
+
+    // Same-filesystem rename is atomic: `dest` is either the untouched
+    // original or the fully-staged, already-verified new file — never a
+    // partial write.
+    std::fs::rename(tmp_path, dest).map_err(|e| format!("Failed to restore database: {e}"))?;
 
     // Remove stale WAL and SHM companion files so the restored DB starts
     // clean and SQLite does not attempt to replay the old journal.
@@ -224,7 +245,7 @@ async fn quiesce_and_restore_file(
             .map_err(|e| format!("Could not remove SHM file after restore: {e}"))?;
     }
 
-    verify_sqlite_integrity(dest).await
+    Ok(())
 }
 
 /// Opens `path` read-only via a dedicated connection (not the app pool) and
@@ -340,6 +361,7 @@ mod tests {
         let wal_path = scratch.path("live.db-wal");
         let shm_path = scratch.path("live.db-shm");
         let bak_path = scratch.path("live.db.bak");
+        let tmp_path = scratch.path("live.db.restore_tmp");
 
         let backup_pool = open_file_db(&backup_path).await;
         set_marker(&backup_pool, "from-backup").await;
@@ -355,6 +377,7 @@ mod tests {
             &wal_path,
             &shm_path,
             &bak_path,
+            &tmp_path,
         )
         .await
         .expect("restore should succeed");
@@ -363,6 +386,10 @@ mod tests {
             get_marker(&dest_path).await.as_deref(),
             Some("from-backup"),
             "dest should now contain the backup's data"
+        );
+        assert!(
+            !tmp_path.exists(),
+            "temp staging file should be cleaned up (consumed by rename) after a successful restore"
         );
     }
 
@@ -374,6 +401,7 @@ mod tests {
         let wal_path = scratch.path("live.db-wal");
         let shm_path = scratch.path("live.db-shm");
         let bak_path = scratch.path("live.db.bak");
+        let tmp_path = scratch.path("live.db.restore_tmp");
 
         let backup_pool = open_file_db(&backup_path).await;
         backup_pool.close().await;
@@ -387,6 +415,7 @@ mod tests {
             &wal_path,
             &shm_path,
             &bak_path,
+            &tmp_path,
         )
         .await
         .expect("restore should succeed");
@@ -405,6 +434,7 @@ mod tests {
         let wal_path = scratch.path("live.db-wal");
         let shm_path = scratch.path("live.db-shm");
         let bak_path = scratch.path("live.db.bak");
+        let tmp_path = scratch.path("live.db.restore_tmp");
 
         let backup_pool = open_file_db(&backup_path).await;
         set_marker(&backup_pool, "from-backup").await;
@@ -420,6 +450,7 @@ mod tests {
             &wal_path,
             &shm_path,
             &bak_path,
+            &tmp_path,
         )
         .await
         .expect("restore should succeed");
@@ -432,6 +463,53 @@ mod tests {
             get_marker(&bak_path).await.as_deref(),
             Some("original-live-data"),
             "safety backup should preserve the pre-restore live data"
+        );
+    }
+
+    #[tokio::test]
+    async fn quiesce_and_restore_file_leaves_dest_intact_when_staged_file_fails_integrity_check() {
+        // Regression guard for #634: the restore must stage the backup into a
+        // temp file and verify it BEFORE touching `dest`. A backup that fails
+        // verification (corrupted, truncated, or not actually SQLite) must
+        // never be copied over the live database.
+        let scratch = ScratchDir::new("failed-integrity");
+        let backup_path = scratch.path("backup.db");
+        let dest_path = scratch.path("live.db");
+        let wal_path = scratch.path("live.db-wal");
+        let shm_path = scratch.path("live.db-shm");
+        let bak_path = scratch.path("live.db.bak");
+        let tmp_path = scratch.path("live.db.restore_tmp");
+
+        // Not a valid SQLite database — verify_sqlite_integrity must reject it.
+        std::fs::write(&backup_path, b"not a real sqlite database at all")
+            .expect("write bogus backup file");
+
+        let live_pool = open_file_db(&dest_path).await;
+        set_marker(&live_pool, "original-live-data").await;
+
+        let result = quiesce_and_restore_file(
+            &live_pool,
+            &backup_path,
+            &dest_path,
+            &wal_path,
+            &shm_path,
+            &bak_path,
+            &tmp_path,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "restore must fail when the staged file does not pass integrity check"
+        );
+        assert_eq!(
+            get_marker(&dest_path).await.as_deref(),
+            Some("original-live-data"),
+            "dest must remain byte-for-byte untouched when verification fails before the rename"
+        );
+        assert!(
+            !tmp_path.exists(),
+            "the failed temp staging file should be cleaned up rather than left behind"
         );
     }
 
