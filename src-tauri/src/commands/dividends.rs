@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{Dividend, DividendId, DividendInput, PaginatedResult};
 
-use super::DbState;
+use super::{validate_dividend_fields, DbState};
 
 /// Deprecated: use `get_dividends_paginated` instead.
 #[tauri::command]
@@ -39,6 +39,11 @@ pub async fn add_dividend(
     db: State<'_, DbState>,
     dividend: DividendInput,
 ) -> Result<Dividend, AppError> {
+    validate_dividend_fields(
+        dividend.amount_per_unit,
+        &dividend.ex_date,
+        &dividend.pay_date,
+    )?;
     let pool = &db.0;
     let (symbol, holding_currency) =
         db::get_holding_symbol_and_currency(pool, dividend.holding_id.0.as_str())

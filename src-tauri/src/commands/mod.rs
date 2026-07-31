@@ -200,6 +200,39 @@ pub(crate) fn validate_holding_fields(
 
 pub(crate) const WEIGHT_EPSILON: f64 = 0.001;
 
+/// Validates an optional target weight: when present, must be a finite
+/// percentage in [0, 100]. A negative or out-of-range value would otherwise
+/// silently persist and produce nonsensical rebalance suggestions.
+pub(crate) fn validate_target_weight(target_weight: Option<f64>) -> Result<(), AppError> {
+    if let Some(weight) = target_weight {
+        if !weight.is_finite() || !(0.0..=100.0).contains(&weight) {
+            return Err(AppError::Validation(
+                "targetWeight must be a finite number between 0 and 100".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Validates dividend input fields shared by `add_dividend`.
+pub(crate) fn validate_dividend_fields(
+    amount_per_unit: f64,
+    ex_date: &str,
+    pay_date: &str,
+) -> Result<(), AppError> {
+    if !amount_per_unit.is_finite() || amount_per_unit <= 0.0 {
+        return Err(AppError::Validation(
+            "amountPerUnit must be a finite number greater than 0".to_string(),
+        ));
+    }
+    if !ex_date.trim().is_empty() && !pay_date.trim().is_empty() && pay_date < ex_date {
+        return Err(AppError::Validation(
+            "payDate must not be before exDate".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::csv::{build_holdings_csv, parse_import_rows};

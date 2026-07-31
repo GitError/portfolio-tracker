@@ -7,6 +7,20 @@ use crate::types::{FxRate, Holding, HoldingWithPrice, PortfolioSnapshot, PriceDa
 /// Price is considered stale after 24 h — covers overnight/weekend gaps when markets are closed.
 const PRICE_STALE_SECS: i64 = 24 * 3600;
 
+/// Returns true if `updated_at` (an RFC 3339 timestamp) is older than `PRICE_STALE_SECS`,
+/// or unparseable.
+fn is_price_stale(updated_at: &str) -> bool {
+    DateTime::parse_from_rfc3339(updated_at)
+        .ok()
+        .map(|t| {
+            Utc::now()
+                .signed_duration_since(t.with_timezone(&Utc))
+                .num_seconds()
+                > PRICE_STALE_SECS
+        })
+        .unwrap_or(true) // if timestamp unparseable, treat as stale
+}
+
 /// Build a `PortfolioSnapshot` from raw holdings, cached prices, and FX rates.
 ///
 /// All monetary values in the snapshot are expressed in `base_currency`.
@@ -57,21 +71,24 @@ pub fn build_portfolio_snapshot(
             (1.0f64, 0.0f64, false)
         } else {
             match price_map.get(&holding.symbol) {
-                // A cached price of 0.0 or negative is invalid (e.g. a bad API
-                // response written to the cache) — treat it the same as a
-                // cache miss rather than using it in market_value_cad/gain_loss.
                 Some(p) if p.price > 0.0 => {
-                    let stale = DateTime::parse_from_rfc3339(&p.updated_at)
-                        .ok()
-                        .map(|t| {
-                            Utc::now()
-                                .signed_duration_since(t.with_timezone(&Utc))
-                                .num_seconds()
-                                > PRICE_STALE_SECS
-                        })
-                        .unwrap_or(true); // if timestamp unparseable, treat as stale
+                    let stale = is_price_stale(&p.updated_at);
                     (p.price, p.change_percent, stale)
                 }
+                // A cached price of exactly 0.0 is ambiguous: it may be a
+                // genuinely worthless security (penny stock, delisted share,
+                // warrant) or a bad API response. Trust it while fresh; once
+                // stale (> 24h old), it's far more likely bad data, so fall
+                // back to cost_basis the same as a cache miss.
+                Some(p) if p.price == 0.0 => {
+                    let stale = is_price_stale(&p.updated_at);
+                    if stale {
+                        (holding.cost_basis, 0.0, true)
+                    } else {
+                        (0.0, p.change_percent, false)
+                    }
+                }
+                // Negative prices are never legitimate — treat as a cache miss.
                 _ => (holding.cost_basis, 0.0, true),
             }
         };
@@ -621,20 +638,55 @@ mod tests {
     }
 
     #[test]
-    fn build_portfolio_snapshot_cached_zero_price_falls_back_to_cost_basis() {
-        // Regression guard for #609: a cached price of 0.0 (e.g. a bad API
-        // response written to the cache) must be treated as if no price
-        // exists at all — fall back to cost_basis rather than using 0.0,
-        // which would otherwise wipe out market_value_cad and produce a
-        // bogus -100% gain_loss_percent.
+    fn build_portfolio_snapshot_fresh_zero_price_is_treated_as_legitimate() {
+        // Regression guard for #618: a fresh cached price of exactly 0.0 may be
+        // a genuinely worthless security (penny stock, delisted, warrant), not
+        // just a bad API response. While fresh (< 24h old), it must be trusted
+        // and used as-is rather than silently replaced with cost_basis.
+        let holding = make_holding("WORTHLESS", AssetType::Stock, 10.0, 50.0, "USD");
+        let prices = vec![PriceData {
+            symbol: "WORTHLESS".to_string(),
+            price: 0.0,
+            currency: "USD".to_string(),
+            change: 0.0,
+            change_percent: 0.0,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "USD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!((snapshot.holdings[0].current_price - 0.0).abs() < 0.001);
+        assert!((snapshot.holdings[0].market_value_cad - 0.0).abs() < 0.001);
+        assert!(!snapshot.holdings[0].price_is_stale);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_stale_zero_price_falls_back_to_cost_basis() {
+        // Regression guard for #609/#618: a cached price of 0.0 that is also
+        // stale (> 24h old) is almost certainly a bad API response rather than
+        // a real price — fall back to cost_basis rather than using 0.0, which
+        // would otherwise wipe out market_value_cad and produce a bogus -100%
+        // gain_loss_percent.
         let holding = make_holding("BADPRICE", AssetType::Stock, 10.0, 50.0, "USD");
+        let two_days_ago = (Utc::now() - chrono::Duration::hours(48)).to_rfc3339();
         let prices = vec![PriceData {
             symbol: "BADPRICE".to_string(),
             price: 0.0,
             currency: "USD".to_string(),
             change: 0.0,
             change_percent: 0.0,
-            updated_at: Utc::now().to_rfc3339(),
+            updated_at: two_days_ago,
             open: None,
             previous_close: None,
             volume: None,

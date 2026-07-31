@@ -103,6 +103,103 @@ mod tests {
         assert!(validate_holding(&holding_input("AAPL")).is_ok());
     }
 
+    // ── target weight validation (#613) ───────────────────────────────────────
+
+    #[test]
+    fn target_weight_rejects_negative() {
+        assert!(crate::commands::validate_target_weight(Some(-5.0)).is_err());
+    }
+
+    #[test]
+    fn target_weight_rejects_above_100() {
+        assert!(crate::commands::validate_target_weight(Some(100.5)).is_err());
+    }
+
+    #[test]
+    fn target_weight_rejects_nan() {
+        assert!(crate::commands::validate_target_weight(Some(f64::NAN)).is_err());
+    }
+
+    #[test]
+    fn target_weight_rejects_infinite() {
+        assert!(crate::commands::validate_target_weight(Some(f64::INFINITY)).is_err());
+    }
+
+    #[test]
+    fn target_weight_accepts_none() {
+        assert!(crate::commands::validate_target_weight(None).is_ok());
+    }
+
+    #[test]
+    fn target_weight_accepts_zero() {
+        assert!(crate::commands::validate_target_weight(Some(0.0)).is_ok());
+    }
+
+    #[test]
+    fn target_weight_accepts_100() {
+        assert!(crate::commands::validate_target_weight(Some(100.0)).is_ok());
+    }
+
+    #[test]
+    fn target_weight_accepts_valid_mid_range() {
+        assert!(crate::commands::validate_target_weight(Some(25.5)).is_ok());
+    }
+
+    // ── dividend validation (#617) ────────────────────────────────────────────
+
+    #[test]
+    fn dividend_rejects_zero_amount() {
+        assert!(
+            crate::commands::validate_dividend_fields(0.0, "2024-03-15", "2024-04-25").is_err()
+        );
+    }
+
+    #[test]
+    fn dividend_rejects_negative_amount() {
+        assert!(
+            crate::commands::validate_dividend_fields(-1.38, "2024-03-15", "2024-04-25").is_err()
+        );
+    }
+
+    #[test]
+    fn dividend_rejects_nan_amount() {
+        assert!(
+            crate::commands::validate_dividend_fields(f64::NAN, "2024-03-15", "2024-04-25")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn dividend_rejects_infinite_amount() {
+        assert!(crate::commands::validate_dividend_fields(
+            f64::INFINITY,
+            "2024-03-15",
+            "2024-04-25"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn dividend_rejects_pay_date_before_ex_date() {
+        assert!(
+            crate::commands::validate_dividend_fields(1.38, "2024-04-25", "2024-03-15").is_err()
+        );
+    }
+
+    #[test]
+    fn dividend_accepts_pay_date_equal_to_ex_date() {
+        assert!(
+            crate::commands::validate_dividend_fields(1.38, "2024-03-15", "2024-03-15").is_ok()
+        );
+    }
+
+    #[test]
+    fn dividend_accepts_valid_inputs() {
+        assert!(
+            crate::commands::validate_dividend_fields(1.38, "2024-03-15", "2024-04-25").is_ok()
+        );
+    }
+
     // ── alert validation ──────────────────────────────────────────────────────
 
     fn validate_alert(input: &PriceAlertInput) -> Result<(), String> {
