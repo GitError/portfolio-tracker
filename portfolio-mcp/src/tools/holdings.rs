@@ -74,6 +74,11 @@ pub async fn add_holding(pool: &SqlitePool, params: AddHoldingParams) -> Result<
     let currency =
         validation::validate_holding_fields(params.quantity, params.cost_basis, &params.currency)?;
     validation::validate_target_weight(params.target_weight)?;
+    validation::validate_holding_dividend_fields(
+        params.indicated_annual_dividend,
+        params.dividend_frequency.as_deref(),
+        params.maturity_date.as_deref(),
+    )?;
 
     if let Some(target_weight) = params.target_weight {
         let existing_sum = db::sum_target_weights(pool, None)

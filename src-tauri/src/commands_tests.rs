@@ -200,6 +200,111 @@ mod tests {
         );
     }
 
+    // ── transaction validation (#624) ─────────────────────────────────────────
+
+    #[test]
+    fn transaction_rejects_nan_quantity() {
+        assert!(crate::commands::validate_transaction_fields(f64::NAN, 10.0).is_err());
+    }
+
+    #[test]
+    fn transaction_rejects_infinite_quantity() {
+        assert!(crate::commands::validate_transaction_fields(f64::INFINITY, 10.0).is_err());
+    }
+
+    #[test]
+    fn transaction_rejects_zero_or_negative_quantity() {
+        assert!(crate::commands::validate_transaction_fields(0.0, 10.0).is_err());
+        assert!(crate::commands::validate_transaction_fields(-1.0, 10.0).is_err());
+    }
+
+    #[test]
+    fn transaction_rejects_nan_price() {
+        assert!(crate::commands::validate_transaction_fields(5.0, f64::NAN).is_err());
+    }
+
+    #[test]
+    fn transaction_rejects_infinite_price() {
+        assert!(crate::commands::validate_transaction_fields(5.0, f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn transaction_rejects_negative_price() {
+        assert!(crate::commands::validate_transaction_fields(5.0, -1.0).is_err());
+    }
+
+    #[test]
+    fn transaction_accepts_valid_inputs() {
+        assert!(crate::commands::validate_transaction_fields(5.0, 0.0).is_ok());
+        assert!(crate::commands::validate_transaction_fields(5.0, 120.5).is_ok());
+    }
+
+    // ── holding dividend/maturity validation (#626) ───────────────────────────
+
+    #[test]
+    fn holding_dividend_fields_rejects_nan_indicated_annual_dividend() {
+        assert!(
+            crate::commands::validate_holding_dividend_fields(Some(f64::NAN), None, None).is_err()
+        );
+    }
+
+    #[test]
+    fn holding_dividend_fields_rejects_infinite_indicated_annual_dividend() {
+        assert!(
+            crate::commands::validate_holding_dividend_fields(Some(f64::INFINITY), None, None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn holding_dividend_fields_rejects_negative_indicated_annual_dividend() {
+        assert!(crate::commands::validate_holding_dividend_fields(Some(-1.0), None, None).is_err());
+    }
+
+    #[test]
+    fn holding_dividend_fields_accepts_zero_indicated_annual_dividend() {
+        assert!(crate::commands::validate_holding_dividend_fields(Some(0.0), None, None).is_ok());
+    }
+
+    #[test]
+    fn holding_dividend_fields_rejects_unknown_dividend_frequency() {
+        assert!(
+            crate::commands::validate_holding_dividend_fields(None, Some("biannual"), None)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn holding_dividend_fields_accepts_known_dividend_frequencies() {
+        for freq in ["monthly", "quarterly", "semi-annual", "annual", "irregular"] {
+            assert!(
+                crate::commands::validate_holding_dividend_fields(None, Some(freq), None).is_ok(),
+                "expected {freq} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn holding_dividend_fields_rejects_non_iso_maturity_date() {
+        assert!(
+            crate::commands::validate_holding_dividend_fields(None, None, Some("01/30/2030"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn holding_dividend_fields_accepts_iso_maturity_date() {
+        assert!(
+            crate::commands::validate_holding_dividend_fields(None, None, Some("2030-01-01"))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn holding_dividend_fields_accepts_all_none() {
+        assert!(crate::commands::validate_holding_dividend_fields(None, None, None).is_ok());
+    }
+
     // ── alert validation ──────────────────────────────────────────────────────
 
     fn validate_alert(input: &PriceAlertInput) -> Result<(), String> {

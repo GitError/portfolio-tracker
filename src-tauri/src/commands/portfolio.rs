@@ -8,8 +8,8 @@ use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{Holding, HoldingId, HoldingInput, PortfolioSnapshot};
 
 use super::{
-    get_base_currency, validate_holding_fields, validate_target_weight, DbState, HttpClient,
-    RealizedGainsCacheState, WEIGHT_EPSILON,
+    get_base_currency, validate_holding_dividend_fields, validate_holding_fields,
+    validate_target_weight, DbState, HttpClient, RealizedGainsCacheState, WEIGHT_EPSILON,
 };
 
 #[tauri::command]
@@ -110,6 +110,11 @@ pub async fn add_holding(
 ) -> Result<Holding, AppError> {
     validate_holding_fields(holding.quantity, holding.cost_basis, &holding.currency)?;
     validate_target_weight(holding.target_weight)?;
+    validate_holding_dividend_fields(
+        holding.indicated_annual_dividend,
+        holding.dividend_frequency.as_deref(),
+        holding.maturity_date.as_deref(),
+    )?;
     let pool = &db.0;
     if let Some(target_weight) = holding.target_weight {
         if target_weight > 0.0 {
@@ -132,6 +137,11 @@ pub async fn add_holding(
 pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<Holding, AppError> {
     validate_holding_fields(holding.quantity, holding.cost_basis, &holding.currency)?;
     validate_target_weight(holding.target_weight)?;
+    validate_holding_dividend_fields(
+        holding.indicated_annual_dividend,
+        holding.dividend_frequency.as_deref(),
+        holding.maturity_date.as_deref(),
+    )?;
     let pool = &db.0;
     if let Some(target_weight) = holding.target_weight {
         if target_weight > 0.0 {
