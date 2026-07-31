@@ -205,7 +205,7 @@ pub(crate) const WEIGHT_EPSILON: f64 = 0.001;
 /// silently persist and produce nonsensical rebalance suggestions.
 pub(crate) fn validate_target_weight(target_weight: Option<f64>) -> Result<(), AppError> {
     if let Some(weight) = target_weight {
-        if !weight.is_finite() || weight < 0.0 || weight > 100.0 {
+        if !weight.is_finite() || !(0.0..=100.0).contains(&weight) {
             return Err(AppError::Validation(
                 "targetWeight must be a finite number between 0 and 100".to_string(),
             ));
