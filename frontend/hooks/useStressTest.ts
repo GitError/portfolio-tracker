@@ -1,50 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { PortfolioSnapshot, StressResult, StressScenario } from '../types/portfolio';
-import { fxShockKey } from '../lib/constants';
 import { isTauri, tauriInvoke } from '../lib/tauri';
-
-function computeLocally(snapshot: PortfolioSnapshot, scenario: StressScenario): StressResult {
-  let totalStressed = 0;
-
-  const holdingBreakdown = snapshot.holdings.map((h) => {
-    const assetShock = scenario.shocks[h.assetType] ?? 0;
-    const fxKey = fxShockKey(h.currency, snapshot.baseCurrency);
-    const fxShock =
-      h.currency.toUpperCase() === snapshot.baseCurrency.toUpperCase()
-        ? 0
-        : (scenario.shocks[fxKey] ?? 0);
-
-    const currentValue = h.marketValueCad;
-    const stressedValue = currentValue * (1 + assetShock) * (1 + fxShock);
-    const impact = stressedValue - currentValue;
-    const shockApplied = (1 + assetShock) * (1 + fxShock) - 1;
-
-    totalStressed += stressedValue;
-
-    return {
-      holdingId: h.id,
-      symbol: h.symbol,
-      name: h.name,
-      currentValue,
-      stressedValue,
-      impact,
-      shockApplied,
-    };
-  });
-
-  const currentValue = snapshot.totalValue;
-  const totalImpact = totalStressed - currentValue;
-  const totalImpactPercent = currentValue !== 0 ? (totalImpact / currentValue) * 100 : 0;
-
-  return {
-    scenario: scenario.name,
-    currentValue,
-    stressedValue: totalStressed,
-    totalImpact,
-    totalImpactPercent,
-    holdingBreakdown,
-  };
-}
+import { computeStressImpact } from '../lib/scenarioMath';
 
 export interface UseStressTestReturn {
   result: StressResult | null;
@@ -70,7 +27,7 @@ export function useStressTest(): UseStressTestReturn {
         } else {
           // Small async tick so loading state renders
           await new Promise((r) => setTimeout(r, 0));
-          setResult(computeLocally(snapshot, scenario));
+          setResult(computeStressImpact(snapshot, scenario));
         }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));

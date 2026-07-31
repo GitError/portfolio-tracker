@@ -1,10 +1,10 @@
 // ─── Scenario comparison table for stress test ───────────────────────────────
 import { useMemo } from 'react';
-import { fxShockKey } from '../lib/constants';
 import { formatPercent, formatCompact } from '../lib/format';
 import { useFormatCurrency } from '../hooks/useFormatters';
 import { pnlColor } from '../lib/colors';
-import type { PortfolioSnapshot, StressScenario, StressScenarioInfo } from '../types/portfolio';
+import { computeStressImpact } from '../lib/scenarioMath';
+import type { PortfolioSnapshot, StressScenarioInfo } from '../types/portfolio';
 
 const PANEL: React.CSSProperties = {
   background: 'var(--bg-surface)',
@@ -31,44 +31,6 @@ const TD: React.CSSProperties = {
   whiteSpace: 'nowrap',
 };
 
-function computeScenarioLocally(
-  snapshot: PortfolioSnapshot,
-  scenario: StressScenario
-): {
-  stressedValue: number;
-  totalImpact: number;
-  totalImpactPercent: number;
-  topImpacted: { symbol: string; impact: number }[];
-} {
-  let totalStressed = 0;
-  const breakdown: { symbol: string; impact: number }[] = [];
-
-  for (const h of snapshot.holdings) {
-    const assetShock = scenario.shocks[h.assetType] ?? 0;
-    const fxKey = fxShockKey(h.currency, snapshot.baseCurrency);
-    const fxShock =
-      h.currency.toUpperCase() === snapshot.baseCurrency.toUpperCase()
-        ? 0
-        : (scenario.shocks[fxKey] ?? 0);
-
-    const currentValue = h.marketValueCad;
-    const stressedValue = currentValue * (1 + assetShock) * (1 + fxShock);
-    const impact = stressedValue - currentValue;
-    totalStressed += stressedValue;
-    breakdown.push({ symbol: h.symbol, impact });
-  }
-
-  const currentValue = snapshot.totalValue;
-  const totalImpact = totalStressed - currentValue;
-  const totalImpactPercent = currentValue !== 0 ? (totalImpact / currentValue) * 100 : 0;
-
-  const topImpacted = [...breakdown]
-    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
-    .slice(0, 2);
-
-  return { stressedValue: totalStressed, totalImpact, totalImpactPercent, topImpacted };
-}
-
 // ─── Props ────────────────────────────────────────────────────────────────────
 export interface ScenarioComparisonProps {
   portfolio: PortfolioSnapshot;
@@ -83,14 +45,18 @@ export function ScenarioComparison({ portfolio, scenarios }: ScenarioComparisonP
   const rows = useMemo(
     () =>
       scenarios.map((s) => {
-        const result = computeScenarioLocally(portfolio, s);
+        const result = computeStressImpact(portfolio, s);
+        const topImpacted = [...result.holdingBreakdown]
+          .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+          .slice(0, 2)
+          .map((h) => ({ symbol: h.symbol, impact: h.impact }));
         return {
           name: s.name,
           description: s.description,
           stressedValue: result.stressedValue,
           totalImpact: result.totalImpact,
           totalImpactPercent: result.totalImpactPercent,
-          topImpacted: result.topImpacted,
+          topImpacted,
         };
       }),
     [portfolio, scenarios]
