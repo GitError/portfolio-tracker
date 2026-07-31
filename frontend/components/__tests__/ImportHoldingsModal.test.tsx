@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ImportHoldingsModal } from '../ImportHoldingsModal';
 import type { PreviewRow, PreviewImportResult } from '../../types/portfolio';
 
@@ -132,5 +132,30 @@ describe('ImportHoldingsModal', () => {
   it('shows max rows hint', () => {
     renderModal();
     expect(screen.getByText(/max 500 rows/i)).toBeTruthy();
+  });
+
+  it('renders "—" with no percent sign for a row with no target_weight', async () => {
+    const rows = [makeReadyRow({ targetWeight: null })];
+    mockOnPreview.mockResolvedValue(makePreviewResult(rows));
+    renderModal();
+
+    const file = new File(['symbol\nAAPL'], 'holdings.csv', { type: 'text/csv' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByText('—')).toBeTruthy());
+    expect(screen.queryByText('—%')).toBeNull();
+  });
+
+  it('renders "0.0%" for a row with an explicit zero target_weight', async () => {
+    const rows = [makeReadyRow({ targetWeight: 0 })];
+    mockOnPreview.mockResolvedValue(makePreviewResult(rows));
+    renderModal();
+
+    const file = new File(['symbol\nAAPL'], 'holdings.csv', { type: 'text/csv' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => expect(screen.getByText('0.0%')).toBeTruthy());
   });
 });

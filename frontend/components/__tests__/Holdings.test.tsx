@@ -39,9 +39,50 @@ beforeEach(async () => {
   delete (window as any).__TAURI__;
   mockHoldings = [];
   mockPortfolio = null;
+  localStorage.clear();
   // Pin language so English-text assertions don't break if the default locale changes.
   await i18next.changeLanguage('en');
 });
+
+function makeHolding(overrides: Partial<HoldingWithPrice> = {}): HoldingWithPrice {
+  return {
+    id: 'h1',
+    symbol: 'AAPL',
+    name: 'Apple',
+    assetType: 'stock',
+    account: 'taxable',
+    quantity: 10,
+    costBasis: 150,
+    currency: 'USD',
+    exchange: 'NASDAQ',
+    targetWeight: null,
+    weight: 20,
+    currentPrice: 200,
+    currentPriceCad: 280,
+    marketValueCad: 2800,
+    costValueCad: 2100,
+    gainLoss: 700,
+    gainLossPercent: 33.3,
+    targetValue: 0,
+    targetDeltaValue: -2800,
+    targetDeltaPercent: -20,
+    dailyChangePercent: 0.5,
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    indicatedAnnualDividend: null,
+    indicatedAnnualDividendCurrency: null,
+    dividendFrequency: null,
+    maturityDate: null,
+    fxStale: false,
+    priceIsStale: false,
+    ...overrides,
+  };
+}
+
+/** Shows every column, including targetWeight/targetDeltaPercent/targetDeltaValue which are hidden by default. */
+function showAllColumns() {
+  localStorage.setItem('app-config', JSON.stringify({ holdings_hidden_columns: '[]' }));
+}
 
 function renderHoldings() {
   return render(
@@ -105,5 +146,43 @@ describe('Holdings component smoke tests', () => {
     mockPortfolio = MOCK_SNAPSHOT as PortfolioSnapshot;
     renderHoldings();
     expect(screen.queryByText(/no positions/i)).toBeNull();
+  });
+});
+
+describe('Holdings target weight null vs explicit-0 display', () => {
+  it('shows "—" for a holding with no target weight set (null)', () => {
+    showAllColumns();
+    const holding = makeHolding({ targetWeight: null });
+    mockHoldings = [holding];
+    mockPortfolio = { ...MOCK_SNAPSHOT, holdings: [holding] } as PortfolioSnapshot;
+    renderHoldings();
+
+    // No explicit-zero tooltip should be present for a null target.
+    expect(screen.queryByTitle('Marked for full exit')).toBeNull();
+  });
+
+  it('shows "0.0%" with a distinct tooltip for a holding explicitly targeted at 0%', () => {
+    showAllColumns();
+    const holding = makeHolding({ targetWeight: 0 });
+    mockHoldings = [holding];
+    mockPortfolio = { ...MOCK_SNAPSHOT, holdings: [holding] } as PortfolioSnapshot;
+    renderHoldings();
+
+    const targetCell = screen.getByTitle('Marked for full exit');
+    expect(targetCell.textContent).toBe('0.0%');
+  });
+
+  it('shows rebalance delta values for an explicit 0% target (not "—")', () => {
+    showAllColumns();
+    const holding = makeHolding({
+      targetWeight: 0,
+      targetDeltaPercent: -20,
+      targetDeltaValue: -2800,
+    });
+    mockHoldings = [holding];
+    mockPortfolio = { ...MOCK_SNAPSHOT, holdings: [holding] } as PortfolioSnapshot;
+    renderHoldings();
+
+    expect(screen.getByText('-20.00%')).toBeTruthy();
   });
 });

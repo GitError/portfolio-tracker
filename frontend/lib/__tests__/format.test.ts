@@ -6,6 +6,7 @@ import {
   formatCompact,
   formatMonthYear,
   formatShortDate,
+  formatTargetWeight,
 } from '../format';
 
 const EM_DASH = '—';
@@ -211,5 +212,23 @@ describe('formatShortDate', () => {
 
   it('formats using an explicit locale override, not the hardcoded en locale', () => {
     expect(formatShortDate('2026-01-14T12:00:00Z', 'de')).toBe('14. Jan. 2026');
+  });
+});
+
+describe('formatTargetWeight', () => {
+  it('returns em dash with no percent sign for null (no target set)', () => {
+    expect(formatTargetWeight(null)).toBe('—');
+  });
+
+  it('returns em dash with no percent sign for undefined', () => {
+    expect(formatTargetWeight(undefined)).toBe('—');
+  });
+
+  it('formats an explicit zero target as "0.0%", distinct from unset', () => {
+    expect(formatTargetWeight(0)).toBe('0.0%');
+  });
+
+  it('formats a positive target with one decimal place', () => {
+    expect(formatTargetWeight(12.5)).toBe('12.5%');
   });
 });

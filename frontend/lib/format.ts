@@ -30,6 +30,12 @@ export function formatPercent(decimal: number | null | undefined): string {
   return `${sign}${decimal.toFixed(2)}%`;
 }
 
+/** Formats a nullable target weight percentage. Null/undefined means "no target set" (→ "—"); 0 is an explicit target and renders as "0.0%". */
+export function formatTargetWeight(weight: number | null | undefined): string {
+  if (!isValidNumber(weight)) return INVALID_NUMBER;
+  return `${weight.toFixed(1)}%`;
+}
+
 export function formatNumber(
   n: number | null | undefined,
   decimals = 2,
