@@ -3151,11 +3151,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "portfolio-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "tracing",
+ "ts-rs",
+]
+
+[[package]]
 name = "portfolio-mcp"
 version = "0.1.0-7"
 dependencies = [
  "anyhow",
  "chrono",
+ "portfolio-core",
  "reqwest 0.12.28",
  "rmcp",
  "schemars 0.8.22",
@@ -3176,6 +3187,7 @@ dependencies = [
  "csv",
  "futures",
  "mockito",
+ "portfolio-core",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
