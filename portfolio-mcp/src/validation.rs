@@ -85,6 +85,48 @@ pub fn validate_target_weight_budget(
     Ok(())
 }
 
+/// Dividend frequencies accepted by the CSV import layer (`src-tauri/src/csv.rs`),
+/// mirrored here so the MCP `add_holding` tool applies the same set.
+pub const VALID_DIVIDEND_FREQUENCIES: &[&str] =
+    &["monthly", "quarterly", "semi-annual", "annual", "irregular"];
+
+/// Mirrors `validate_holding_dividend_fields` in `src-tauri/src/commands/mod.rs`.
+pub fn validate_holding_dividend_fields(
+    indicated_annual_dividend: Option<f64>,
+    dividend_frequency: Option<&str>,
+    maturity_date: Option<&str>,
+) -> Result<(), McpError> {
+    if let Some(amount) = indicated_annual_dividend {
+        if !amount.is_finite() || amount < 0.0 {
+            return Err(McpError::invalid_params(
+                "indicatedAnnualDividend must be a non-negative finite number",
+                None,
+            ));
+        }
+    }
+    if let Some(freq) = dividend_frequency {
+        let normalized = freq.trim().to_lowercase();
+        if !VALID_DIVIDEND_FREQUENCIES.contains(&normalized.as_str()) {
+            return Err(McpError::invalid_params(
+                format!(
+                    "dividendFrequency must be one of: {}",
+                    VALID_DIVIDEND_FREQUENCIES.join(", ")
+                ),
+                None,
+            ));
+        }
+    }
+    if let Some(date) = maturity_date {
+        if chrono::NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d").is_err() {
+            return Err(McpError::invalid_params(
+                "maturityDate must be a valid ISO date (YYYY-MM-DD)",
+                None,
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Mirrors the checks in `src-tauri/src/commands/transactions.rs::add_transaction`.
 pub fn validate_transaction_fields(quantity: f64, price: f64) -> Result<(), McpError> {
     if quantity <= 0.0 || !quantity.is_finite() {
@@ -237,6 +279,56 @@ mod tests {
     #[test]
     fn validate_alert_threshold_accepts_positive_finite() {
         assert!(validate_alert_threshold(150.0).is_ok());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_rejects_nan_indicated_annual_dividend() {
+        assert!(validate_holding_dividend_fields(Some(f64::NAN), None, None).is_err());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_rejects_infinite_indicated_annual_dividend() {
+        assert!(validate_holding_dividend_fields(Some(f64::INFINITY), None, None).is_err());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_rejects_negative_indicated_annual_dividend() {
+        assert!(validate_holding_dividend_fields(Some(-1.0), None, None).is_err());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_accepts_zero_indicated_annual_dividend() {
+        assert!(validate_holding_dividend_fields(Some(0.0), None, None).is_ok());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_rejects_unknown_dividend_frequency() {
+        assert!(validate_holding_dividend_fields(None, Some("biannual"), None).is_err());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_accepts_known_dividend_frequencies() {
+        for freq in ["monthly", "quarterly", "semi-annual", "annual", "irregular"] {
+            assert!(
+                validate_holding_dividend_fields(None, Some(freq), None).is_ok(),
+                "expected {freq} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_rejects_non_iso_maturity_date() {
+        assert!(validate_holding_dividend_fields(None, None, Some("01/30/2030")).is_err());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_accepts_iso_maturity_date() {
+        assert!(validate_holding_dividend_fields(None, None, Some("2030-01-01")).is_ok());
+    }
+
+    #[test]
+    fn validate_holding_dividend_fields_accepts_all_none() {
+        assert!(validate_holding_dividend_fields(None, None, None).is_ok());
     }
 
     #[test]

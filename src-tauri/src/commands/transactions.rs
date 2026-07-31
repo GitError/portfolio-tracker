@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{HoldingId, PaginatedResult, Transaction, TransactionId, TransactionInput};
 
-use super::{DbState, RealizedGainsCacheState};
+use super::{validate_transaction_fields, DbState, RealizedGainsCacheState};
 
 #[tauri::command]
 pub async fn add_transaction(
@@ -12,16 +12,7 @@ pub async fn add_transaction(
     gains_cache: State<'_, RealizedGainsCacheState>,
     input: TransactionInput,
 ) -> Result<Transaction, AppError> {
-    if input.quantity <= 0.0 {
-        return Err(AppError::Validation(
-            "Transaction quantity must be positive".to_string(),
-        ));
-    }
-    if input.price < 0.0 {
-        return Err(AppError::Validation(
-            "Transaction price must be non-negative".to_string(),
-        ));
-    }
+    validate_transaction_fields(input.quantity, input.price)?;
     let pool = &db.0;
     let result = db::insert_transaction(pool, input)
         .await

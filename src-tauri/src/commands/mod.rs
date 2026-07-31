@@ -233,6 +233,59 @@ pub(crate) fn validate_dividend_fields(
     Ok(())
 }
 
+/// Validates transaction quantity/price. Mirrors `validate_transaction_fields`
+/// in `portfolio-mcp/src/validation.rs`.
+pub(crate) fn validate_transaction_fields(quantity: f64, price: f64) -> Result<(), AppError> {
+    if quantity <= 0.0 || !quantity.is_finite() {
+        return Err(AppError::Validation(
+            "Transaction quantity must be a positive finite number".to_string(),
+        ));
+    }
+    if price < 0.0 || !price.is_finite() {
+        return Err(AppError::Validation(
+            "Transaction price must be a non-negative finite number".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Dividend frequencies accepted by the CSV import layer (`src-tauri/src/csv.rs`).
+pub(crate) const VALID_DIVIDEND_FREQUENCIES: &[&str] =
+    &["monthly", "quarterly", "semi-annual", "annual", "irregular"];
+
+/// Validates the optional dividend/maturity fields shared by `add_holding`/`update_holding`.
+/// Mirrors the checks the CSV import layer applies in `src-tauri/src/csv.rs`.
+pub(crate) fn validate_holding_dividend_fields(
+    indicated_annual_dividend: Option<f64>,
+    dividend_frequency: Option<&str>,
+    maturity_date: Option<&str>,
+) -> Result<(), AppError> {
+    if let Some(amount) = indicated_annual_dividend {
+        if !amount.is_finite() || amount < 0.0 {
+            return Err(AppError::Validation(
+                "indicatedAnnualDividend must be a non-negative finite number".to_string(),
+            ));
+        }
+    }
+    if let Some(freq) = dividend_frequency {
+        let normalized = freq.trim().to_lowercase();
+        if !VALID_DIVIDEND_FREQUENCIES.contains(&normalized.as_str()) {
+            return Err(AppError::Validation(format!(
+                "dividendFrequency must be one of: {}",
+                VALID_DIVIDEND_FREQUENCIES.join(", ")
+            )));
+        }
+    }
+    if let Some(date) = maturity_date {
+        if chrono::NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d").is_err() {
+            return Err(AppError::Validation(
+                "maturityDate must be a valid ISO date (YYYY-MM-DD)".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::csv::{build_holdings_csv, parse_import_rows};
