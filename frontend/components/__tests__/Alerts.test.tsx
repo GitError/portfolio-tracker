@@ -10,6 +10,7 @@ const mockDeleteAlert = vi.fn();
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => false,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: (cmd: string, ...args: unknown[]) => {
     if (cmd === 'delete_alert') return mockDeleteAlert(cmd, ...args);
     return Promise.resolve(null);

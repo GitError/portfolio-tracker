@@ -31,6 +31,7 @@ let mockIsTauri = false;
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => mockIsTauri,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: (cmd: string, ...args: unknown[]) => {
     if (cmd === 'set_config_cmd') return mockSetConfigCmd(cmd, ...args);
     if (cmd === 'get_config_cmd') return mockGetConfigCmd(cmd, ...args);

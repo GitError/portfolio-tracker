@@ -34,20 +34,10 @@ mod tests {
         }
     }
 
-    // ── holding validation (mirrors add_holding logic) ────────────────────────
+    // ── holding validation (exercises the real add_holding validator) ─────────
 
-    fn validate_holding(input: &HoldingInput) -> Result<(), String> {
-        if input.quantity <= 0.0 || !input.quantity.is_finite() {
-            return Err("quantity must be a positive finite number".to_string());
-        }
-        if input.cost_basis < 0.0 || !input.cost_basis.is_finite() {
-            return Err("costBasis must be a non-negative finite number".to_string());
-        }
-        let currency = input.currency.trim().to_uppercase();
-        if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
-            return Err("currency must be a 3-letter ISO currency code".to_string());
-        }
-        Ok(())
+    fn validate_holding(input: &HoldingInput) -> Result<String, crate::error::AppError> {
+        crate::commands::validate_holding_fields(input.quantity, input.cost_basis, &input.currency)
     }
 
     #[test]
@@ -68,6 +58,14 @@ mod tests {
     fn add_holding_rejects_nan_quantity() {
         let mut h = holding_input("RY");
         h.quantity = f64::NAN;
+        assert!(validate_holding(&h).is_err());
+    }
+
+    #[test]
+    fn add_holding_rejects_infinite_quantity() {
+        // Uncovered path: infinite quantity must be rejected the same as NaN.
+        let mut h = holding_input("RY");
+        h.quantity = f64::INFINITY;
         assert!(validate_holding(&h).is_err());
     }
 
@@ -101,6 +99,16 @@ mod tests {
     #[test]
     fn add_holding_accepts_valid_inputs() {
         assert!(validate_holding(&holding_input("AAPL")).is_ok());
+    }
+
+    #[test]
+    fn add_holding_normalizes_lowercase_currency_to_uppercase() {
+        // Uncovered path: the real validator's Ok value is the normalized
+        // currency — the deleted decoy discarded this, so a bug in the
+        // normalization itself would never have been caught.
+        let mut h = holding_input("RY");
+        h.currency = "  usd ".to_string();
+        assert_eq!(validate_holding(&h).unwrap(), "USD");
     }
 
     // ── target weight validation (#613) ───────────────────────────────────────
@@ -305,13 +313,10 @@ mod tests {
         assert!(crate::commands::validate_holding_dividend_fields(None, None, None).is_ok());
     }
 
-    // ── alert validation ──────────────────────────────────────────────────────
+    // ── alert validation (exercises the real add_alert validator) ─────────────
 
-    fn validate_alert(input: &PriceAlertInput) -> Result<(), String> {
-        if !input.threshold.is_finite() || input.threshold <= 0.0 {
-            return Err("threshold must be a positive finite number".to_string());
-        }
-        Ok(())
+    fn validate_alert(input: &PriceAlertInput) -> Result<(), crate::error::AppError> {
+        crate::commands::validate_alert_fields(input.threshold)
     }
 
     #[test]
@@ -339,6 +344,32 @@ mod tests {
     }
 
     #[test]
+    fn add_alert_rejects_nan_threshold() {
+        // Uncovered path: the decoy's `is_finite()` check was never exercised
+        // against NaN, only against the <= 0.0 branch.
+        let input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: f64::NAN,
+            currency: "CAD".to_string(),
+            note: String::new(),
+        };
+        assert!(validate_alert(&input).is_err());
+    }
+
+    #[test]
+    fn add_alert_rejects_infinite_threshold() {
+        let input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: f64::INFINITY,
+            currency: "CAD".to_string(),
+            note: String::new(),
+        };
+        assert!(validate_alert(&input).is_err());
+    }
+
+    #[test]
     fn add_alert_accepts_valid_threshold() {
         let input = PriceAlertInput {
             symbol: "AAPL".to_string(),
@@ -350,16 +381,10 @@ mod tests {
         assert!(validate_alert(&input).is_ok());
     }
 
-    // ── page size validation ──────────────────────────────────────────────────
+    // ── page size validation (exercises the real *_paginated validator) ───────
 
-    fn validate_pagination(page: i64, page_size: i64) -> Result<(), String> {
-        if page < 1 {
-            return Err("page must be >= 1".to_string());
-        }
-        if !(1..=500).contains(&page_size) {
-            return Err("page_size must be between 1 and 500".to_string());
-        }
-        Ok(())
+    fn validate_pagination(page: i64, page_size: i64) -> Result<(), crate::error::AppError> {
+        crate::commands::validate_pagination(page, page_size)
     }
 
     #[test]
@@ -368,8 +393,20 @@ mod tests {
     }
 
     #[test]
+    fn pagination_rejects_negative_page() {
+        // Uncovered path: the decoy's `page < 1` branch was only ever
+        // exercised with page == 0, not with a negative page number.
+        assert!(validate_pagination(-5, 50).is_err());
+    }
+
+    #[test]
     fn pagination_rejects_page_size_zero() {
         assert!(validate_pagination(1, 0).is_err());
+    }
+
+    #[test]
+    fn pagination_rejects_negative_page_size() {
+        assert!(validate_pagination(1, -1).is_err());
     }
 
     #[test]

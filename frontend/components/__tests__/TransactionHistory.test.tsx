@@ -105,6 +105,7 @@ const mockHoldings = [
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => true,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: vi.fn((cmd: string) => {
     if (cmd === 'get_transactions_paginated')
       return Promise.resolve({

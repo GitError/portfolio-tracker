@@ -39,7 +39,7 @@ import type {
   HoldingWithPrice,
   PriceData,
 } from '../types/portfolio';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 
 type SortKey = keyof Pick<
   HoldingWithPrice,
@@ -327,7 +327,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       showToast(`Deleted ${ids.length} holdings`, 'info');
       setSelected(new Set());
     } catch (e) {
-      showToast(String(e), 'error');
+      showToast(getErrorMessage(e), 'error');
     } finally {
       setBulkDeleting(false);
       setIsDeleting(false);
@@ -345,7 +345,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
         showToast('Holding added', 'success');
       }
     } catch (e) {
-      showToast(String(e), 'error');
+      showToast(getErrorMessage(e), 'error');
     }
     setEditing(undefined);
   }
@@ -364,7 +364,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       await deleteHolding(id);
       showToast('Holding deleted', 'info');
     } catch (e) {
-      showToast(String(e), 'error');
+      showToast(getErrorMessage(e), 'error');
     } finally {
       setDeletingId(null);
       setIsDeleting(false);
@@ -395,7 +395,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       URL.revokeObjectURL(url);
       showToast('Holdings exported', 'success');
     } catch (e) {
-      showToast(String(e), 'error');
+      showToast(getErrorMessage(e), 'error');
     }
   }, [exportHoldingsCsv, showToast]);
 

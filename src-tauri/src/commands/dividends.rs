@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{Dividend, DividendId, DividendInput, PaginatedResult};
 
-use super::{validate_dividend_fields, DbState};
+use super::{validate_dividend_fields, validate_pagination, DbState};
 
 /// Deprecated: use `get_dividends_paginated` instead.
 #[tauri::command]
@@ -20,14 +20,7 @@ pub async fn get_dividends_paginated(
     page: i64,
     page_size: i64,
 ) -> Result<PaginatedResult<Dividend>, AppError> {
-    if page < 1 {
-        return Err(AppError::Validation("page must be >= 1".to_string()));
-    }
-    if !(1..=500).contains(&page_size) {
-        return Err(AppError::Validation(
-            "page_size must be between 1 and 500".to_string(),
-        ));
-    }
+    validate_pagination(page, page_size)?;
     let pool = &db.0;
     db::get_dividends_paginated(pool, page, page_size)
         .await

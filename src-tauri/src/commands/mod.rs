@@ -286,6 +286,29 @@ pub(crate) fn validate_holding_dividend_fields(
     Ok(())
 }
 
+/// Validates a price alert's threshold. Shared by `add_alert`.
+pub(crate) fn validate_alert_fields(threshold: f64) -> Result<(), AppError> {
+    if !threshold.is_finite() || threshold <= 0.0 {
+        return Err(AppError::Validation(
+            "threshold must be a positive finite number".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Validates 1-indexed pagination parameters. Shared by every `*_paginated` command.
+pub(crate) fn validate_pagination(page: i64, page_size: i64) -> Result<(), AppError> {
+    if page < 1 {
+        return Err(AppError::Validation("page must be >= 1".to_string()));
+    }
+    if !(1..=500).contains(&page_size) {
+        return Err(AppError::Validation(
+            "page_size must be between 1 and 500".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use crate::csv::{build_holdings_csv, parse_import_rows};

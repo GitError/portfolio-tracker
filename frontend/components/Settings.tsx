@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getVersion } from '@tauri-apps/api/app';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { useConfig } from '../hooks/useConfig';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
@@ -211,7 +211,7 @@ function DataManagementSection() {
       });
       setBackupStatus({ kind: 'success', path: savedPath });
     } catch (err) {
-      setBackupStatus({ kind: 'error', message: String(err) });
+      setBackupStatus({ kind: 'error', message: getErrorMessage(err) });
     }
   };
 
@@ -241,7 +241,7 @@ function DataManagementSection() {
       const message = await tauriInvoke<string>('restore_database', { sourcePath: filePath });
       setRestoreStatus({ kind: 'success', message });
     } catch (err) {
-      setRestoreStatus({ kind: 'error', message: String(err) });
+      setRestoreStatus({ kind: 'error', message: getErrorMessage(err) });
     }
   };
 

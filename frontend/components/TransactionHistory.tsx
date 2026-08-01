@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2 } from 'lucide-react';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { usePortfolio } from '../hooks/usePortfolio';
 import { AddTransactionModal } from './AddTransactionModal';
 import { EmptyState } from './ui/EmptyState';
@@ -112,7 +112,7 @@ export function TransactionHistory() {
         setTransactions([]);
       }
     } catch (err) {
-      setError(String(err));
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -172,7 +172,7 @@ export function TransactionHistory() {
       setTransactions((prev) => prev.filter((tx) => tx.id !== id));
       showToast('Transaction deleted', 'info');
     } catch (err) {
-      showToast(String(err), 'error');
+      showToast(getErrorMessage(err), 'error');
     } finally {
       setDeletingId(null);
       setPendingDelete(null);

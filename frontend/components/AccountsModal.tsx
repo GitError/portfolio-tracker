@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { tauriInvoke } from '../lib/tauri';
+import { tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { Pencil, Trash2, X, Plus } from 'lucide-react';
 import { ACCOUNT_TYPE_CONFIG } from '../lib/constants';
 import type {
@@ -90,7 +90,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
       const result = await tauriInvoke<Account[]>('get_accounts');
       setAccounts(result);
     } catch (e) {
-      setError(String(e));
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -147,7 +147,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
       setForm(EMPTY_FORM);
       setEditingId(null);
     } catch (e) {
-      setError(String(e));
+      setError(getErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -160,7 +160,7 @@ export function AccountsModal({ isOpen, onClose, portfolio }: AccountsModalProps
       await tauriInvoke('delete_account', { id });
       await loadAccounts();
     } catch (e) {
-      setError(String(e));
+      setError(getErrorMessage(e));
     } finally {
       setDeletingId(null);
     }
