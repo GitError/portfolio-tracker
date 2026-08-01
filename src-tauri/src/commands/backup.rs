@@ -195,6 +195,50 @@ pub async fn restore_database(
     Ok("Database restored. Please restart the app to apply changes.".to_string())
 }
 
+/// Deletes leftover `.tmp` and `.restore_tmp` staging files in `dir`.
+///
+/// `atomic_copy` and `quiesce_and_restore_file` both stage a copy into a temp
+/// file before an atomic rename into place. If the process is killed between
+/// the write and the rename (e.g. `.tmp` from a backup, `.restore_tmp` from a
+/// restore), the staging file is orphaned — it was never consumed by a rename
+/// and never will be. Call this once at startup, before opening the DB pool,
+/// so orphaned staging files don't accumulate across restarts.
+pub fn cleanup_stale_staging_files(dir: &std::path::Path) -> std::io::Result<usize> {
+    let mut removed = 0;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(name) => name,
+            None => continue,
+        };
+        if name.ends_with(".tmp") || name.ends_with(".restore_tmp") {
+            match std::fs::remove_file(&path) {
+                Ok(()) => {
+                    removed += 1;
+                    tracing::info!("Removed stale staging file: {}", path.display());
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to remove stale staging file {}: {}",
+                        path.display(),
+                        e
+                    );
+                }
+            }
+        }
+    }
+    Ok(removed)
+}
+
 /// Copies `source` to `dest` without ever exposing a partially-written file
 /// at `dest`. Stages the copy into a temp file in the same directory as
 /// `dest`, then atomically renames it into place — a same-directory rename
@@ -402,6 +446,57 @@ mod tests {
             .expect("select marker");
         pool.close().await;
         row.map(|r| r.get::<String, _>(0))
+    }
+
+    #[test]
+    fn cleanup_stale_staging_files_removes_tmp_and_restore_tmp_files() {
+        // Regression guard for #668: staging files orphaned by a process kill
+        // between write and rename must be swept up on next startup.
+        let scratch = ScratchDir::new("cleanup-stale-staging");
+        std::fs::write(scratch.path("portfolio.db.tmp"), b"orphaned backup staging")
+            .expect("write orphaned tmp file");
+        std::fs::write(
+            scratch.path("portfolio.db.restore_tmp"),
+            b"orphaned restore staging",
+        )
+        .expect("write orphaned restore_tmp file");
+        std::fs::write(scratch.path("portfolio.db"), b"live db").expect("write live db");
+        std::fs::write(scratch.path("notes.txt"), b"unrelated file").expect("write unrelated file");
+
+        let removed = cleanup_stale_staging_files(&scratch.0).expect("cleanup should succeed");
+
+        assert_eq!(removed, 2, "should remove exactly the two staging files");
+        assert!(!scratch.path("portfolio.db.tmp").exists());
+        assert!(!scratch.path("portfolio.db.restore_tmp").exists());
+        assert!(
+            scratch.path("portfolio.db").exists(),
+            "live db must survive cleanup"
+        );
+        assert!(
+            scratch.path("notes.txt").exists(),
+            "unrelated file must survive cleanup"
+        );
+    }
+
+    #[test]
+    fn cleanup_stale_staging_files_is_noop_when_no_staging_files_present() {
+        let scratch = ScratchDir::new("cleanup-stale-staging-noop");
+        std::fs::write(scratch.path("portfolio.db"), b"live db").expect("write live db");
+
+        let removed = cleanup_stale_staging_files(&scratch.0).expect("cleanup should succeed");
+
+        assert_eq!(removed, 0);
+        assert!(scratch.path("portfolio.db").exists());
+    }
+
+    #[test]
+    fn cleanup_stale_staging_files_tolerates_missing_directory() {
+        let scratch = ScratchDir::new("cleanup-stale-staging-missing-dir");
+        let missing = scratch.path("does-not-exist");
+
+        let removed = cleanup_stale_staging_files(&missing).expect("missing dir should not error");
+
+        assert_eq!(removed, 0);
     }
 
     #[test]

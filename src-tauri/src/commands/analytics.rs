@@ -81,9 +81,9 @@ pub(crate) async fn get_symbol_metadata_with_cache(
     client: &reqwest::Client,
     symbols: &[String],
     pool: Option<&sqlx::SqlitePool>,
-) -> Result<Vec<SymbolMetadata>, AppError> {
+) -> Vec<SymbolMetadata> {
     if symbols.is_empty() {
-        return Ok(vec![]);
+        return vec![];
     }
 
     const CACHE_TTL_SECS: i64 = 86_400; // 24 hours
@@ -104,7 +104,7 @@ pub(crate) async fn get_symbol_metadata_with_cache(
     }
 
     if stale_indices.is_empty() {
-        return Ok(results.into_iter().flatten().collect());
+        return results.into_iter().flatten().collect();
     }
 
     let stale_symbols: Vec<String> = stale_indices.iter().map(|&i| symbols[i].clone()).collect();
@@ -247,7 +247,7 @@ pub(crate) async fn get_symbol_metadata_with_cache(
         results[original_idx] = Some(meta);
     }
 
-    Ok(results.into_iter().flatten().collect())
+    results.into_iter().flatten().collect()
 }
 
 fn compute_portfolio_analytics(
@@ -429,9 +429,7 @@ pub async fn get_portfolio_analytics(
         .into_iter()
         .collect();
 
-    let metadata = get_symbol_metadata_with_cache(&http.0, &non_cash_symbols, Some(pool))
-        .await
-        .unwrap_or_default();
+    let metadata = get_symbol_metadata_with_cache(&http.0, &non_cash_symbols, Some(pool)).await;
 
     Ok(compute_portfolio_analytics(&snapshot, &metadata))
 }
@@ -471,11 +469,24 @@ pub async fn get_realized_gains(
     Ok(summary)
 }
 
+/// A negative, NaN/infinite, or >100 `drift_threshold` would silently disable
+/// or misapply the drift filter in `compute_rebalance_suggestions` — reject it
+/// at the command boundary instead.
+fn validate_drift_threshold(drift_threshold: f64) -> Result<(), AppError> {
+    if !drift_threshold.is_finite() || !(0.0..=100.0).contains(&drift_threshold) {
+        return Err(AppError::Validation(
+            "drift_threshold must be a finite number between 0 and 100".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn get_rebalance_suggestions(
     db: State<'_, DbState>,
     drift_threshold: f64,
 ) -> Result<Vec<RebalanceSuggestion>, AppError> {
+    validate_drift_threshold(drift_threshold)?;
     let base_currency = get_base_currency(&db.0).await;
 
     let pool = &db.0;
@@ -562,6 +573,35 @@ fn compute_rebalance_suggestions(
     });
 
     suggestions
+}
+
+#[cfg(test)]
+mod validate_drift_threshold_tests {
+    use super::validate_drift_threshold;
+
+    #[test]
+    fn rejects_negative_threshold() {
+        assert!(validate_drift_threshold(-0.01).is_err());
+    }
+
+    #[test]
+    fn rejects_threshold_above_100() {
+        assert!(validate_drift_threshold(100.01).is_err());
+    }
+
+    #[test]
+    fn rejects_nan_and_infinite_threshold() {
+        assert!(validate_drift_threshold(f64::NAN).is_err());
+        assert!(validate_drift_threshold(f64::INFINITY).is_err());
+        assert!(validate_drift_threshold(f64::NEG_INFINITY).is_err());
+    }
+
+    #[test]
+    fn accepts_boundary_and_typical_values() {
+        assert!(validate_drift_threshold(0.0).is_ok());
+        assert!(validate_drift_threshold(100.0).is_ok());
+        assert!(validate_drift_threshold(5.0).is_ok());
+    }
 }
 
 #[cfg(test)]

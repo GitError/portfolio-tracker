@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { getErrorMessage, tauriInvoke } from './lib/tauri';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Holdings } from './components/Holdings';
@@ -289,12 +290,14 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <PortfolioProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
-      </PortfolioProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <PortfolioProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </PortfolioProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   );
 }

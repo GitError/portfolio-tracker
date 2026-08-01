@@ -473,18 +473,29 @@ pub async fn upsert_symbol(pool: &SqlitePool, result: &SymbolResult) -> Result<(
     Ok(())
 }
 
+/// Escapes SQLite `LIKE` wildcards (`%`, `_`) and the escape character itself
+/// (`\`) in user-supplied search input, so a query like `A_B` matches the
+/// literal string `A_B` instead of `A` + any-character + `B`. Callers must
+/// pair this with `ESCAPE '\'` on the `LIKE` clause.
+fn escape_like_pattern(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 pub async fn search_symbol_cache(
     pool: &SqlitePool,
     query: &str,
 ) -> Result<Vec<SymbolResult>, String> {
     use sqlx::Row;
-    let pattern = format!("%{}%", query.to_lowercase());
-    let sym_prefix = format!("{}%", query.to_uppercase());
+    let pattern = format!("%{}%", escape_like_pattern(&query.to_lowercase()));
+    let sym_prefix = format!("{}%", escape_like_pattern(&query.to_uppercase()));
 
     let rows = sqlx::query(
         "SELECT symbol, name, asset_type, exchange, currency FROM symbol_cache
-         WHERE symbol LIKE $1 OR LOWER(name) LIKE $2
-         ORDER BY CASE WHEN symbol LIKE $1 THEN 0 ELSE 1 END
+         WHERE symbol LIKE $1 ESCAPE '\\' OR LOWER(name) LIKE $2 ESCAPE '\\'
+         ORDER BY CASE WHEN symbol LIKE $1 ESCAPE '\\' THEN 0 ELSE 1 END
          LIMIT 8",
     )
     .bind(&sym_prefix)
@@ -518,14 +529,14 @@ pub async fn search_symbol_cache_fresh(
     max_age_secs: i64,
 ) -> Result<Vec<SymbolResult>, String> {
     use sqlx::Row;
-    let pattern = format!("%{}%", query.to_lowercase());
-    let sym_prefix = format!("{}%", query.to_uppercase());
+    let pattern = format!("%{}%", escape_like_pattern(&query.to_lowercase()));
+    let sym_prefix = format!("{}%", escape_like_pattern(&query.to_uppercase()));
     let cutoff = (Utc::now() - chrono::Duration::seconds(max_age_secs)).to_rfc3339();
 
     let rows = sqlx::query(
         "SELECT symbol, name, asset_type, exchange, currency FROM symbol_cache
-         WHERE (symbol LIKE $1 OR LOWER(name) LIKE $2) AND updated_at >= $3
-         ORDER BY CASE WHEN symbol LIKE $1 THEN 0 ELSE 1 END
+         WHERE (symbol LIKE $1 ESCAPE '\\' OR LOWER(name) LIKE $2 ESCAPE '\\') AND updated_at >= $3
+         ORDER BY CASE WHEN symbol LIKE $1 ESCAPE '\\' THEN 0 ELSE 1 END
          LIMIT 8",
     )
     .bind(&sym_prefix)
@@ -1813,6 +1824,73 @@ mod tests {
             .await
             .expect("query with 300s max age");
         assert_eq!(lenient.len(), 1, "2-minute-old row is within 300s max age");
+    }
+
+    #[tokio::test]
+    async fn search_symbol_cache_treats_underscore_as_literal_not_wildcard() {
+        // Regression guard for #679: `_` is a SQLite LIKE single-char wildcard,
+        // so searching "A_B" must NOT also match "AXB" once escaped.
+        let pool = open_test_db().await;
+        for (symbol, name) in [("A_B", "Underscore Co"), ("AXB", "Wildcard Match Co")] {
+            upsert_symbol(
+                &pool,
+                &SymbolResult {
+                    symbol: symbol.to_string(),
+                    name: name.to_string(),
+                    asset_type: AssetType::Stock,
+                    exchange: "NMS".to_string(),
+                    currency: "USD".to_string(),
+                },
+            )
+            .await
+            .expect("upsert symbol");
+        }
+
+        let results = search_symbol_cache(&pool, "A_B")
+            .await
+            .expect("query cache");
+
+        assert_eq!(
+            results
+                .iter()
+                .map(|r| r.symbol.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A_B"],
+            "underscore must match literally, not as a single-char wildcard"
+        );
+    }
+
+    #[tokio::test]
+    async fn search_symbol_cache_treats_percent_as_literal_not_wildcard() {
+        // A literal `%` in the query must not act as a multi-char wildcard.
+        let pool = open_test_db().await;
+        for (symbol, name) in [("A%B", "Percent Co"), ("AZZZB", "Unrelated Co")] {
+            upsert_symbol(
+                &pool,
+                &SymbolResult {
+                    symbol: symbol.to_string(),
+                    name: name.to_string(),
+                    asset_type: AssetType::Stock,
+                    exchange: "NMS".to_string(),
+                    currency: "USD".to_string(),
+                },
+            )
+            .await
+            .expect("upsert symbol");
+        }
+
+        let results = search_symbol_cache(&pool, "A%B")
+            .await
+            .expect("query cache");
+
+        assert_eq!(
+            results
+                .iter()
+                .map(|r| r.symbol.as_str())
+                .collect::<Vec<_>>(),
+            vec!["A%B"],
+            "percent must match literally, not as a multi-char wildcard"
+        );
     }
 
     // ── upsert_symbol_fundamentals ────────────────────────────────────────────

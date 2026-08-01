@@ -218,6 +218,96 @@ pub fn validate_config_key(key: &str) -> Result<(), McpError> {
     Ok(())
 }
 
+/// Mirrors `SUPPORTED_LANGUAGES` in `src-tauri/src/commands/config.rs`.
+const SUPPORTED_LANGUAGES: &[&str] = &["en", "de", "es", "fr", "ja", "pl", "pt", "zh"];
+
+/// Mirrors `KNOWN_HOLDINGS_COLUMNS` in `src-tauri/src/commands/config.rs`.
+const KNOWN_HOLDINGS_COLUMNS: &[&str] = &[
+    "symbol",
+    "name",
+    "assetType",
+    "account",
+    "exchange",
+    "quantity",
+    "costBasis",
+    "currentPrice",
+    "marketValueCad",
+    "weight",
+    "targetWeight",
+    "targetDeltaPercent",
+    "targetDeltaValue",
+    "gainLoss",
+    "gainLossPercent",
+    "prevClose",
+    "dayOpen",
+    "openDate",
+    "maturityDate",
+];
+
+/// Mirrors `MAX_CONFIG_VALUE_LEN` in `src-tauri/src/commands/config.rs`.
+const MAX_CONFIG_VALUE_LEN: usize = 500;
+
+/// Mirrors `validate_config_value` in `src-tauri/src/commands/config.rs::set_config_cmd`.
+pub fn validate_config_value(key: &str, value: &str) -> Result<(), McpError> {
+    match key {
+        "app_theme" => {
+            if !["light", "dark", "system"].contains(&value) {
+                return Err(McpError::invalid_params(
+                    format!("app_theme must be one of: light, dark, system (got: {value})"),
+                    None,
+                ));
+            }
+        }
+        "app_language" => {
+            if !SUPPORTED_LANGUAGES.contains(&value) {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "app_language must be one of: {} (got: {value})",
+                        SUPPORTED_LANGUAGES.join(", ")
+                    ),
+                    None,
+                ));
+            }
+        }
+        "base_currency" => {
+            if value.len() != 3 || !value.bytes().all(|b| b.is_ascii_uppercase()) {
+                return Err(McpError::invalid_params(
+                    format!(
+                        "base_currency must be a 3-letter uppercase currency code (got: {value})"
+                    ),
+                    None,
+                ));
+            }
+        }
+        "holdings_hidden_columns" => {
+            let columns: Vec<String> = serde_json::from_str(value).map_err(|_| {
+                McpError::invalid_params(
+                    "holdings_hidden_columns must be a JSON array of column names",
+                    None,
+                )
+            })?;
+            if let Some(unknown) = columns
+                .iter()
+                .find(|c| !KNOWN_HOLDINGS_COLUMNS.contains(&c.as_str()))
+            {
+                return Err(McpError::invalid_params(
+                    format!("holdings_hidden_columns contains unknown column: {unknown}"),
+                    None,
+                ));
+            }
+        }
+        _ => {
+            if value.len() > MAX_CONFIG_VALUE_LEN {
+                return Err(McpError::invalid_params(
+                    format!("{key} value exceeds max length of {MAX_CONFIG_VALUE_LEN} characters"),
+                    None,
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -430,5 +520,66 @@ mod tests {
         assert!(validate_config_key("cost_basis_method").is_ok());
         assert!(validate_config_key("some_arbitrary_key").is_err());
         assert!(validate_config_key("").is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_known_theme_values() {
+        for value in ["light", "dark", "system"] {
+            assert!(validate_config_value("app_theme", value).is_ok());
+        }
+    }
+
+    #[test]
+    fn validate_config_value_rejects_unknown_theme() {
+        assert!(validate_config_value("app_theme", "solarized").is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_supported_languages() {
+        for value in ["en", "de", "es", "fr", "ja", "pl", "pt", "zh"] {
+            assert!(validate_config_value("app_language", value).is_ok());
+        }
+    }
+
+    #[test]
+    fn validate_config_value_rejects_unsupported_language() {
+        assert!(validate_config_value("app_language", "xx").is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_valid_base_currency() {
+        assert!(validate_config_value("base_currency", "CAD").is_ok());
+    }
+
+    #[test]
+    fn validate_config_value_rejects_malformed_base_currency() {
+        assert!(validate_config_value("base_currency", "cad").is_err());
+        assert!(validate_config_value("base_currency", "CA").is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_valid_holdings_hidden_columns() {
+        assert!(validate_config_value("holdings_hidden_columns", r#"["symbol","weight"]"#).is_ok());
+    }
+
+    #[test]
+    fn validate_config_value_rejects_unknown_column_in_holdings_hidden_columns() {
+        assert!(validate_config_value("holdings_hidden_columns", r#"["notARealColumn"]"#).is_err());
+    }
+
+    #[test]
+    fn validate_config_value_rejects_non_json_holdings_hidden_columns() {
+        assert!(validate_config_value("holdings_hidden_columns", "not json").is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_other_keys_within_max_length() {
+        assert!(validate_config_value("cost_basis_method", "avco").is_ok());
+    }
+
+    #[test]
+    fn validate_config_value_rejects_other_keys_over_max_length() {
+        let too_long = "a".repeat(MAX_CONFIG_VALUE_LEN + 1);
+        assert!(validate_config_value("cost_basis_method", &too_long).is_err());
     }
 }
