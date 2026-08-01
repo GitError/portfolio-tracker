@@ -236,7 +236,17 @@ pub(crate) fn validate_dividend_fields(
             "amountPerUnit must be a finite number greater than 0".to_string(),
         ));
     }
-    if !ex_date.trim().is_empty() && !pay_date.trim().is_empty() && pay_date < ex_date {
+    if chrono::NaiveDate::parse_from_str(ex_date.trim(), "%Y-%m-%d").is_err() {
+        return Err(AppError::Validation(
+            "exDate must be a valid ISO date (YYYY-MM-DD)".to_string(),
+        ));
+    }
+    if chrono::NaiveDate::parse_from_str(pay_date.trim(), "%Y-%m-%d").is_err() {
+        return Err(AppError::Validation(
+            "payDate must be a valid ISO date (YYYY-MM-DD)".to_string(),
+        ));
+    }
+    if pay_date < ex_date {
         return Err(AppError::Validation(
             "payDate must not be before exDate".to_string(),
         ));

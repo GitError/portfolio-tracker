@@ -222,6 +222,36 @@ mod tests {
         );
     }
 
+    #[test]
+    fn dividend_rejects_malformed_ex_date() {
+        // Regression guard for #676: ex_date/pay_date were stored as free-form
+        // strings with no format check.
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(1.38, "03/15/2024", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(1.38, "not-a-date", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(1.38, "", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn dividend_rejects_malformed_pay_date() {
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(1.38, "2024-03-15", "25/04/2024"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(1.38, "2024-03-15", ""),
+            Err(AppError::Validation(_))
+        ));
+    }
+
     // ── transaction validation (#624) ─────────────────────────────────────────
 
     #[test]
