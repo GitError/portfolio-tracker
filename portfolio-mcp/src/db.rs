@@ -4,10 +4,17 @@ use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::types::{
-    AccountType, AlertDirection, AlertId, AssetType, FxRate, Holding, HoldingId, HoldingInput,
-    PriceAlert, PriceAlertInput, PriceData, Transaction, TransactionId, TransactionInput,
-    TransactionType,
+    Account, AccountType, AlertDirection, AlertId, AssetType, Dividend, DividendId, DividendInput,
+    FxRate, Holding, HoldingId, HoldingInput, PriceAlert, PriceAlertInput, PriceData, Transaction,
+    TransactionId, TransactionInput, TransactionType,
 };
+
+/// Cap applied to MCP list queries that don't take explicit pagination
+/// parameters (`list_holdings`, `list_transactions`, `list_alerts`, ...).
+/// Mirrors the max `page_size` accepted by the Tauri `*_paginated` commands
+/// (`validate_pagination` in `src-tauri/src/commands/mod.rs`), so an
+/// unbounded portfolio can't make these tools return an unbounded result set.
+pub const PAGINATION_FETCH_ALL_SIZE: i64 = 500;
 
 /// Open a connection pool to the portfolio SQLite database.
 /// The database must already exist (created_if_missing = false).
@@ -57,7 +64,6 @@ pub async fn set_config(pool: &SqlitePool, key: &str, value: &str) -> anyhow::Re
 // ── Holdings ──────────────────────────────────────────────────────────────────
 
 pub async fn get_all_holdings(pool: &SqlitePool) -> anyhow::Result<Vec<Holding>> {
-    use sqlx::Row;
     let rows = sqlx::query(
         "SELECT
             h.id,
@@ -81,42 +87,156 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> anyhow::Result<Vec<Holding>>
          FROM holdings h
          LEFT JOIN accounts a ON a.id = h.account_id
          WHERE h.deleted_at IS NULL
-         ORDER BY h.created_at ASC",
+         ORDER BY h.created_at ASC
+         LIMIT $1",
     )
+    .bind(PAGINATION_FETCH_ALL_SIZE)
     .fetch_all(pool)
     .await?;
 
-    let holdings = rows
-        .into_iter()
-        .map(|r| {
-            let asset_type_str: String = r.get(3);
-            let account_str: String = r.get(4);
-            let asset_type = AssetType::from_str(&asset_type_str).unwrap_or(AssetType::Stock);
-            let account = AccountType::from_str(&account_str).unwrap_or(AccountType::Taxable);
-            Holding {
-                id: HoldingId(r.get(0)),
-                symbol: r.get(1),
-                name: r.get(2),
-                asset_type,
-                account,
-                account_id: r.get(5),
-                account_name: r.get(6),
-                quantity: r.get(7),
-                cost_basis: r.get(8),
-                currency: r.get(9),
-                exchange: r.get(10),
-                target_weight: r.get::<Option<f64>, _>(11),
-                created_at: r.get(12),
-                updated_at: r.get(13),
-                indicated_annual_dividend: r.get::<Option<f64>, _>(14),
-                indicated_annual_dividend_currency: r.get::<Option<String>, _>(15),
-                dividend_frequency: r.get::<Option<String>, _>(16),
-                maturity_date: r.get::<Option<String>, _>(17),
-            }
-        })
-        .collect();
+    let holdings = rows.into_iter().map(row_to_holding).collect();
 
     Ok(holdings)
+}
+
+/// Look up a single holding by id (used by `update_holding` to preserve
+/// `created_at`/`account_name` across the update).
+pub async fn get_holding_by_id(pool: &SqlitePool, id: &str) -> anyhow::Result<Option<Holding>> {
+    let row = sqlx::query(
+        "SELECT
+            h.id,
+            h.symbol,
+            h.name,
+            h.asset_type,
+            h.account,
+            h.account_id,
+            a.name AS account_name,
+            h.quantity,
+            h.cost_basis,
+            h.currency,
+            h.exchange,
+            h.target_weight,
+            h.created_at,
+            h.updated_at,
+            h.indicated_annual_dividend,
+            h.indicated_annual_dividend_currency,
+            h.dividend_frequency,
+            h.maturity_date
+         FROM holdings h
+         LEFT JOIN accounts a ON a.id = h.account_id
+         WHERE h.id = $1 AND h.deleted_at IS NULL",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(row_to_holding))
+}
+
+fn row_to_holding(r: sqlx::sqlite::SqliteRow) -> Holding {
+    use sqlx::Row;
+    let asset_type_str: String = r.get(3);
+    let account_str: String = r.get(4);
+    let asset_type = AssetType::from_str(&asset_type_str).unwrap_or_else(|_| {
+        tracing::warn!(raw = %asset_type_str, "unrecognised asset_type; defaulting to Stock");
+        AssetType::Stock
+    });
+    let account = AccountType::from_str(&account_str).unwrap_or_else(|_| {
+        tracing::warn!(raw = %account_str, "unrecognised account_type; defaulting to Taxable");
+        AccountType::Taxable
+    });
+    Holding {
+        id: HoldingId(r.get(0)),
+        symbol: r.get(1),
+        name: r.get(2),
+        asset_type,
+        account,
+        account_id: r.get(5),
+        account_name: r.get(6),
+        quantity: r.get(7),
+        cost_basis: r.get(8),
+        currency: r.get(9),
+        exchange: r.get(10),
+        target_weight: r.get::<Option<f64>, _>(11),
+        created_at: r.get(12),
+        updated_at: r.get(13),
+        indicated_annual_dividend: r.get::<Option<f64>, _>(14),
+        indicated_annual_dividend_currency: r.get::<Option<String>, _>(15),
+        dividend_frequency: r.get::<Option<String>, _>(16),
+        maturity_date: r.get::<Option<String>, _>(17),
+    }
+}
+
+/// Mirrors `update_holding` in `src-tauri/src/db.rs`.
+pub async fn update_holding(pool: &SqlitePool, holding: Holding) -> anyhow::Result<Holding> {
+    let now = Utc::now().to_rfc3339();
+
+    let effective_account_id: Option<String> = if let Some(account_id) = holding.account_id.clone()
+    {
+        Some(account_id)
+    } else {
+        use sqlx::Row;
+        sqlx::query("SELECT id FROM accounts WHERE type = $1 ORDER BY created_at ASC LIMIT 1")
+            .bind(holding.account.as_str())
+            .fetch_optional(pool)
+            .await?
+            .map(|r| r.get::<String, _>(0))
+    };
+
+    if effective_account_id.is_none() {
+        tracing::warn!(
+            "No account of type '{}' found; holding updated without account assignment",
+            holding.account.as_str()
+        );
+    }
+
+    let result = sqlx::query(
+        "UPDATE holdings SET
+             symbol=$1,
+             name=$2,
+             asset_type=$3,
+             account=$4,
+             account_id=$5,
+             quantity=$6,
+             cost_basis=$7,
+             currency=$8,
+             exchange=$9,
+             target_weight=$10,
+             updated_at=$11,
+             indicated_annual_dividend=$12,
+             indicated_annual_dividend_currency=$13,
+             dividend_frequency=$14,
+             maturity_date=$15
+         WHERE id=$16",
+    )
+    .bind(&holding.symbol)
+    .bind(&holding.name)
+    .bind(holding.asset_type.as_str())
+    .bind(holding.account.as_str())
+    .bind(&effective_account_id)
+    .bind(holding.quantity)
+    .bind(holding.cost_basis)
+    .bind(&holding.currency)
+    .bind(&holding.exchange)
+    .bind(holding.target_weight)
+    .bind(&now)
+    .bind(holding.indicated_annual_dividend)
+    .bind(&holding.indicated_annual_dividend_currency)
+    .bind(&holding.dividend_frequency)
+    .bind(&holding.maturity_date)
+    .bind(holding.id.0.as_str())
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        anyhow::bail!("Holding {} not found", holding.id);
+    }
+
+    Ok(Holding {
+        updated_at: now,
+        account_id: effective_account_id,
+        ..holding
+    })
 }
 
 pub async fn insert_holding(pool: &SqlitePool, input: HoldingInput) -> anyhow::Result<Holding> {
@@ -277,8 +397,10 @@ pub async fn get_alerts(pool: &SqlitePool) -> anyhow::Result<Vec<PriceAlert>> {
     use sqlx::Row;
     let rows = sqlx::query(
         "SELECT id, symbol, direction, threshold, currency, note, triggered, created_at
-         FROM price_alerts ORDER BY created_at DESC",
+         FROM price_alerts ORDER BY created_at DESC
+         LIMIT $1",
     )
+    .bind(PAGINATION_FETCH_ALL_SIZE)
     .fetch_all(pool)
     .await?;
 
@@ -355,8 +477,10 @@ pub async fn reset_alert(pool: &SqlitePool, id: &AlertId) -> anyhow::Result<bool
 pub async fn get_all_transactions(pool: &SqlitePool) -> anyhow::Result<Vec<Transaction>> {
     let rows = sqlx::query(
         "SELECT id, holding_id, transaction_type, quantity, price, transacted_at, created_at
-         FROM transactions WHERE deleted_at IS NULL ORDER BY transacted_at ASC",
+         FROM transactions WHERE deleted_at IS NULL ORDER BY transacted_at ASC
+         LIMIT $1",
     )
+    .bind(PAGINATION_FETCH_ALL_SIZE)
     .fetch_all(pool)
     .await?;
 
@@ -423,4 +547,169 @@ fn row_to_transaction(row: &sqlx::sqlite::SqliteRow) -> anyhow::Result<Transacti
         transacted_at: row.get(5),
         created_at: row.get(6),
     })
+}
+
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+pub async fn get_accounts(pool: &SqlitePool) -> anyhow::Result<Vec<Account>> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT id, name, type, institution, created_at FROM accounts
+         ORDER BY created_at ASC
+         LIMIT $1",
+    )
+    .bind(PAGINATION_FETCH_ALL_SIZE)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| Account {
+            id: r.get(0),
+            name: r.get(1),
+            account_type: r.get(2),
+            institution: r.get(3),
+            created_at: r.get(4),
+        })
+        .collect())
+}
+
+pub async fn insert_account(
+    pool: &SqlitePool,
+    name: &str,
+    account_type: &str,
+    institution: Option<&str>,
+) -> anyhow::Result<Account> {
+    let id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO accounts (id, name, type, institution, created_at)
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(account_type)
+    .bind(institution)
+    .bind(&created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(Account {
+        id,
+        name: name.to_string(),
+        account_type: account_type.to_string(),
+        institution: institution.map(|s| s.to_string()),
+        created_at,
+    })
+}
+
+// ── Dividends ─────────────────────────────────────────────────────────────────
+
+/// Look up a holding's symbol and currency by id. Mirrors
+/// `get_holding_symbol_and_currency` in `src-tauri/src/db.rs`, used to
+/// validate/attribute an incoming dividend against its parent holding.
+pub async fn get_holding_symbol_and_currency(
+    pool: &SqlitePool,
+    id: &str,
+) -> anyhow::Result<Option<(String, String)>> {
+    use sqlx::Row;
+    let row = sqlx::query("SELECT symbol, currency FROM holdings WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row.map(|r| (r.get(0), r.get(1))))
+}
+
+pub async fn get_dividends(
+    pool: &SqlitePool,
+    holding_id: Option<&str>,
+) -> anyhow::Result<Vec<Dividend>> {
+    use sqlx::Row;
+    let rows = if let Some(hid) = holding_id {
+        sqlx::query(
+            "SELECT d.id, d.holding_id, h.symbol, d.amount_per_unit, d.currency,
+                    d.ex_date, d.pay_date, d.created_at
+             FROM dividends d
+             JOIN holdings h ON h.id = d.holding_id
+             WHERE d.deleted_at IS NULL AND d.holding_id = $1
+             ORDER BY d.ex_date DESC
+             LIMIT $2",
+        )
+        .bind(hid)
+        .bind(PAGINATION_FETCH_ALL_SIZE)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            "SELECT d.id, d.holding_id, h.symbol, d.amount_per_unit, d.currency,
+                    d.ex_date, d.pay_date, d.created_at
+             FROM dividends d
+             JOIN holdings h ON h.id = d.holding_id
+             WHERE d.deleted_at IS NULL
+             ORDER BY d.ex_date DESC
+             LIMIT $1",
+        )
+        .bind(PAGINATION_FETCH_ALL_SIZE)
+        .fetch_all(pool)
+        .await?
+    };
+
+    Ok(rows
+        .into_iter()
+        .map(|r| Dividend {
+            id: DividendId(r.get(0)),
+            holding_id: HoldingId(r.get(1)),
+            symbol: r.get(2),
+            amount_per_unit: r.get(3),
+            currency: r.get(4),
+            ex_date: r.get(5),
+            pay_date: r.get(6),
+            created_at: r.get(7),
+        })
+        .collect())
+}
+
+pub async fn insert_dividend(
+    pool: &SqlitePool,
+    input: DividendInput,
+    symbol: &str,
+) -> anyhow::Result<Dividend> {
+    let id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+
+    sqlx::query(
+        "INSERT INTO dividends (id, holding_id, amount_per_unit, currency, ex_date, pay_date, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&id)
+    .bind(input.holding_id.0.as_str())
+    .bind(input.amount_per_unit)
+    .bind(&input.currency)
+    .bind(&input.ex_date)
+    .bind(&input.pay_date)
+    .bind(&created_at)
+    .execute(pool)
+    .await?;
+
+    Ok(Dividend {
+        id: DividendId(id),
+        holding_id: input.holding_id,
+        symbol: symbol.to_string(),
+        amount_per_unit: input.amount_per_unit,
+        currency: input.currency,
+        ex_date: input.ex_date,
+        pay_date: input.pay_date,
+        created_at,
+    })
+}
+
+pub async fn delete_dividend(pool: &SqlitePool, id: &DividendId) -> anyhow::Result<bool> {
+    let result = sqlx::query(
+        "UPDATE dividends SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND deleted_at IS NULL",
+    )
+    .bind(id.0.as_str())
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }

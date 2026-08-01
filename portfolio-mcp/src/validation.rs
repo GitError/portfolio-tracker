@@ -247,6 +247,63 @@ const KNOWN_HOLDINGS_COLUMNS: &[&str] = &[
 /// Mirrors `MAX_CONFIG_VALUE_LEN` in `src-tauri/src/commands/config.rs`.
 const MAX_CONFIG_VALUE_LEN: usize = 500;
 
+/// Account types accepted by `create_account`, mirrors `VALID_ACCOUNT_TYPES`
+/// in `src-tauri/src/commands/accounts.rs`.
+pub const VALID_ACCOUNT_TYPES: &[&str] =
+    &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"];
+
+/// Mirrors `validate_account_fields` in `src-tauri/src/commands/accounts.rs`.
+/// Returns the trimmed name on success.
+pub fn validate_account_fields(name: &str, account_type: &str) -> Result<String, McpError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(McpError::invalid_params(
+            "Account name cannot be empty",
+            None,
+        ));
+    }
+    if !VALID_ACCOUNT_TYPES.contains(&account_type) {
+        return Err(McpError::invalid_params(
+            format!("Invalid account type: {account_type}"),
+            None,
+        ));
+    }
+    Ok(name)
+}
+
+/// Mirrors `validate_dividend_fields` in `src-tauri/src/commands/mod.rs`.
+pub fn validate_dividend_fields(
+    amount_per_unit: f64,
+    ex_date: &str,
+    pay_date: &str,
+) -> Result<(), McpError> {
+    if !amount_per_unit.is_finite() || amount_per_unit <= 0.0 {
+        return Err(McpError::invalid_params(
+            "amountPerUnit must be a finite number greater than 0",
+            None,
+        ));
+    }
+    if chrono::NaiveDate::parse_from_str(ex_date.trim(), "%Y-%m-%d").is_err() {
+        return Err(McpError::invalid_params(
+            "exDate must be a valid ISO date (YYYY-MM-DD)",
+            None,
+        ));
+    }
+    if chrono::NaiveDate::parse_from_str(pay_date.trim(), "%Y-%m-%d").is_err() {
+        return Err(McpError::invalid_params(
+            "payDate must be a valid ISO date (YYYY-MM-DD)",
+            None,
+        ));
+    }
+    if pay_date < ex_date {
+        return Err(McpError::invalid_params(
+            "payDate must not be before exDate",
+            None,
+        ));
+    }
+    Ok(())
+}
+
 /// Mirrors `validate_config_value` in `src-tauri/src/commands/config.rs::set_config_cmd`.
 pub fn validate_config_value(key: &str, value: &str) -> Result<(), McpError> {
     match key {
@@ -581,5 +638,51 @@ mod tests {
     fn validate_config_value_rejects_other_keys_over_max_length() {
         let too_long = "a".repeat(MAX_CONFIG_VALUE_LEN + 1);
         assert!(validate_config_value("cost_basis_method", &too_long).is_err());
+    }
+
+    #[test]
+    fn validate_account_fields_rejects_empty_and_whitespace_name() {
+        assert!(validate_account_fields("", "tfsa").is_err());
+        assert!(validate_account_fields("   ", "tfsa").is_err());
+    }
+
+    #[test]
+    fn validate_account_fields_rejects_unknown_type() {
+        assert!(validate_account_fields("My Account", "not-a-type").is_err());
+    }
+
+    #[test]
+    fn validate_account_fields_trims_name_and_accepts_valid_input() {
+        let name = validate_account_fields("  My TFSA  ", "tfsa").expect("valid input");
+        assert_eq!(name, "My TFSA");
+    }
+
+    #[test]
+    fn validate_dividend_fields_rejects_non_positive_amount() {
+        assert!(validate_dividend_fields(0.0, "2024-01-01", "2024-01-15").is_err());
+        assert!(validate_dividend_fields(-1.0, "2024-01-01", "2024-01-15").is_err());
+    }
+
+    #[test]
+    fn validate_dividend_fields_rejects_non_finite_amount() {
+        assert!(validate_dividend_fields(f64::NAN, "2024-01-01", "2024-01-15").is_err());
+        assert!(validate_dividend_fields(f64::INFINITY, "2024-01-01", "2024-01-15").is_err());
+    }
+
+    #[test]
+    fn validate_dividend_fields_rejects_non_iso_dates() {
+        assert!(validate_dividend_fields(1.0, "01/01/2024", "2024-01-15").is_err());
+        assert!(validate_dividend_fields(1.0, "2024-01-01", "01/15/2024").is_err());
+    }
+
+    #[test]
+    fn validate_dividend_fields_rejects_pay_date_before_ex_date() {
+        assert!(validate_dividend_fields(1.0, "2024-01-15", "2024-01-01").is_err());
+    }
+
+    #[test]
+    fn validate_dividend_fields_accepts_valid_input() {
+        assert!(validate_dividend_fields(1.5, "2024-01-01", "2024-01-15").is_ok());
+        assert!(validate_dividend_fields(1.5, "2024-01-01", "2024-01-01").is_ok());
     }
 }

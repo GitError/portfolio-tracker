@@ -1,5 +1,7 @@
+pub mod accounts;
 pub mod alerts;
 pub mod config;
+pub mod dividends;
 pub mod holdings;
 pub mod portfolio;
 pub mod stress;
@@ -58,12 +60,73 @@ impl PortfolioMcpServer {
             .and_then(|v| Self::json_content(&v))
     }
 
+    #[tool(description = "Update an existing holding's editable fields (full replace).")]
+    async fn update_holding(
+        &self,
+        #[tool(aggr)] input: holdings::UpdateHoldingParams,
+    ) -> Result<CallToolResult, McpError> {
+        holdings::update_holding(&self.pool, input)
+            .await
+            .and_then(|v| Self::json_content(&v))
+    }
+
     #[tool(description = "Soft-delete a holding by its UUID.")]
     async fn delete_holding(
         &self,
         #[tool(aggr)] input: holdings::DeleteHoldingParams,
     ) -> Result<CallToolResult, McpError> {
         holdings::delete_holding(&self.pool, input)
+            .await
+            .and_then(|v| Self::json_content(&v))
+    }
+
+    // ── Accounts ──────────────────────────────────────────────────────────────
+
+    #[tool(description = "List all accounts (id, name, type, institution).")]
+    async fn list_accounts(&self) -> Result<CallToolResult, McpError> {
+        accounts::list_accounts(&self.pool)
+            .await
+            .and_then(|v| Self::json_content(&v))
+    }
+
+    #[tool(description = "Create a new account.")]
+    async fn create_account(
+        &self,
+        #[tool(aggr)] input: accounts::CreateAccountParams,
+    ) -> Result<CallToolResult, McpError> {
+        accounts::create_account(&self.pool, input)
+            .await
+            .and_then(|v| Self::json_content(&v))
+    }
+
+    // ── Dividends ─────────────────────────────────────────────────────────────
+
+    #[tool(description = "List dividend records, optionally filtered by holding UUID.")]
+    async fn list_dividends(
+        &self,
+        #[tool(aggr)] input: dividends::ListDividendsParams,
+    ) -> Result<CallToolResult, McpError> {
+        dividends::list_dividends(&self.pool, input)
+            .await
+            .and_then(|v| Self::json_content(&v))
+    }
+
+    #[tool(description = "Record a new dividend payment for a holding.")]
+    async fn add_dividend(
+        &self,
+        #[tool(aggr)] input: dividends::AddDividendParams,
+    ) -> Result<CallToolResult, McpError> {
+        dividends::add_dividend(&self.pool, input)
+            .await
+            .and_then(|v| Self::json_content(&v))
+    }
+
+    #[tool(description = "Soft-delete a dividend record by its UUID.")]
+    async fn delete_dividend(
+        &self,
+        #[tool(aggr)] input: dividends::DeleteDividendParams,
+    ) -> Result<CallToolResult, McpError> {
+        dividends::delete_dividend(&self.pool, input)
             .await
             .and_then(|v| Self::json_content(&v))
     }
