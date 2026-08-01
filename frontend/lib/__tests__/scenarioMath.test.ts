@@ -157,3 +157,32 @@ describe('computeStressImpact', () => {
     expect(result.totalImpactPercent).toBe(0);
   });
 });
+
+describe('cross-language parity (#646)', () => {
+  // Mirrors `parity_matches_typescript_scenario_math` in
+  // portfolio-core/src/stress.rs — keep the input scenario and expected
+  // numbers identical in both places if either implementation changes.
+  it('matches the Rust run_stress_test implementation for a known scenario', () => {
+    const snapshot = makeSnapshot([
+      makeHolding('AAPL', 'stock', 'USD', 10_000),
+      makeHolding('RY.TO', 'stock', 'CAD', 5_000),
+    ]);
+    const scenario: StressScenario = {
+      name: 'Parity Check',
+      shocks: { stock: -0.2, fx_usd_cad: 0.05 },
+    };
+
+    const result = computeStressImpact(snapshot, scenario);
+
+    const aapl = result.holdingBreakdown.find((h) => h.symbol === 'AAPL')!;
+    const ryTo = result.holdingBreakdown.find((h) => h.symbol === 'RY.TO')!;
+
+    // AAPL: 10000 * 0.80 * 1.05 = 8400
+    expect(aapl.stressedValue).toBeCloseTo(8_400, 6);
+    // RY.TO: 5000 * 0.80 = 4000 (CAD holding ignores fx_usd_cad)
+    expect(ryTo.stressedValue).toBeCloseTo(4_000, 6);
+    expect(result.stressedValue).toBeCloseTo(12_400, 6);
+    expect(result.totalImpact).toBeCloseTo(-2_600, 6);
+    expect(result.totalImpactPercent).toBeCloseTo(-17.333333333333332, 6);
+  });
+});

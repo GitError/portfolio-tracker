@@ -8,6 +8,24 @@ use super::{validate_id, DbState};
 const VALID_ACCOUNT_TYPES: &[&str] =
     &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"];
 
+/// Validates an account's name and type, shared by `add_account`/`update_account`.
+/// Returns the trimmed name on success.
+pub(crate) fn validate_account_fields(name: &str, account_type: &str) -> Result<String, AppError> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err(AppError::Validation(
+            "Account name cannot be empty".to_string(),
+        ));
+    }
+    if !VALID_ACCOUNT_TYPES.contains(&account_type) {
+        return Err(AppError::Validation(format!(
+            "Invalid account type: {}",
+            account_type
+        )));
+    }
+    Ok(name)
+}
+
 #[tauri::command]
 pub async fn get_accounts(state: tauri::State<'_, DbState>) -> Result<Vec<Account>, AppError> {
     let pool = &state.0;
@@ -19,18 +37,7 @@ pub async fn add_account(
     state: tauri::State<'_, DbState>,
     account: CreateAccountRequest,
 ) -> Result<Account, AppError> {
-    let name = account.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation(
-            "Account name cannot be empty".to_string(),
-        ));
-    }
-    if !VALID_ACCOUNT_TYPES.contains(&account.account_type.as_str()) {
-        return Err(AppError::Validation(format!(
-            "Invalid account type: {}",
-            account.account_type
-        )));
-    }
+    let name = validate_account_fields(&account.name, &account.account_type)?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
@@ -55,18 +62,7 @@ pub async fn update_account(
     id: String,
     account: CreateAccountRequest,
 ) -> Result<Account, AppError> {
-    let name = account.name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation(
-            "Account name cannot be empty".to_string(),
-        ));
-    }
-    if !VALID_ACCOUNT_TYPES.contains(&account.account_type.as_str()) {
-        return Err(AppError::Validation(format!(
-            "Invalid account type: {}",
-            account.account_type
-        )));
-    }
+    let name = validate_account_fields(&account.name, &account.account_type)?;
 
     let institution = account.institution.clone();
     let account_type = account.account_type.clone();

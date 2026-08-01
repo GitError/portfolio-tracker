@@ -26,9 +26,13 @@ mod ts_binding_tests {
         ImportError, ImportResult, PerformancePoint, PortfolioAnalytics, PortfolioRiskMetrics,
         PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData,
         RealizedGainsSummary, RealizedLot, RebalanceSuggestion, RefreshResult, SectorWeight,
-        StressHoldingResult, StressResult, StressScenario, SymbolMetadata, SymbolResult,
-        Transaction, TransactionInput, TransactionType,
+        StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction, TransactionInput,
+        TransactionType,
     };
+    // StressHoldingResult is only reachable via portfolio-core in this crate (it's
+    // nested inside StressResult, not referenced standalone) — import it directly
+    // for TS binding export.
+    use portfolio_core::types::StressHoldingResult;
 
     #[test]
     fn export_typescript_bindings() {

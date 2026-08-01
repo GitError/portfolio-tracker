@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use ts_rs::TS;
 
 // Canonical portfolio types shared with `portfolio-mcp` — see `portfolio-core`
@@ -7,7 +6,7 @@ use ts_rs::TS;
 // using `crate::types::X` unchanged.
 pub use portfolio_core::types::{
     AccountType, AssetType, FxRate, Holding, HoldingId, HoldingWithPrice, PortfolioSnapshot,
-    PriceData,
+    PriceData, StressResult, StressScenario,
 };
 
 /// Typed wrapper for a price-alert's UUID string.
@@ -239,27 +238,6 @@ pub struct HoldingInput {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
-pub struct StressScenario {
-    pub name: String,
-    pub shocks: HashMap<String, f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "camelCase")]
-pub struct StressHoldingResult {
-    pub holding_id: HoldingId,
-    pub symbol: String,
-    pub name: String,
-    pub current_value: f64,
-    pub stressed_value: f64,
-    pub impact: f64,
-    pub shock_applied: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "camelCase")]
 pub struct SymbolResult {
     pub symbol: String,
     pub name: String,
@@ -284,18 +262,6 @@ pub struct ImportResult {
     pub imported: Vec<Holding>,
     pub skipped: Vec<ImportError>,
     pub total_rows: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "camelCase")]
-pub struct StressResult {
-    pub scenario: String,
-    pub current_value: f64,
-    pub stressed_value: f64,
-    pub total_impact: f64,
-    pub total_impact_percent: f64,
-    pub holding_breakdown: Vec<StressHoldingResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
