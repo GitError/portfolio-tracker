@@ -142,6 +142,17 @@ impl RateLimiterState {
     }
 }
 
+/// Guards `backup_database`/`restore_database` against running concurrently —
+/// either against each other or against a second invocation of themselves —
+/// since both operate on the same live DB file on disk.
+pub struct BackupLockState(pub tokio::sync::Mutex<()>);
+
+impl BackupLockState {
+    pub fn new() -> Self {
+        BackupLockState(tokio::sync::Mutex::new(()))
+    }
+}
+
 pub(crate) async fn get_base_currency(pool: &SqlitePool) -> String {
     db::get_config(pool, "base_currency")
         .await

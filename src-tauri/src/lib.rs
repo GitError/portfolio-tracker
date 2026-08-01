@@ -76,11 +76,19 @@ mod ts_binding_tests {
     }
 }
 
-use commands::{DbState, HttpClient, RateLimiterState, RealizedGainsCacheState, SearchCacheState};
+use commands::{
+    BackupLockState, DbState, HttpClient, RateLimiterState, RealizedGainsCacheState,
+    SearchCacheState,
+};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
+use std::time::Duration;
 use tauri::Manager;
 use tracing_subscriber::prelude::*;
+
+/// Upper bound on how long app shutdown waits for the DB pool to drain before
+/// giving up — prevents the app hanging on quit if a connection is stuck.
+const POOL_CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Holds the sender half of the WAL checkpoint shutdown channel.
 /// Managed as Tauri app state so the window-destroyed event can signal the background task.
@@ -172,6 +180,7 @@ pub fn run() {
             app.manage(SearchCacheState::new());
             app.manage(RealizedGainsCacheState::new());
             app.manage(RateLimiterState::new());
+            app.manage(BackupLockState::new());
             // Store the WAL shutdown sender so on_window_event can signal the task to exit.
             app.manage(WalShutdown(shutdown_tx));
 
@@ -182,6 +191,23 @@ pub fn run() {
                 // Signal the WAL checkpoint background task to shut down cleanly.
                 if let Some(state) = _window.try_state::<WalShutdown>() {
                     let _ = state.0.send(true);
+                }
+                // Drain and close the DB pool so no connection is left dangling
+                // on quit. Bounded by a timeout so a stuck connection or slow
+                // drain can never hang app shutdown.
+                if let Some(db_state) = _window.try_state::<DbState>() {
+                    let pool = db_state.0.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if tokio::time::timeout(POOL_CLOSE_TIMEOUT, pool.close())
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!(
+                                "Timed out after {:?} waiting for DB pool to close on shutdown",
+                                POOL_CLOSE_TIMEOUT
+                            );
+                        }
+                    });
                 }
             }
         })
