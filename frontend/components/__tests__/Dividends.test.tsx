@@ -8,6 +8,7 @@ import i18next from '../../lib/i18n';
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => false,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: (_cmd: string) => Promise.resolve([]),
 }));
 

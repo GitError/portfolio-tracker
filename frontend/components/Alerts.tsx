@@ -14,7 +14,7 @@ import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { usePortfolio } from '../hooks/usePortfolio';
 
 const MOCK_ALERTS: PriceAlert[] = [
@@ -240,7 +240,7 @@ export function Alerts() {
         setAlerts(MOCK_ALERTS);
       }
     } catch (err) {
-      showToast(`Failed to load alerts: ${String(err)}`, 'error');
+      showToast(`Failed to load alerts: ${getErrorMessage(err)}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -272,7 +272,7 @@ export function Alerts() {
         setShowForm(false);
         showToast(`Alert created for ${input.symbol}`, 'success');
       } catch (err) {
-        showToast(`Failed to create alert: ${String(err)}`, 'error');
+        showToast(`Failed to create alert: ${getErrorMessage(err)}`, 'error');
       }
     },
     [showToast]
@@ -287,7 +287,7 @@ export function Alerts() {
         setAlerts((prev) => prev.filter((a) => a.id !== id));
         showToast('Alert deleted', 'success');
       } catch (err) {
-        showToast(`Failed to delete alert: ${String(err)}`, 'error');
+        showToast(`Failed to delete alert: ${getErrorMessage(err)}`, 'error');
       }
     },
     [showToast]
@@ -301,7 +301,7 @@ export function Alerts() {
         }
         setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, triggered: false } : a)));
       } catch (err) {
-        showToast(`Failed to reset alert: ${String(err)}`, 'error');
+        showToast(`Failed to reset alert: ${getErrorMessage(err)}`, 'error');
       }
     },
     [showToast]

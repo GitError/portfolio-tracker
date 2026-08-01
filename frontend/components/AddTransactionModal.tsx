@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { tauriInvoke, isTauri } from '../lib/tauri';
+import { tauriInvoke, isTauri, getErrorMessage } from '../lib/tauri';
 import { useToast } from './ui/Toast';
 import type { Holding, Transaction, TransactionInput } from '../types/portfolio';
 
@@ -72,7 +72,7 @@ export function AddTransactionModal({ holding, isOpen, onClose, onSaved }: Props
       onSaved();
       onClose();
     } catch (err) {
-      setError(String(err));
+      setError(getErrorMessage(err));
     } finally {
       setSaving(false);
     }

@@ -8,6 +8,7 @@ const mockTauriInvoke = vi.fn();
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => true,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: (...args: unknown[]) => mockTauriInvoke(...args),
 }));
 

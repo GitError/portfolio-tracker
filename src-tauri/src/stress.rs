@@ -37,7 +37,9 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         };
 
         let current_value = holding.market_value_cad;
-        let stressed_value = current_value * (1.0 + asset_shock) * (1.0 + fx_shock);
+        // A holding can lose at most its full value — floor at 0 so shocks
+        // beyond -100% (e.g. a -200% scenario) don't drive it negative.
+        let stressed_value = (current_value * (1.0 + asset_shock) * (1.0 + fx_shock)).max(0.0);
         let impact = stressed_value - current_value;
 
         // Combined shock for display
@@ -56,6 +58,7 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         total_stressed += stressed_value;
     }
 
+    let total_stressed = total_stressed.max(0.0);
     let current_value = snapshot.total_value;
     let total_impact = total_stressed - current_value;
     let total_impact_percent = if current_value != 0.0 {
@@ -438,6 +441,40 @@ mod tests {
                 h.symbol
             );
         }
+    }
+
+    #[test]
+    fn extreme_negative_shock_floors_holding_and_portfolio_at_zero() {
+        // Regression guard for #635: a shock beyond -100% (e.g. -200%) must not
+        // drive the stressed value negative. A holding can go to $0 but not below.
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![make_holding("BTC", AssetType::Crypto, "CAD", value)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), -2.0); // -200% shock
+        let scenario = StressScenario {
+            name: "Beyond total wipeout".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+
+        assert!(
+            result.stressed_value >= 0.0,
+            "portfolio stressed_value should not be negative, got {}",
+            result.stressed_value
+        );
+        assert!(
+            (result.stressed_value - 0.0).abs() < 0.001,
+            "expected stressed_value floored at 0, got {}",
+            result.stressed_value
+        );
+        assert!(
+            result.holding_breakdown[0].stressed_value >= 0.0,
+            "holding stressed_value should not be negative, got {}",
+            result.holding_breakdown[0].stressed_value
+        );
+        // Total loss is capped at the original value, not 2x the value.
+        assert!((result.total_impact - (-value)).abs() < 0.001);
     }
 
     #[test]

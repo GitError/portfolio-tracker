@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{AlertId, PaginatedResult, PriceAlert, PriceAlertInput};
 
-use super::DbState;
+use super::{validate_alert_fields, validate_pagination, DbState};
 
 /// Deprecated: use `get_alerts_paginated` instead.
 #[tauri::command]
@@ -20,14 +20,7 @@ pub async fn get_alerts_paginated(
     page: i64,
     page_size: i64,
 ) -> Result<PaginatedResult<PriceAlert>, AppError> {
-    if page < 1 {
-        return Err(AppError::Validation("page must be >= 1".to_string()));
-    }
-    if !(1..=500).contains(&page_size) {
-        return Err(AppError::Validation(
-            "page_size must be between 1 and 500".to_string(),
-        ));
-    }
+    validate_pagination(page, page_size)?;
     let pool = &db.0;
     db::get_alerts_paginated(pool, page, page_size)
         .await
@@ -39,11 +32,7 @@ pub async fn add_alert(
     db: State<'_, DbState>,
     alert: PriceAlertInput,
 ) -> Result<PriceAlert, AppError> {
-    if !alert.threshold.is_finite() || alert.threshold <= 0.0 {
-        return Err(AppError::Validation(
-            "threshold must be a positive finite number".to_string(),
-        ));
-    }
+    validate_alert_fields(alert.threshold)?;
     let pool = &db.0;
     db::insert_alert(pool, alert).await.map_err(AppError::from)
 }

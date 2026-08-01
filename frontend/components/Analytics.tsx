@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { RefreshCw, ArrowUpDown } from 'lucide-react';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import {
   PieChart,
   Pie,
@@ -217,7 +217,7 @@ export function Analytics() {
         });
       }
     } catch (err) {
-      setError(String(err));
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }

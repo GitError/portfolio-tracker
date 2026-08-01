@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{HoldingId, PaginatedResult, Transaction, TransactionId, TransactionInput};
 
-use super::{validate_transaction_fields, DbState, RealizedGainsCacheState};
+use super::{validate_pagination, validate_transaction_fields, DbState, RealizedGainsCacheState};
 
 #[tauri::command]
 pub async fn add_transaction(
@@ -44,14 +44,7 @@ pub async fn get_transactions_paginated(
     page: i64,
     page_size: i64,
 ) -> Result<PaginatedResult<Transaction>, AppError> {
-    if page < 1 {
-        return Err(AppError::Validation("page must be >= 1".to_string()));
-    }
-    if !(1..=500).contains(&page_size) {
-        return Err(AppError::Validation(
-            "page_size must be between 1 and 500".to_string(),
-        ));
-    }
+    validate_pagination(page, page_size)?;
     let pool = &db.0;
     db::get_transactions_paginated(
         pool,

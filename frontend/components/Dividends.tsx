@@ -16,7 +16,7 @@ import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
-import { isTauri, tauriInvoke } from '../lib/tauri';
+import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
 
 interface AddDividendFormProps {
@@ -201,7 +201,7 @@ export function Dividends() {
         setHoldings(MOCK_HOLDINGS);
       }
     } catch (err) {
-      showToast(`Failed to load dividends: ${String(err)}`, 'error');
+      showToast(`Failed to load dividends: ${getErrorMessage(err)}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -230,7 +230,7 @@ export function Dividends() {
         setShowForm(false);
         showToast('Dividend recorded', 'success');
       } catch (err) {
-        showToast(`Failed to record dividend: ${String(err)}`, 'error');
+        showToast(`Failed to record dividend: ${getErrorMessage(err)}`, 'error');
       }
     },
     [holdings, showToast]
@@ -245,7 +245,7 @@ export function Dividends() {
         setDividends((prev) => prev.filter((d) => d.id !== id));
         showToast('Dividend deleted', 'success');
       } catch (err) {
-        showToast(`Failed to delete: ${String(err)}`, 'error');
+        showToast(`Failed to delete: ${getErrorMessage(err)}`, 'error');
       }
     },
     [showToast]

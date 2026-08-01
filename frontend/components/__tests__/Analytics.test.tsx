@@ -21,6 +21,7 @@ const mockAnalytics: PortfolioAnalytics = {
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => true,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: () => Promise.resolve(mockAnalytics),
 }));
 

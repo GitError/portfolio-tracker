@@ -7,6 +7,7 @@ import { MOCK_SNAPSHOT } from '../../lib/mockData';
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => false,
+  getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: vi.fn().mockResolvedValue([]),
 }));
 
