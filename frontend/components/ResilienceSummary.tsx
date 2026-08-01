@@ -1,5 +1,6 @@
 // ─── Portfolio resilience summary panel for stress test ──────────────────────
 import { formatCompact } from '../lib/format';
+import { useFormatNumber } from '../hooks/useFormatters';
 import type { PortfolioSnapshot } from '../types/portfolio';
 
 const PANEL: React.CSSProperties = {
@@ -58,6 +59,8 @@ export interface ResilienceSummaryProps {
 
 // ─── ResilienceSummary component ──────────────────────────────────────────────
 export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
+  const formatNumber = useFormatNumber();
+
   if (!portfolio || portfolio.holdings.length === 0) return null;
 
   const baseCurrency = portfolio.baseCurrency;
@@ -118,7 +121,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
           <div style={STAT_CARD}>
             <div style={STAT_LABEL}>Largest Position</div>
             <div style={STAT_VALUE}>
-              {largestHolding ? `${(largestHolding.weight * 100).toFixed(1)}%` : '—'}
+              {largestHolding ? `${formatNumber(largestHolding.weight * 100, 1)}%` : '—'}
             </div>
             <div style={STAT_SUB}>{largestHolding ? largestHolding.symbol : '—'} of portfolio</div>
           </div>
@@ -146,7 +149,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
                       : 'var(--color-loss)',
               }}
             >
-              {n > 0 ? `${diversificationScore.toFixed(0)} / 100` : '—'}
+              {n > 0 ? `${formatNumber(diversificationScore, 0)} / 100` : '—'}
             </div>
             <div style={STAT_SUB}>
               {n > 0
@@ -162,7 +165,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
           {/* FX exposure */}
           <div style={STAT_CARD}>
             <div style={STAT_LABEL}>Foreign Currency Exposure</div>
-            <div style={STAT_VALUE}>{fxExposurePct.toFixed(1)}%</div>
+            <div style={STAT_VALUE}>{formatNumber(fxExposurePct, 1)}%</div>
             <div style={STAT_SUB}>
               {formatCompact(fxExposureValue)} in non-{baseCurrency}
             </div>
@@ -182,7 +185,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
                       : 'var(--text-secondary)',
               }}
             >
-              {cashPct.toFixed(1)}%
+              {formatNumber(cashPct, 1)}%
             </div>
             <div style={STAT_SUB}>{formatCompact(cashValue)} in cash positions</div>
           </div>

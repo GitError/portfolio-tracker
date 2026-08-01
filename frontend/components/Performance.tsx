@@ -12,9 +12,10 @@ import {
   Cell,
 } from 'recharts';
 import { useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { ALL_PERF_DATA, calcStats, filterByRange } from '../lib/perfMockData';
 import type { PerfDataPoint } from '../lib/perfMockData';
-import { formatCompact, formatPercent } from '../lib/format';
+import { formatCompact, formatNumber, formatPercent } from '../lib/format';
 import { useFormatCurrency } from '../hooks/useFormatters';
 import { pnlColor } from '../lib/colors';
 import { ACCOUNT_OPTIONS, ASSET_TYPE_CONFIG } from '../lib/constants';
@@ -139,6 +140,7 @@ function CustomTooltip({
 }
 
 export function Performance({ portfolio, onRefresh }: PerformanceProps) {
+  const { i18n } = useTranslation();
   const formatCurrency = useFormatCurrency();
   const [searchParams, setSearchParams] = useSearchParams();
   const range = (searchParams.get('range') as Range) || '1Y';
@@ -408,7 +410,7 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
             <XAxis dataKey="date" hide />
             <YAxis
-              tickFormatter={(v) => `${v.toFixed(1)}%`}
+              tickFormatter={(v) => `${formatNumber(v, 1, i18n.language)}%`}
               tick={{ fill: 'var(--text-muted)', fontSize: 9, fontFamily: 'var(--font-mono)' }}
               axisLine={false}
               tickLine={false}
@@ -422,7 +424,10 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
                 fontSize: 11,
                 fontFamily: 'var(--font-mono)',
               }}
-              formatter={(v: unknown) => [`${Number(v).toFixed(2)}%`, 'Daily Return']}
+              formatter={(v: unknown) => [
+                `${formatNumber(Number(v), 2, i18n.language)}%`,
+                'Daily Return',
+              ]}
               labelStyle={{ color: 'var(--text-secondary)' }}
             />
             <Bar dataKey="dailyReturn" maxBarSize={8}>
@@ -462,13 +467,13 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
             },
             {
               label: 'Max Drawdown',
-              value: `-${stats.maxDrawdown.toFixed(1)}%`,
+              value: `-${formatNumber(stats.maxDrawdown, 1, i18n.language)}%`,
               sub: 'peak to trough',
               color: 'var(--color-loss)',
             },
             {
               label: 'Annualized Volatility',
-              value: `${stats.volatility.toFixed(1)}%`,
+              value: `${formatNumber(stats.volatility, 1, i18n.language)}%`,
               sub: 'std dev of daily returns',
               color: 'var(--color-warning)',
             },

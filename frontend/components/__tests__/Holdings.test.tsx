@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Holdings } from '../Holdings';
 import type { HoldingWithPrice, PortfolioSnapshot } from '../../types/portfolio';
@@ -184,5 +184,46 @@ describe('Holdings target weight null vs explicit-0 display', () => {
     renderHoldings();
 
     expect(screen.getByText('-20.00%')).toBeTruthy();
+  });
+});
+
+describe('Holdings locale-aware weight formatting', () => {
+  it('renders the per-holding weight column with German locale separators (flat view)', async () => {
+    showAllColumns();
+    const holding = makeHolding({ weight: 20 });
+    mockHoldings = [holding];
+    mockPortfolio = { ...MOCK_SNAPSHOT, holdings: [holding] } as PortfolioSnapshot;
+
+    await act(async () => {
+      await i18next.changeLanguage('de');
+    });
+
+    renderHoldings();
+
+    expect(screen.getByText('20,0%')).toBeTruthy();
+    // Guard against the pre-fix behavior (raw toFixed() always uses '.' regardless of locale).
+    expect(screen.queryByText('20.0%')).toBeNull();
+  });
+
+  it('renders the group weight badge and total with German locale separators (grouped view)', async () => {
+    showAllColumns();
+    const holding = makeHolding({ weight: 20, account: 'taxable' });
+    mockHoldings = [holding];
+    mockPortfolio = { ...MOCK_SNAPSHOT, holdings: [holding] } as PortfolioSnapshot;
+
+    await act(async () => {
+      await i18next.changeLanguage('de');
+    });
+
+    renderHoldings();
+    await act(async () => {
+      screen.getByTitle('Group by account').click();
+    });
+
+    // Group weight badge + per-holding weight cell both render "20,0%" in de
+    expect(screen.getAllByText('20,0%').length).toBeGreaterThanOrEqual(2);
+    // Group footer total: (group.totalWeight * 100).toFixed(2) -> "2.000,00%" in de
+    expect(screen.getByText('2.000,00%')).toBeTruthy();
+    expect(screen.queryByText('2000.00%')).toBeNull();
   });
 });

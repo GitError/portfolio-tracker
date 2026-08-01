@@ -8,7 +8,7 @@ import type { PortfolioAnalytics } from '../../types/portfolio';
 import i18next from '../../lib/i18n';
 
 const mockAnalytics: PortfolioAnalytics = {
-  metadata: [{ symbol: 'AAPL', beta: 1.2, peRatio: 25.5 }],
+  metadata: [{ symbol: 'AAPL', beta: 1.2, peRatio: 25.5, marketCap: 2_500_000_000 }],
   riskMetrics: {
     weightedBeta: 1234.5,
     portfolioYield: 0.05,
@@ -58,5 +58,28 @@ describe('Analytics risk metric formatting', () => {
     await waitFor(() => expect(screen.getByText('1.234,50')).toBeTruthy());
     // Guard against the pre-fix behavior (raw toFixed() always uses '.' regardless of locale).
     expect(screen.queryByText('1234.50')).toBeNull();
+  });
+
+  it('renders market cap using the i18next locale, not navigator.language', async () => {
+    const originalLanguage = Object.getOwnPropertyDescriptor(window.navigator, 'language');
+    Object.defineProperty(window.navigator, 'language', {
+      value: 'en-US',
+      configurable: true,
+    });
+
+    await act(async () => {
+      await i18next.changeLanguage('de');
+    });
+
+    renderAnalytics();
+    screen.getByRole('button').click();
+
+    await waitFor(() => expect(screen.getByText('2,50B USD')).toBeTruthy());
+    // Guard against the pre-fix behavior (navigator.language driving the format instead of i18next).
+    expect(screen.queryByText('2.50B USD')).toBeNull();
+
+    if (originalLanguage) {
+      Object.defineProperty(window.navigator, 'language', originalLanguage);
+    }
   });
 });

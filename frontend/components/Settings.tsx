@@ -594,7 +594,9 @@ export function Settings() {
           <Select
             value={language}
             onChange={(code) => {
-              void setLanguage(code);
+              // setLanguage already logs failures internally; swallow here so a
+              // rejected locale load doesn't surface as an unhandled rejection.
+              setLanguage(code).catch(() => {});
             }}
             options={languageOptions}
             style={{ minWidth: 200 }}

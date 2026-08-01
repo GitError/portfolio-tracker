@@ -157,7 +157,7 @@ export function TopBar({
   failedSymbols = [],
   countdown = null,
 }: TopBarProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { pathname } = useLocation();
   const titleKey = ROUTE_TITLE_KEYS[pathname];
   const title = titleKey
@@ -288,7 +288,9 @@ export function TopBar({
           <AlertTriangle size={12} />
           <span>
             Offline — showing last-known portfolio
-            {portfolio?.lastUpdated ? ` (${new Date(portfolio.lastUpdated).toLocaleString()})` : ''}
+            {portfolio?.lastUpdated
+              ? ` (${new Date(portfolio.lastUpdated).toLocaleString(i18n.language)})`
+              : ''}
           </span>
           <button
             onClick={onRefresh}
