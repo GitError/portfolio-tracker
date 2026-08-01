@@ -154,3 +154,52 @@ pub struct PriceAlertInput {
     pub note: String,
 }
 
+/// Typed wrapper for a dividend's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct DividendId(pub String);
+
+impl std::fmt::Display for DividendId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+// ── Accounts / Dividends ─────────────────────────────────────────────────────
+// Not part of `portfolio-core` (unlike Holding/PortfolioSnapshot) since they
+// aren't consumed by `build_portfolio_snapshot`; mirrored from
+// `src-tauri/src/types.rs` instead.
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Account {
+    pub id: String,
+    pub name: String,
+    pub account_type: String,
+    pub institution: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Dividend {
+    pub id: DividendId,
+    pub holding_id: HoldingId,
+    pub symbol: String,
+    pub amount_per_unit: f64,
+    pub currency: String,
+    pub ex_date: String,
+    pub pay_date: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DividendInput {
+    pub holding_id: HoldingId,
+    pub amount_per_unit: f64,
+    pub currency: String,
+    pub ex_date: String,
+    pub pay_date: String,
+}
+
