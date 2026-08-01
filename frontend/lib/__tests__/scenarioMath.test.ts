@@ -147,6 +147,40 @@ describe('computeStressImpact', () => {
     expect(result.totalImpact).toBeCloseTo(-value, 3);
   });
 
+  it('floors a holding at zero for a shock beyond -100% (#681)', () => {
+    // A -150% shock: without the `Math.max(0, ...)` floor, `value * (1 - 1.5)`
+    // works out to -5,000 — a holding can't lose more than its full value.
+    const value = 10_000;
+    const snapshot = makeSnapshot([makeHolding('BTC', 'crypto', 'CAD', value)]);
+    const scenario: StressScenario = { name: 'Beyond total loss', shocks: { crypto: -1.5 } };
+
+    const result = computeStressImpact(snapshot, scenario);
+    const btc = result.holdingBreakdown.find((h) => h.symbol === 'BTC')!;
+
+    expect(btc.stressedValue).toBe(0);
+    expect(btc.stressedValue).toBeGreaterThanOrEqual(0);
+    expect(result.stressedValue).toBeGreaterThanOrEqual(0);
+    expect(result.stressedValue).toBe(0);
+    // Impact is still capped at losing the full original value, not more.
+    expect(result.totalImpact).toBeCloseTo(-value, 3);
+  });
+
+  it('floors the portfolio total at zero when a mixed portfolio shock goes past -100%', () => {
+    const snapshot = makeSnapshot([
+      makeHolding('BTC', 'crypto', 'CAD', 5_000),
+      makeHolding('ETH', 'crypto', 'CAD', 3_000),
+    ]);
+    const scenario: StressScenario = { name: 'Crypto wipeout', shocks: { crypto: -2.0 } };
+
+    const result = computeStressImpact(snapshot, scenario);
+
+    for (const h of result.holdingBreakdown) {
+      expect(h.stressedValue).toBeGreaterThanOrEqual(0);
+    }
+    expect(result.stressedValue).toBeGreaterThanOrEqual(0);
+    expect(result.stressedValue).toBe(0);
+  });
+
   it('handles an empty portfolio without producing NaN', () => {
     const snapshot = makeSnapshot([]);
     const scenario: StressScenario = { name: 'Empty', shocks: {} };

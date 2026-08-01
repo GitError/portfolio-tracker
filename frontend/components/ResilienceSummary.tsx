@@ -121,7 +121,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
           <div style={STAT_CARD}>
             <div style={STAT_LABEL}>Largest Position</div>
             <div style={STAT_VALUE}>
-              {largestHolding ? `${formatNumber(largestHolding.weight * 100, 1)}%` : '—'}
+              {largestHolding ? `${formatNumber(largestHolding.weight, 1)}%` : '—'}
             </div>
             <div style={STAT_SUB}>{largestHolding ? largestHolding.symbol : '—'} of portfolio</div>
           </div>

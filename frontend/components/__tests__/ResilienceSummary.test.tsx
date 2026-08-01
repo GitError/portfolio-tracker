@@ -74,9 +74,30 @@ describe('ResilienceSummary locale-aware formatting', () => {
     const holding = makeHolding({ weight: 12.34 });
     render(<ResilienceSummary portfolio={makeSnapshot([holding])} />);
 
-    // weight * 100 = 1234 -> "1.234,0" in de-DE (period thousands, comma decimal)
-    expect(screen.getByText('1.234,0%')).toBeTruthy();
+    // weight is already a 0-100 percentage -> "12,3" in de-DE (comma decimal, rounded to 1dp)
+    expect(screen.getByText('12,3%')).toBeTruthy();
     // Guard against the pre-fix behavior (raw toFixed() always uses '.' regardless of locale).
-    expect(screen.queryByText('1234.0%')).toBeNull();
+    expect(screen.queryByText('12.3%')).toBeNull();
+  });
+});
+
+describe('ResilienceSummary largest position percentage (#699)', () => {
+  it('displays the weight value directly, without multiplying by 100 again', () => {
+    // weight is already expressed on a 0-100 scale by the backend (see
+    // portfolio-core/src/snapshot.rs: `holding.weight = market_value / total * 100.0`),
+    // so a 45% position must render as "45.0%", not "4500.0%".
+    const holding = makeHolding({ weight: 45.0 });
+    render(<ResilienceSummary portfolio={makeSnapshot([holding])} />);
+
+    expect(screen.getByText('45.0%')).toBeTruthy();
+    expect(screen.queryByText('4500.0%')).toBeNull();
+  });
+
+  it('handles a small weight without an extra order-of-magnitude error', () => {
+    const holding = makeHolding({ weight: 3.7 });
+    render(<ResilienceSummary portfolio={makeSnapshot([holding])} />);
+
+    expect(screen.getByText('3.7%')).toBeTruthy();
+    expect(screen.queryByText('370.0%')).toBeNull();
   });
 });

@@ -31,7 +31,9 @@ export function computeStressImpact(
         : (scenario.shocks[fxShockKey(h.currency, snapshot.baseCurrency)] ?? 0);
 
     const currentValue = h.marketValueCad;
-    const stressedValue = currentValue * (1 + assetShock) * (1 + fxShock);
+    // Floor at zero to match `portfolio-core/src/stress.rs`'s `.max(0.0)` — a
+    // combined shock below -100% must not drive a holding's value negative.
+    const stressedValue = Math.max(0, currentValue * (1 + assetShock) * (1 + fxShock));
     const impact = stressedValue - currentValue;
     const shockApplied = (1 + assetShock) * (1 + fxShock) - 1;
 
@@ -48,14 +50,18 @@ export function computeStressImpact(
     };
   });
 
+  // Mirrors the redundant-but-explicit floor on the Rust side (portfolio-core's
+  // `total_stressed.max(0.0)`) for exact parity, even though summing already
+  // non-negative per-holding values can't itself go negative.
+  const stressedValueTotal = Math.max(0, totalStressed);
   const currentValue = snapshot.totalValue;
-  const totalImpact = totalStressed - currentValue;
+  const totalImpact = stressedValueTotal - currentValue;
   const totalImpactPercent = currentValue !== 0 ? (totalImpact / currentValue) * 100 : 0;
 
   return {
     scenario: scenario.name,
     currentValue,
-    stressedValue: totalStressed,
+    stressedValue: stressedValueTotal,
     totalImpact,
     totalImpactPercent,
     holdingBreakdown,

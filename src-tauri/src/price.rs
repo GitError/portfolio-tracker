@@ -4,6 +4,26 @@ use reqwest::Client;
 use crate::config::{USER_AGENT, YAHOO_CHART_URL};
 use crate::types::PriceData;
 
+/// Validate a ticker symbol before it is interpolated into a Yahoo Finance URL.
+///
+/// Restricts symbols to the character set Yahoo Finance actually uses (uppercase
+/// letters, digits, `.` for exchange suffixes like `.TO`, `-` for pairs like
+/// `BTC-USD`, `^` for indices like `^GSPC`, and `=` for futures/FX like `CL=F`
+/// or `EURUSD=X`), rejecting anything else — including path-traversal sequences
+/// like `../../etc/passwd` — before it ever reaches a URL.
+pub(crate) fn validate_symbol(symbol: &str) -> Result<(), String> {
+    let valid = !symbol.is_empty()
+        && symbol.len() <= 20
+        && symbol.chars().all(|c| {
+            c.is_ascii_uppercase() || c.is_ascii_digit() || matches!(c, '.' | '-' | '^' | '=')
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("Invalid symbol format: {:?}", symbol))
+    }
+}
+
 pub async fn fetch_price(client: &Client, symbol: &str) -> Result<PriceData, String> {
     fetch_price_with_fallback_currency(client, symbol, None).await
 }
@@ -28,7 +48,9 @@ async fn fetch_price_internal(
     fallback_currency: Option<&str>,
     url_template: &str,
 ) -> Result<PriceData, String> {
-    let url = url_template.replace("{}", symbol);
+    validate_symbol(symbol)?;
+    let encoded_symbol = urlencoding::encode(symbol);
+    let url = url_template.replace("{}", &encoded_symbol);
 
     let response = client
         .get(&url)
@@ -146,6 +168,65 @@ pub async fn fetch_all_prices(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Symbol validation ─────────────────────────────────────────────────────
+
+    #[test]
+    fn validate_symbol_accepts_normal_tickers() {
+        for sym in &["AAPL", "BTC-USD", "XIU.TO", "^GSPC", "CL=F", "EURUSD=X"] {
+            assert!(validate_symbol(sym).is_ok(), "expected {} to be valid", sym);
+        }
+    }
+
+    #[test]
+    fn validate_symbol_rejects_path_traversal() {
+        assert!(validate_symbol("../../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn validate_symbol_rejects_url_special_characters() {
+        for sym in &[
+            "AAPL?x=1",
+            "AAPL&y=2",
+            "AAPL/../x",
+            "AAPL#frag",
+            "AAPL TSLA",
+        ] {
+            assert!(
+                validate_symbol(sym).is_err(),
+                "expected {} to be rejected",
+                sym
+            );
+        }
+    }
+
+    #[test]
+    fn validate_symbol_rejects_empty_and_overlong() {
+        assert!(validate_symbol("").is_err());
+        assert!(validate_symbol(&"A".repeat(21)).is_err());
+        assert!(validate_symbol(&"A".repeat(20)).is_ok());
+    }
+
+    #[test]
+    fn validate_symbol_rejects_lowercase() {
+        // Yahoo symbols are always uppercase; lowercase is rejected rather than
+        // silently normalized to avoid masking malformed input.
+        assert!(validate_symbol("aapl").is_err());
+    }
+
+    #[tokio::test]
+    async fn fetch_price_rejects_invalid_symbol_before_any_request() {
+        let client = make_client();
+        let result = fetch_price_internal(
+            &client,
+            "../../etc/passwd",
+            None,
+            "https://example.invalid/{}",
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid symbol"));
+    }
 
     fn make_client() -> Client {
         Client::builder()
