@@ -357,13 +357,11 @@ pub(crate) fn validate_pagination(page: i64, page_size: i64) -> Result<(), AppEr
 #[cfg(test)]
 mod tests {
     use crate::csv::{build_holdings_csv, parse_import_rows};
-    use crate::portfolio::build_portfolio_snapshot;
     use crate::test_helpers::make_holding;
-    use crate::types::{AssetType, FxRate, PriceData};
-    use chrono::Utc;
+    use crate::types::AssetType;
 
     // CSV/normalize tests live in csv.rs.
-    // build_portfolio_snapshot tests live in portfolio.rs.
+    // build_portfolio_snapshot tests live in portfolio-core/src/snapshot.rs (#640).
 
     #[test]
     fn parse_import_rows_supports_semicolon_delimiter() {
@@ -534,115 +532,8 @@ mod tests {
         assert_eq!(rows[0].target_weight, None);
     }
 
-    #[test]
-    fn build_portfolio_snapshot_converts_mixed_currency_holdings_into_base_currency() {
-        let holdings = vec![
-            make_holding("SHOP.TO", AssetType::Stock, 10.0, 100.0, "CAD"),
-            make_holding("AAPL", AssetType::Stock, 5.0, 100.0, "USD"),
-        ];
-        let prices = vec![
-            PriceData {
-                symbol: "SHOP.TO".to_string(),
-                price: 120.0,
-                currency: "CAD".to_string(),
-                change: 1.0,
-                change_percent: 2.0,
-                updated_at: Utc::now().to_rfc3339(),
-                open: None,
-                previous_close: None,
-                volume: None,
-            },
-            PriceData {
-                symbol: "AAPL".to_string(),
-                price: 110.0,
-                currency: "USD".to_string(),
-                change: 1.0,
-                change_percent: 10.0,
-                updated_at: Utc::now().to_rfc3339(),
-                open: None,
-                previous_close: None,
-                volume: None,
-            },
-        ];
-        let fx = vec![FxRate {
-            pair: "USDCAD".to_string(),
-            rate: 1.25,
-            updated_at: Utc::now().to_rfc3339(),
-        }];
-
-        let snapshot = build_portfolio_snapshot(
-            &holdings,
-            &prices,
-            &fx,
-            "CAD",
-            "2024-01-01T00:00:00Z".to_string(),
-            0.0,
-            0.0,
-        );
-
-        assert_eq!(snapshot.base_currency, "CAD");
-        assert!((snapshot.holdings[0].market_value_cad - 1200.0).abs() < 0.001);
-        assert!((snapshot.holdings[1].market_value_cad - 687.5).abs() < 0.001);
-        assert!((snapshot.holdings[1].cost_value_cad - 625.0).abs() < 0.001);
-        assert!((snapshot.total_value - 1887.5).abs() < 0.001);
-        assert!((snapshot.total_cost - 1625.0).abs() < 0.001);
-        assert!((snapshot.daily_pnl - 92.75).abs() < 0.001);
-        assert_eq!(snapshot.total_target_weight, 0.0);
-    }
-
-    #[test]
-    fn build_portfolio_snapshot_supports_non_cad_base_currency() {
-        let holdings = vec![
-            make_holding("RY.TO", AssetType::Stock, 2.0, 100.0, "CAD"),
-            make_holding("MSFT", AssetType::Stock, 1.0, 200.0, "USD"),
-        ];
-        let prices = vec![
-            PriceData {
-                symbol: "RY.TO".to_string(),
-                price: 110.0,
-                currency: "CAD".to_string(),
-                change: 0.0,
-                change_percent: 0.0,
-                updated_at: Utc::now().to_rfc3339(),
-                open: None,
-                previous_close: None,
-                volume: None,
-            },
-            PriceData {
-                symbol: "MSFT".to_string(),
-                price: 220.0,
-                currency: "USD".to_string(),
-                change: 0.0,
-                change_percent: 0.0,
-                updated_at: Utc::now().to_rfc3339(),
-                open: None,
-                previous_close: None,
-                volume: None,
-            },
-        ];
-        let fx = vec![FxRate {
-            pair: "CADUSD".to_string(),
-            rate: 0.8,
-            updated_at: Utc::now().to_rfc3339(),
-        }];
-
-        let snapshot = build_portfolio_snapshot(
-            &holdings,
-            &prices,
-            &fx,
-            "USD",
-            "2024-01-01T00:00:00Z".to_string(),
-            0.0,
-            0.0,
-        );
-
-        assert_eq!(snapshot.base_currency, "USD");
-        assert!((snapshot.holdings[0].market_value_cad - 176.0).abs() < 0.001);
-        assert!((snapshot.holdings[0].cost_value_cad - 160.0).abs() < 0.001);
-        assert!((snapshot.holdings[1].market_value_cad - 220.0).abs() < 0.001);
-        assert!((snapshot.total_value - 396.0).abs() < 0.001);
-        assert!((snapshot.total_cost - 360.0).abs() < 0.001);
-    }
+    // build_portfolio_snapshot_converts_mixed_currency_holdings_into_base_currency and
+    // build_portfolio_snapshot_supports_non_cad_base_currency moved to portfolio-core/src/snapshot.rs (#640).
 
     // ── Target-weight portfolio-level validation tests ──────────────────────
 
@@ -740,79 +631,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn build_portfolio_snapshot_same_day_purchase_uses_cost_basis_for_daily_pnl() {
-        // A holding created today uses (current_price - cost_basis) * quantity as daily PnL proxy.
-        let today = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-        let mut holding = make_holding("AAPL", AssetType::Stock, 10.0, 100.0, "CAD");
-        holding.created_at = today;
-
-        let prices = vec![PriceData {
-            symbol: "AAPL".to_string(),
-            price: 120.0,
-            currency: "CAD".to_string(),
-            change: 2.0,
-            change_percent: 5.0, // day-over-day pct — should NOT be used for same-day purchases
-            updated_at: Utc::now().to_rfc3339(),
-            open: None,
-            previous_close: None,
-            volume: None,
-        }];
-
-        let snapshot = build_portfolio_snapshot(
-            &[holding],
-            &prices,
-            &[],
-            "CAD",
-            Utc::now().to_rfc3339(),
-            0.0,
-            0.0,
-        );
-
-        // Expected: (120 - 100) * 10 = 200 (gain since purchase used as daily proxy)
-        assert!(
-            (snapshot.daily_pnl - 200.0).abs() < 0.001,
-            "expected daily_pnl == 200 for same-day purchase using cost-basis proxy, got {}",
-            snapshot.daily_pnl
-        );
-    }
-
-    #[test]
-    fn build_portfolio_snapshot_includes_prior_day_holding_in_daily_pnl() {
-        // A holding created yesterday (or earlier) should contribute normally.
-        let yesterday = (Utc::now() - chrono::Duration::days(1))
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
-        let mut holding = make_holding("MSFT", AssetType::Stock, 10.0, 200.0, "CAD");
-        holding.created_at = yesterday;
-
-        let prices = vec![PriceData {
-            symbol: "MSFT".to_string(),
-            price: 220.0,
-            currency: "CAD".to_string(),
-            change: 20.0,
-            change_percent: 10.0, // 10% of 2200 = 220
-            updated_at: Utc::now().to_rfc3339(),
-            open: None,
-            previous_close: None,
-            volume: None,
-        }];
-
-        let snapshot = build_portfolio_snapshot(
-            &[holding],
-            &prices,
-            &[],
-            "CAD",
-            Utc::now().to_rfc3339(),
-            0.0,
-            0.0,
-        );
-
-        // market_value_cad = 10 * 220 = 2200; daily_pnl = 2200 * 0.10 = 220
-        assert!(
-            (snapshot.daily_pnl - 220.0).abs() < 0.001,
-            "expected daily_pnl == 220 for prior-day holding, got {}",
-            snapshot.daily_pnl
-        );
-    }
+    // build_portfolio_snapshot_same_day_purchase_uses_cost_basis_for_daily_pnl and
+    // build_portfolio_snapshot_includes_prior_day_holding_in_daily_pnl moved to
+    // portfolio-core/src/snapshot.rs (#640).
 }

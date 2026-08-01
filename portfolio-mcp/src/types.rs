@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 // Canonical portfolio types shared with `src-tauri` — see `portfolio-core`
 // and #615. Re-exported here so every other module in this crate can keep
 // using `crate::types::X` unchanged.
 pub use portfolio_core::types::{
     AccountType, AssetType, FxRate, Holding, HoldingId, PortfolioSnapshot, PriceData,
+    StressResult, StressScenario,
 };
 
 // ── ID newtypes ───────────────────────────────────────────────────────────────
@@ -154,32 +154,3 @@ pub struct PriceAlertInput {
     pub note: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StressScenario {
-    pub name: String,
-    pub shocks: HashMap<String, f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StressHoldingResult {
-    pub holding_id: HoldingId,
-    pub symbol: String,
-    pub name: String,
-    pub current_value: f64,
-    pub stressed_value: f64,
-    pub impact: f64,
-    pub shock_applied: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StressResult {
-    pub scenario: String,
-    pub current_value: f64,
-    pub stressed_value: f64,
-    pub total_impact: f64,
-    pub total_impact_percent: f64,
-    pub holding_breakdown: Vec<StressHoldingResult>,
-}

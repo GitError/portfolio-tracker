@@ -8,6 +8,7 @@
 #[cfg(test)]
 mod tests {
     use crate::db;
+    use crate::error::AppError;
     use crate::types::{
         AccountType, AlertDirection, AssetType, DividendInput, HoldingInput, PriceAlertInput,
         TransactionInput, TransactionType,
@@ -44,21 +45,21 @@ mod tests {
     fn add_holding_rejects_zero_quantity() {
         let mut h = holding_input("RY");
         h.quantity = 0.0;
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
     }
 
     #[test]
     fn add_holding_rejects_negative_quantity() {
         let mut h = holding_input("RY");
         h.quantity = -1.0;
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
     }
 
     #[test]
     fn add_holding_rejects_nan_quantity() {
         let mut h = holding_input("RY");
         h.quantity = f64::NAN;
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
     }
 
     #[test]
@@ -66,14 +67,14 @@ mod tests {
         // Uncovered path: infinite quantity must be rejected the same as NaN.
         let mut h = holding_input("RY");
         h.quantity = f64::INFINITY;
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
     }
 
     #[test]
     fn add_holding_rejects_negative_cost_basis() {
         let mut h = holding_input("RY");
         h.cost_basis = -1.0;
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
     }
 
     #[test]
@@ -87,13 +88,13 @@ mod tests {
     fn add_holding_rejects_invalid_currency() {
         let mut h = holding_input("RY");
         h.currency = "US".to_string(); // too short
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
 
         h.currency = "USDD".to_string(); // too long
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
 
         h.currency = "US1".to_string(); // non-alpha
-        assert!(validate_holding(&h).is_err());
+        assert!(matches!(validate_holding(&h), Err(AppError::Validation(_))));
     }
 
     #[test]
@@ -115,22 +116,34 @@ mod tests {
 
     #[test]
     fn target_weight_rejects_negative() {
-        assert!(crate::commands::validate_target_weight(Some(-5.0)).is_err());
+        assert!(matches!(
+            crate::commands::validate_target_weight(Some(-5.0)),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn target_weight_rejects_above_100() {
-        assert!(crate::commands::validate_target_weight(Some(100.5)).is_err());
+        assert!(matches!(
+            crate::commands::validate_target_weight(Some(100.5)),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn target_weight_rejects_nan() {
-        assert!(crate::commands::validate_target_weight(Some(f64::NAN)).is_err());
+        assert!(matches!(
+            crate::commands::validate_target_weight(Some(f64::NAN)),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn target_weight_rejects_infinite() {
-        assert!(crate::commands::validate_target_weight(Some(f64::INFINITY)).is_err());
+        assert!(matches!(
+            crate::commands::validate_target_weight(Some(f64::INFINITY)),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -157,41 +170,42 @@ mod tests {
 
     #[test]
     fn dividend_rejects_zero_amount() {
-        assert!(
-            crate::commands::validate_dividend_fields(0.0, "2024-03-15", "2024-04-25").is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(0.0, "2024-03-15", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn dividend_rejects_negative_amount() {
-        assert!(
-            crate::commands::validate_dividend_fields(-1.38, "2024-03-15", "2024-04-25").is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(-1.38, "2024-03-15", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn dividend_rejects_nan_amount() {
-        assert!(
-            crate::commands::validate_dividend_fields(f64::NAN, "2024-03-15", "2024-04-25")
-                .is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(f64::NAN, "2024-03-15", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn dividend_rejects_infinite_amount() {
-        assert!(crate::commands::validate_dividend_fields(
-            f64::INFINITY,
-            "2024-03-15",
-            "2024-04-25"
-        )
-        .is_err());
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(f64::INFINITY, "2024-03-15", "2024-04-25"),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn dividend_rejects_pay_date_before_ex_date() {
-        assert!(
-            crate::commands::validate_dividend_fields(1.38, "2024-04-25", "2024-03-15").is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_dividend_fields(1.38, "2024-04-25", "2024-03-15"),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -212,33 +226,54 @@ mod tests {
 
     #[test]
     fn transaction_rejects_nan_quantity() {
-        assert!(crate::commands::validate_transaction_fields(f64::NAN, 10.0).is_err());
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(f64::NAN, 10.0),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn transaction_rejects_infinite_quantity() {
-        assert!(crate::commands::validate_transaction_fields(f64::INFINITY, 10.0).is_err());
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(f64::INFINITY, 10.0),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn transaction_rejects_zero_or_negative_quantity() {
-        assert!(crate::commands::validate_transaction_fields(0.0, 10.0).is_err());
-        assert!(crate::commands::validate_transaction_fields(-1.0, 10.0).is_err());
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(0.0, 10.0),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(-1.0, 10.0),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn transaction_rejects_nan_price() {
-        assert!(crate::commands::validate_transaction_fields(5.0, f64::NAN).is_err());
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(5.0, f64::NAN),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn transaction_rejects_infinite_price() {
-        assert!(crate::commands::validate_transaction_fields(5.0, f64::INFINITY).is_err());
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(5.0, f64::INFINITY),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn transaction_rejects_negative_price() {
-        assert!(crate::commands::validate_transaction_fields(5.0, -1.0).is_err());
+        assert!(matches!(
+            crate::commands::validate_transaction_fields(5.0, -1.0),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -251,22 +286,26 @@ mod tests {
 
     #[test]
     fn holding_dividend_fields_rejects_nan_indicated_annual_dividend() {
-        assert!(
-            crate::commands::validate_holding_dividend_fields(Some(f64::NAN), None, None).is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_holding_dividend_fields(Some(f64::NAN), None, None),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn holding_dividend_fields_rejects_infinite_indicated_annual_dividend() {
-        assert!(
-            crate::commands::validate_holding_dividend_fields(Some(f64::INFINITY), None, None)
-                .is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_holding_dividend_fields(Some(f64::INFINITY), None, None),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn holding_dividend_fields_rejects_negative_indicated_annual_dividend() {
-        assert!(crate::commands::validate_holding_dividend_fields(Some(-1.0), None, None).is_err());
+        assert!(matches!(
+            crate::commands::validate_holding_dividend_fields(Some(-1.0), None, None),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -276,10 +315,10 @@ mod tests {
 
     #[test]
     fn holding_dividend_fields_rejects_unknown_dividend_frequency() {
-        assert!(
-            crate::commands::validate_holding_dividend_fields(None, Some("biannual"), None)
-                .is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_holding_dividend_fields(None, Some("biannual"), None),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -294,10 +333,10 @@ mod tests {
 
     #[test]
     fn holding_dividend_fields_rejects_non_iso_maturity_date() {
-        assert!(
-            crate::commands::validate_holding_dividend_fields(None, None, Some("01/30/2030"))
-                .is_err()
-        );
+        assert!(matches!(
+            crate::commands::validate_holding_dividend_fields(None, None, Some("01/30/2030")),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -333,7 +372,10 @@ mod tests {
             currency: "CAD".to_string(),
             note: String::new(),
         };
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -345,7 +387,10 @@ mod tests {
             currency: "CAD".to_string(),
             note: String::new(),
         };
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -359,7 +404,10 @@ mod tests {
             currency: "CAD".to_string(),
             note: String::new(),
         };
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -371,7 +419,10 @@ mod tests {
             currency: "CAD".to_string(),
             note: String::new(),
         };
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -398,7 +449,10 @@ mod tests {
             note: String::new(),
         };
         input.symbol = "".to_string();
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -411,7 +465,10 @@ mod tests {
             note: String::new(),
         };
         input.symbol = "   ".to_string();
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -424,19 +481,34 @@ mod tests {
             note: String::new(),
         };
         input.currency = "".to_string();
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
 
         input.currency = "A".to_string(); // too short
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
 
         input.currency = "ABCD".to_string(); // too long
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
 
         input.currency = "usd".to_string(); // lowercase
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
 
         input.currency = "U5D".to_string(); // non-alpha
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -463,7 +535,10 @@ mod tests {
             currency: "CAD".to_string(),
             note: "a".repeat(501),
         };
-        assert!(validate_alert(&input).is_err());
+        assert!(matches!(
+            validate_alert(&input),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -486,18 +561,30 @@ mod tests {
 
     #[test]
     fn validate_id_rejects_empty_string() {
-        assert!(validate_id("holding ID", "").is_err());
+        assert!(matches!(
+            validate_id("holding ID", ""),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn validate_id_rejects_whitespace_only_string() {
-        assert!(validate_id("holding ID", "   ").is_err());
+        assert!(matches!(
+            validate_id("holding ID", "   "),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn validate_id_rejects_non_uuid_string() {
-        assert!(validate_id("holding ID", "not-a-uuid").is_err());
-        assert!(validate_id("holding ID", "12345").is_err());
+        assert!(matches!(
+            validate_id("holding ID", "not-a-uuid"),
+            Err(AppError::Validation(_))
+        ));
+        assert!(matches!(
+            validate_id("holding ID", "12345"),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -514,29 +601,44 @@ mod tests {
 
     #[test]
     fn pagination_rejects_page_zero() {
-        assert!(validate_pagination(0, 50).is_err());
+        assert!(matches!(
+            validate_pagination(0, 50),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn pagination_rejects_negative_page() {
         // Uncovered path: the decoy's `page < 1` branch was only ever
         // exercised with page == 0, not with a negative page number.
-        assert!(validate_pagination(-5, 50).is_err());
+        assert!(matches!(
+            validate_pagination(-5, 50),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn pagination_rejects_page_size_zero() {
-        assert!(validate_pagination(1, 0).is_err());
+        assert!(matches!(
+            validate_pagination(1, 0),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn pagination_rejects_negative_page_size() {
-        assert!(validate_pagination(1, -1).is_err());
+        assert!(matches!(
+            validate_pagination(1, -1),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
     fn pagination_rejects_page_size_exceeding_max() {
-        assert!(validate_pagination(1, 501).is_err());
+        assert!(matches!(
+            validate_pagination(1, 501),
+            Err(AppError::Validation(_))
+        ));
     }
 
     #[test]
@@ -544,6 +646,139 @@ mod tests {
         assert!(validate_pagination(1, 50).is_ok());
         assert!(validate_pagination(10, 500).is_ok());
         assert!(validate_pagination(1, 1).is_ok());
+    }
+
+    // ── account validation (exercises the real add_account/update_account
+    //    validator) (#654) ────────────────────────────────────────────────────
+
+    fn validate_account(name: &str, account_type: &str) -> Result<String, crate::error::AppError> {
+        crate::commands::validate_account_fields(name, account_type)
+    }
+
+    #[test]
+    fn add_account_accepts_valid_data() {
+        assert_eq!(
+            validate_account("RBC Direct Investing", "taxable").unwrap(),
+            "RBC Direct Investing"
+        );
+    }
+
+    #[test]
+    fn add_account_rejects_empty_name() {
+        assert!(matches!(
+            validate_account("", "taxable"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn add_account_rejects_whitespace_only_name() {
+        assert!(matches!(
+            validate_account("   ", "taxable"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn add_account_rejects_invalid_account_type() {
+        assert!(matches!(
+            validate_account("RBC Direct Investing", "savings"),
+            Err(AppError::Validation(_))
+        ));
+    }
+
+    #[test]
+    fn add_account_accepts_all_valid_account_types() {
+        for account_type in ["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"] {
+            assert!(
+                validate_account("Test Account", account_type).is_ok(),
+                "expected {account_type} to be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn add_account_trims_name_whitespace() {
+        assert_eq!(
+            validate_account("  My Account  ", "taxable").unwrap(),
+            "My Account"
+        );
+    }
+
+    // ── DB integration: accounts (#654) ────────────────────────────────────────
+
+    #[tokio::test]
+    async fn account_crud_round_trip() {
+        let pool = crate::db::open_test_db().await;
+        let id = uuid::Uuid::new_v4().to_string();
+
+        db::insert_account(&pool, &id, "RBC Direct Investing", "taxable", Some("RBC"))
+            .await
+            .expect("insert");
+
+        let all = db::get_accounts(&pool).await.expect("get all");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, id);
+        assert_eq!(all[0].name, "RBC Direct Investing");
+        assert_eq!(all[0].account_type, "taxable");
+        assert_eq!(all[0].institution.as_deref(), Some("RBC"));
+
+        db::update_account(&pool, &id, "RBC Direct Investing (Updated)", "rrsp", None)
+            .await
+            .expect("update");
+
+        let updated = db::get_accounts(&pool).await.expect("get after update");
+        assert_eq!(updated.len(), 1);
+        assert_eq!(updated[0].name, "RBC Direct Investing (Updated)");
+        assert_eq!(updated[0].account_type, "rrsp");
+        assert_eq!(updated[0].institution, None);
+
+        db::delete_account(&pool, &id).await.expect("delete");
+        let after = db::get_accounts(&pool).await.expect("get after delete");
+        assert!(after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_account_nonexistent_id_returns_error() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = uuid::Uuid::new_v4().to_string();
+
+        let err = db::update_account(&pool, &fake_id, "New Name", "taxable", None)
+            .await
+            .expect_err("updating a nonexistent account should error");
+        assert!(err.contains("not found"), "unexpected error message: {err}");
+    }
+
+    #[tokio::test]
+    async fn delete_account_nonexistent_id_returns_error() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = uuid::Uuid::new_v4().to_string();
+
+        let err = db::delete_account(&pool, &fake_id)
+            .await
+            .expect_err("deleting a nonexistent account should error");
+        assert!(err.contains("not found"), "unexpected error message: {err}");
+    }
+
+    #[tokio::test]
+    async fn delete_account_refuses_when_holdings_reference_it() {
+        let pool = crate::db::open_test_db().await;
+        let account_id = uuid::Uuid::new_v4().to_string();
+
+        db::insert_account(&pool, &account_id, "RBC Direct Investing", "taxable", None)
+            .await
+            .expect("insert account");
+
+        let mut input = holding_input("RY");
+        input.account_id = Some(account_id.clone());
+        db::insert_holding(&pool, input)
+            .await
+            .expect("insert holding");
+
+        let err = db::delete_account(&pool, &account_id)
+            .await
+            .expect_err("deleting an account referenced by a holding should error");
+        assert!(!err.is_empty());
     }
 
     // ── DB integration: holdings CRUD ─────────────────────────────────────────

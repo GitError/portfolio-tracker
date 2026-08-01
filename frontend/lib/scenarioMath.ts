@@ -2,14 +2,18 @@ import { fxShockKey } from './constants';
 import type { PortfolioSnapshot, StressResult, StressScenario } from '../types/portfolio';
 
 /**
- * TypeScript mirror of the Rust stress-test calculation in `src-tauri/src/stress.rs`
- * (via the shared `portfolio-core` crate). Used only when no Tauri backend is available
- * — browser dev mode and scenario-comparison previews — since those need a result
- * synchronously without a round trip to `run_stress_test_cmd`. The desktop app always
- * defers to the Rust implementation for its primary stress-test results.
+ * Standalone TypeScript reimplementation of the Rust stress-test calculation in
+ * `portfolio-core/src/stress.rs` (the canonical `run_stress_test`, shared by
+ * `src-tauri` and `portfolio-mcp`). This file does NOT call into the Rust code —
+ * it's a hand-maintained port, used only when no Tauri backend is available
+ * (browser dev mode and scenario-comparison previews) since those need a result
+ * synchronously without a round trip to `run_stress_test_cmd`. The desktop app
+ * always defers to the Rust implementation for its primary stress-test results.
  *
- * This is a deliberate parallel implementation, not incidental duplication: keep it in
- * sync with `run_stress_test` in `src-tauri/src/stress.rs` if the shock model changes.
+ * This is a deliberate parallel implementation, not incidental duplication: keep it
+ * in sync with `run_stress_test` in `portfolio-core/src/stress.rs` if the shock
+ * model changes. See #645 / #646 (frontend/lib/__tests__/scenarioMath.test.ts has
+ * a cross-language parity test that documents matching output for a known input).
  */
 export function computeStressImpact(
   snapshot: PortfolioSnapshot,

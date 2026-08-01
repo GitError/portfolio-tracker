@@ -5,6 +5,7 @@
 //! `ts-rs` bindings keep being generated from here).
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Typed wrapper for a holding's UUID string.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -238,4 +239,40 @@ pub struct PortfolioSnapshot {
     /// The frontend should prompt the user to choose AVCO or FIFO before showing realized gains.
     #[serde(default)]
     pub requires_cost_basis_selection: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct StressScenario {
+    pub name: String,
+    pub shocks: HashMap<String, f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct StressHoldingResult {
+    pub holding_id: HoldingId,
+    pub symbol: String,
+    pub name: String,
+    pub current_value: f64,
+    pub stressed_value: f64,
+    pub impact: f64,
+    pub shock_applied: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[cfg_attr(feature = "ts", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct StressResult {
+    pub scenario: String,
+    pub current_value: f64,
+    pub stressed_value: f64,
+    pub total_impact: f64,
+    pub total_impact_percent: f64,
+    pub holding_breakdown: Vec<StressHoldingResult>,
 }
