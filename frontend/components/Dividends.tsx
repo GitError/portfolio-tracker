@@ -18,6 +18,7 @@ import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
+import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
 
 interface AddDividendFormProps {
   holdings: Holding[];
@@ -180,18 +181,20 @@ export function Dividends() {
   const [dividends, setDividends] = useState<Dividend[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { showToast } = useToast();
   const { portfolio } = usePortfolio();
 
   const loadData = useCallback(async () => {
+    setLoading(true);
     try {
       if (isTauri()) {
         const [divs, holdingsPage] = await Promise.all([
           tauriInvoke<Dividend[]>('get_dividends'),
           tauriInvoke<PaginatedResult<Holding>>('get_holdings_paginated', {
             page: 1,
-            pageSize: 500,
+            pageSize: PAGINATION_FETCH_ALL_SIZE,
           }),
         ]);
         setDividends(divs);
@@ -200,8 +203,11 @@ export function Dividends() {
         setDividends(MOCK_DIVIDENDS);
         setHoldings(MOCK_HOLDINGS);
       }
+      setLoadError(null);
     } catch (err) {
-      showToast(`Failed to load dividends: ${getErrorMessage(err)}`, 'error');
+      const message = getErrorMessage(err);
+      setLoadError(message);
+      showToast(`Failed to load dividends: ${message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -279,6 +285,28 @@ export function Dividends() {
     return (
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Spinner />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ flex: 1, overflow: 'auto', padding: '24px 32px', maxWidth: 900 }}>
+        <h1
+          style={{
+            fontSize: 18,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            margin: 0,
+            marginBottom: 24,
+          }}
+        >
+          {t('dividends.title')}
+        </h1>
+        <EmptyState
+          message={t('dividends.loadError')}
+          action={{ label: t('common.retry'), onClick: () => void loadData() }}
+        />
       </div>
     );
   }

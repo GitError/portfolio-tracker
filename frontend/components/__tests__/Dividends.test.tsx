@@ -1,15 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Dividends } from '../Dividends';
 
 // Initialize i18n (Dividends uses useTranslation)
 import i18next from '../../lib/i18n';
 
+// Mutable so individual tests can opt into the Tauri command path while the
+// rest of the suite keeps exercising the browser-mode MOCK_DIVIDENDS path.
+let mockIsTauri = false;
+const mockGetDividends = vi.fn();
+const mockGetHoldingsPaginated = vi.fn();
+
 vi.mock('../../lib/tauri', () => ({
-  isTauri: () => false,
+  isTauri: () => mockIsTauri,
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
-  tauriInvoke: (_cmd: string) => Promise.resolve([]),
+  tauriInvoke: (cmd: string) => {
+    if (cmd === 'get_dividends') return mockGetDividends();
+    if (cmd === 'get_holdings_paginated') return mockGetHoldingsPaginated();
+    return Promise.resolve([]);
+  },
 }));
 
 // Mock usePortfolio — Dividends uses portfolio for forward income rows
@@ -40,6 +50,15 @@ beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
+  mockIsTauri = false;
+  mockGetDividends.mockResolvedValue([]);
+  mockGetHoldingsPaginated.mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 500,
+    totalPages: 0,
+  });
   // Pin language so English-text assertions don't break if the default locale changes.
   await i18next.changeLanguage('en');
 });
@@ -117,5 +136,22 @@ describe('Dividends component smoke tests', () => {
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(screen.getByText('17.70 CAD')).toBeTruthy();
     expect(screen.getByText('12.50 USD')).toBeTruthy();
+  });
+
+  it('shows a persistent error with a retry button when loading fails, and retry re-fetches', async () => {
+    mockIsTauri = true;
+    mockGetDividends.mockRejectedValue(new Error('network down'));
+
+    renderDividends();
+
+    await waitFor(() => screen.getByText(/failed to load dividends/i));
+    const retryButton = screen.getByRole('button', { name: /retry/i });
+    expect(retryButton).toBeTruthy();
+
+    mockGetDividends.mockResolvedValue([]);
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(mockGetDividends).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText(/failed to load dividends/i)).toBeNull());
   });
 });
