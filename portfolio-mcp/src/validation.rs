@@ -38,6 +38,17 @@ pub fn validate_holding_fields(
     Ok(currency)
 }
 
+/// Mirrors `validate_id` in `src-tauri/src/commands/mod.rs`. All IDs in this app
+/// are UUID v4 strings generated via `uuid::Uuid::new_v4()`; a malformed ID would
+/// otherwise silently no-op in SQLite (0 rows affected) instead of surfacing a
+/// clear error (see #685).
+pub fn validate_id(field: &str, id: &str) -> Result<(), McpError> {
+    if id.trim().is_empty() || uuid::Uuid::parse_str(id.trim()).is_err() {
+        return Err(McpError::invalid_params(format!("Invalid {field}"), None));
+    }
+    Ok(())
+}
+
 /// Rejects a blank/whitespace-only required string field.
 pub fn validate_non_empty(field: &str, value: &str) -> Result<(), McpError> {
     if value.trim().is_empty() {
@@ -385,6 +396,32 @@ mod tests {
     #[test]
     fn validate_holding_dividend_fields_accepts_all_none() {
         assert!(validate_holding_dividend_fields(None, None, None).is_ok());
+    }
+
+    #[test]
+    fn validate_id_rejects_empty_string() {
+        assert!(validate_id("holding ID", "").is_err());
+    }
+
+    #[test]
+    fn validate_id_rejects_whitespace_only() {
+        assert!(validate_id("holding ID", "   ").is_err());
+    }
+
+    #[test]
+    fn validate_id_rejects_malformed_uuid() {
+        assert!(validate_id("holding ID", "not-a-uuid").is_err());
+        assert!(validate_id("holding ID", "12345").is_err());
+    }
+
+    #[test]
+    fn validate_id_accepts_valid_uuid() {
+        assert!(validate_id("holding ID", "550e8400-e29b-41d4-a716-446655440000").is_ok());
+    }
+
+    #[test]
+    fn validate_id_accepts_uuid_with_surrounding_whitespace() {
+        assert!(validate_id("holding ID", "  550e8400-e29b-41d4-a716-446655440000  ").is_ok());
     }
 
     #[test]

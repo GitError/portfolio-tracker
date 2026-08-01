@@ -5,4 +5,4 @@
 //! A hand-maintained TypeScript port lives in `frontend/lib/scenarioMath.ts`
 //! for use when no Tauri backend is available — keep it in sync with
 //! `portfolio-core/src/stress.rs` if the shock model changes.
-pub use portfolio_core::stress::run_stress_test;
+pub use portfolio_core::stress::{run_stress_test, validate_shocks};

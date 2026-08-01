@@ -218,7 +218,7 @@ export function ScenarioComparison({ portfolio, scenarios }: ScenarioComparisonP
                           <span style={{ fontWeight: 700 }}>{h.symbol}</span>{' '}
                           <span>
                             {h.impact >= 0 ? '+' : ''}
-                            {formatCompact(h.impact)}
+                            {formatCompact(h.impact, baseCurrency)}
                           </span>
                         </div>
                       ))}

@@ -130,7 +130,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
           <div style={STAT_CARD}>
             <div style={STAT_LABEL}>Max Single-Holding Loss</div>
             <div style={{ ...STAT_VALUE, color: 'var(--color-loss)' }}>
-              {maxHitHolding ? formatCompact(maxHitHolding.marketValueCad) : '—'}
+              {maxHitHolding ? formatCompact(maxHitHolding.marketValueCad, baseCurrency) : '—'}
             </div>
             <div style={STAT_SUB}>{maxHitHolding ? `${maxHitHolding.symbol} at zero` : '—'}</div>
           </div>
@@ -167,7 +167,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
             <div style={STAT_LABEL}>Foreign Currency Exposure</div>
             <div style={STAT_VALUE}>{formatNumber(fxExposurePct, 1)}%</div>
             <div style={STAT_SUB}>
-              {formatCompact(fxExposureValue)} in non-{baseCurrency}
+              {formatCompact(fxExposureValue, baseCurrency)} in non-{baseCurrency}
             </div>
           </div>
 
@@ -187,7 +187,7 @@ export function ResilienceSummary({ portfolio }: ResilienceSummaryProps) {
             >
               {formatNumber(cashPct, 1)}%
             </div>
-            <div style={STAT_SUB}>{formatCompact(cashValue)} in cash positions</div>
+            <div style={STAT_SUB}>{formatCompact(cashValue, baseCurrency)} in cash positions</div>
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { tauriInvoke } from './lib/tauri';
+import { getErrorMessage, tauriInvoke } from './lib/tauri';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Holdings } from './components/Holdings';
@@ -97,7 +97,7 @@ function AppRoutes() {
   // Dynamic document title
   useEffect(() => {
     if (portfolio) {
-      document.title = `${formatCompact(portfolio.totalValue)} \u2014 Portfolio Tracker`;
+      document.title = `${formatCompact(portfolio.totalValue, portfolio.baseCurrency)} \u2014 Portfolio Tracker`;
     } else {
       document.title = 'Portfolio Tracker';
     }
@@ -136,11 +136,16 @@ function AppRoutes() {
 
   const handleSelectCostBasis = useCallback(
     async (method: 'avco' | 'fifo') => {
-      await tauriInvoke('set_config_cmd', { key: 'cost_basis_method', value: method });
-      setShowCostBasisModal(false);
-      await refreshPrices();
+      try {
+        await tauriInvoke('set_config_cmd', { key: 'cost_basis_method', value: method });
+        setShowCostBasisModal(false);
+        await refreshPrices();
+      } catch (error) {
+        // Keep the modal open so the user can retry — it was never actually saved.
+        showToast(getErrorMessage(error), 'error');
+      }
     },
-    [refreshPrices]
+    [refreshPrices, showToast]
   );
 
   return (

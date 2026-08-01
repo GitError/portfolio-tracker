@@ -73,6 +73,7 @@ pub async fn add_alert(pool: &SqlitePool, params: AddAlertParams) -> Result<Pric
 }
 
 pub async fn delete_alert(pool: &SqlitePool, params: DeleteAlertParams) -> Result<bool, McpError> {
+    validation::validate_id("id", &params.id)?;
     let id = AlertId(params.id);
     db::delete_alert(pool, &id)
         .await
@@ -80,8 +81,84 @@ pub async fn delete_alert(pool: &SqlitePool, params: DeleteAlertParams) -> Resul
 }
 
 pub async fn reset_alert(pool: &SqlitePool, params: ResetAlertParams) -> Result<bool, McpError> {
+    validation::validate_id("id", &params.id)?;
     let id = AlertId(params.id);
     db::reset_alert(pool, &id)
         .await
         .map_err(PortfolioMcpServer::tool_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory sqlite");
+        // Table exists but is empty: an unvalidated malformed/empty ID would
+        // still run a syntactically valid query affecting 0 rows (Ok(false)),
+        // NOT an error — so this table is required to prove validation, not
+        // just a missing-table side effect, is what rejects the bad ID.
+        sqlx::query("CREATE TABLE price_alerts (id TEXT PRIMARY KEY, triggered INTEGER)")
+            .execute(&pool)
+            .await
+            .expect("create price_alerts table");
+        pool
+    }
+
+    #[tokio::test]
+    async fn delete_alert_rejects_empty_id() {
+        // Regression guard for #685.
+        let pool = test_pool().await;
+        let result = delete_alert(
+            &pool,
+            DeleteAlertParams {
+                id: "".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "empty ID must be rejected");
+    }
+
+    #[tokio::test]
+    async fn delete_alert_rejects_malformed_id() {
+        let pool = test_pool().await;
+        let result = delete_alert(
+            &pool,
+            DeleteAlertParams {
+                id: "not-a-uuid".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "malformed ID must be rejected");
+    }
+
+    #[tokio::test]
+    async fn reset_alert_rejects_empty_id() {
+        let pool = test_pool().await;
+        let result = reset_alert(
+            &pool,
+            ResetAlertParams {
+                id: "".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "empty ID must be rejected");
+    }
+
+    #[tokio::test]
+    async fn reset_alert_rejects_malformed_id() {
+        let pool = test_pool().await;
+        let result = reset_alert(
+            &pool,
+            ResetAlertParams {
+                id: "not-a-uuid".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "malformed ID must be rejected");
+    }
 }
