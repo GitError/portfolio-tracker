@@ -56,6 +56,8 @@ pub async fn add_alert(pool: &SqlitePool, params: AddAlertParams) -> Result<Pric
 
     validation::validate_non_empty("symbol", &params.symbol)?;
     validation::validate_alert_threshold(params.threshold)?;
+    validation::validate_alert_currency(&params.currency)?;
+    validation::validate_alert_note(&params.note)?;
 
     let input = PriceAlertInput {
         symbol: params.symbol,

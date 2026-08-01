@@ -297,12 +297,46 @@ pub(crate) fn validate_holding_dividend_fields(
     Ok(())
 }
 
-/// Validates a price alert's threshold. Shared by `add_alert`.
-pub(crate) fn validate_alert_fields(threshold: f64) -> Result<(), AppError> {
+/// Max length for a price alert's free-text note, to prevent abuse.
+pub(crate) const MAX_ALERT_NOTE_LEN: usize = 500;
+
+/// Validates a price alert's symbol, threshold, currency, and note. Shared by
+/// `add_alert`. Mirrors the checks in `portfolio-mcp/src/validation.rs`.
+pub(crate) fn validate_alert_fields(
+    symbol: &str,
+    threshold: f64,
+    currency: &str,
+    note: &str,
+) -> Result<(), AppError> {
+    if symbol.trim().is_empty() {
+        return Err(AppError::Validation("symbol must not be empty".to_string()));
+    }
     if !threshold.is_finite() || threshold <= 0.0 {
         return Err(AppError::Validation(
             "threshold must be a positive finite number".to_string(),
         ));
+    }
+    let currency = currency.trim();
+    if !(2..=3).contains(&currency.len()) || !currency.chars().all(|c| c.is_ascii_uppercase()) {
+        return Err(AppError::Validation(
+            "currency must be 2-3 uppercase letters".to_string(),
+        ));
+    }
+    if note.chars().count() > MAX_ALERT_NOTE_LEN {
+        return Err(AppError::Validation(format!(
+            "note must be at most {MAX_ALERT_NOTE_LEN} characters"
+        )));
+    }
+    Ok(())
+}
+
+/// Validates that an ID string is non-empty and a syntactically valid UUID.
+/// All IDs in this app are UUID v4 strings generated via `uuid::Uuid::new_v4()`;
+/// a malformed ID would otherwise silently no-op in SQLite (0 rows affected)
+/// instead of surfacing a clear error.
+pub(crate) fn validate_id(field: &str, id: &str) -> Result<(), AppError> {
+    if id.trim().is_empty() || uuid::Uuid::parse_str(id.trim()).is_err() {
+        return Err(AppError::Validation(format!("Invalid {field}")));
     }
     Ok(())
 }

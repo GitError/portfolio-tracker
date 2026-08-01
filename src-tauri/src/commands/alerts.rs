@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{AlertId, PaginatedResult, PriceAlert, PriceAlertInput};
 
-use super::{validate_alert_fields, validate_pagination, DbState};
+use super::{validate_alert_fields, validate_id, validate_pagination, DbState};
 
 /// Deprecated: use `get_alerts_paginated` instead.
 #[tauri::command]
@@ -32,19 +32,21 @@ pub async fn add_alert(
     db: State<'_, DbState>,
     alert: PriceAlertInput,
 ) -> Result<PriceAlert, AppError> {
-    validate_alert_fields(alert.threshold)?;
+    validate_alert_fields(&alert.symbol, alert.threshold, &alert.currency, &alert.note)?;
     let pool = &db.0;
     db::insert_alert(pool, alert).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn delete_alert(db: State<'_, DbState>, id: AlertId) -> Result<bool, AppError> {
+    validate_id("alert ID", &id.0)?;
     let pool = &db.0;
     db::delete_alert(pool, &id).await.map_err(AppError::from)
 }
 
 #[tauri::command]
 pub async fn reset_alert(db: State<'_, DbState>, id: AlertId) -> Result<bool, AppError> {
+    validate_id("alert ID", &id.0)?;
     let pool = &db.0;
     db::reset_alert(pool, &id).await.map_err(AppError::from)
 }

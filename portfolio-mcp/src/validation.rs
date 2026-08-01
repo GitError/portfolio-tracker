@@ -155,6 +155,33 @@ pub fn validate_alert_threshold(threshold: f64) -> Result<(), McpError> {
     Ok(())
 }
 
+/// Max length for a price alert's free-text note, to prevent abuse.
+/// Mirrors `MAX_ALERT_NOTE_LEN` in `src-tauri/src/commands/mod.rs`.
+pub const MAX_ALERT_NOTE_LEN: usize = 500;
+
+/// Mirrors the currency check in `src-tauri/src/commands/mod.rs::validate_alert_fields`.
+pub fn validate_alert_currency(currency: &str) -> Result<(), McpError> {
+    let currency = currency.trim();
+    if !(2..=3).contains(&currency.len()) || !currency.chars().all(|c| c.is_ascii_uppercase()) {
+        return Err(McpError::invalid_params(
+            "currency must be 2-3 uppercase letters",
+            None,
+        ));
+    }
+    Ok(())
+}
+
+/// Mirrors the note-length check in `src-tauri/src/commands/mod.rs::validate_alert_fields`.
+pub fn validate_alert_note(note: &str) -> Result<(), McpError> {
+    if note.chars().count() > MAX_ALERT_NOTE_LEN {
+        return Err(McpError::invalid_params(
+            format!("note must be at most {MAX_ALERT_NOTE_LEN} characters"),
+            None,
+        ));
+    }
+    Ok(())
+}
+
 /// Config keys the Tauri `set_config_cmd` allowlist accepts
 /// (`src-tauri/src/commands/config.rs::ALLOWED_CONFIG_KEYS`). Kept in sync
 /// manually since the MCP server does not depend on the `src-tauri` crate.
@@ -279,6 +306,34 @@ mod tests {
     #[test]
     fn validate_alert_threshold_accepts_positive_finite() {
         assert!(validate_alert_threshold(150.0).is_ok());
+    }
+
+    #[test]
+    fn validate_alert_currency_rejects_malformed() {
+        assert!(validate_alert_currency("").is_err());
+        assert!(validate_alert_currency("A").is_err());
+        assert!(validate_alert_currency("ABCD").is_err());
+        assert!(validate_alert_currency("usd").is_err());
+        assert!(validate_alert_currency("U5D").is_err());
+    }
+
+    #[test]
+    fn validate_alert_currency_accepts_valid() {
+        assert!(validate_alert_currency("CAD").is_ok());
+        assert!(validate_alert_currency("US").is_ok());
+    }
+
+    #[test]
+    fn validate_alert_note_rejects_over_max_length() {
+        let note = "a".repeat(MAX_ALERT_NOTE_LEN + 1);
+        assert!(validate_alert_note(&note).is_err());
+    }
+
+    #[test]
+    fn validate_alert_note_accepts_within_max_length() {
+        let note = "a".repeat(MAX_ALERT_NOTE_LEN);
+        assert!(validate_alert_note(&note).is_ok());
+        assert!(validate_alert_note("").is_ok());
     }
 
     #[test]

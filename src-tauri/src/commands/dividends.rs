@@ -4,7 +4,7 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{Dividend, DividendId, DividendInput, PaginatedResult};
 
-use super::{validate_dividend_fields, validate_pagination, DbState};
+use super::{validate_dividend_fields, validate_id, validate_pagination, DbState};
 
 /// Deprecated: use `get_dividends_paginated` instead.
 #[tauri::command]
@@ -59,6 +59,7 @@ pub async fn add_dividend(
 
 #[tauri::command]
 pub async fn delete_dividend(db: State<'_, DbState>, id: DividendId) -> Result<bool, AppError> {
+    validate_id("dividend ID", &id.0)?;
     let pool = &db.0;
     db::delete_dividend(pool, &id).await.map_err(AppError::from)
 }
