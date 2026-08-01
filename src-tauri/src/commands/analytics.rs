@@ -22,7 +22,14 @@ async fn fetch_asset_profile(
     client: &reqwest::Client,
     symbol: &str,
 ) -> (String, Option<String>, Option<String>, Option<String>) {
-    let url = crate::config::YAHOO_QUOTE_SUMMARY_URL.replace("{}", symbol);
+    // Symbols originate from stored holdings, which aren't validated on insert,
+    // so guard against an unvalidated value reaching the URL (see #670).
+    if let Err(e) = crate::price::validate_symbol(symbol) {
+        tracing::warn!("Skipping asset profile fetch for invalid symbol: {}", e);
+        return (symbol.to_string(), None, None, None);
+    }
+    let encoded_symbol = urlencoding::encode(symbol);
+    let url = crate::config::YAHOO_QUOTE_SUMMARY_URL.replace("{}", &encoded_symbol);
 
     let json: Option<serde_json::Value> = async {
         let resp = client
@@ -103,7 +110,22 @@ pub(crate) async fn get_symbol_metadata_with_cache(
     let stale_symbols: Vec<String> = stale_indices.iter().map(|&i| symbols[i].clone()).collect();
 
     // ── 1. Bulk quote request for numeric fields ──────────────────────────────
-    let joined = stale_symbols.join(",");
+    // Validate and encode each symbol individually before joining so a single
+    // malformed symbol can't corrupt the query string or smuggle in extra
+    // characters (see #670); each encoded symbol is comma-safe since the
+    // allowed charset contains no commas.
+    let joined = stale_symbols
+        .iter()
+        .filter(|s| match crate::price::validate_symbol(s) {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!("Skipping invalid symbol in bulk quote request: {}", e);
+                false
+            }
+        })
+        .map(|s| urlencoding::encode(s).into_owned())
+        .collect::<Vec<_>>()
+        .join(",");
     let quote_url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
 
     let quote_future = client

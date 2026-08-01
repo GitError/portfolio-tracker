@@ -65,7 +65,7 @@ fn compute_avco(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                 }
 
                 lots.push(RealizedLot {
-                    sold_at: date_part(&tx.transacted_at),
+                    sold_at: date_part(&tx.transacted_at)?,
                     quantity: sold_qty,
                     proceeds,
                     cost_basis,
@@ -139,7 +139,7 @@ fn compute_fifo(transactions: &[Transaction]) -> Result<RealizedGainsSummary, St
                 total_cost_basis += lot_cost_basis;
 
                 lots.push(RealizedLot {
-                    sold_at: date_part(&tx.transacted_at),
+                    sold_at: date_part(&tx.transacted_at)?,
                     quantity: tx.quantity,
                     proceeds,
                     cost_basis: lot_cost_basis,
@@ -207,13 +207,15 @@ pub fn compute_realized_gains_grouped(
 }
 
 /// Extract the YYYY-MM-DD portion from an ISO 8601 timestamp.
-fn date_part(ts: &str) -> String {
-    // Use safe slicing: if the string is shorter than 10 chars (e.g. invalid
-    // timestamp), return the original string rather than panicking.
-    if ts.len() < 10 {
-        return ts.to_string();
-    }
-    ts[..10].to_string()
+///
+/// Uses `str::get` rather than byte-slicing: a fixed `&ts[..10]` panics if
+/// byte offset 10 doesn't land on a char boundary (possible with a malformed,
+/// non-ASCII `transacted_at` value). `get` returns `None` in that case instead
+/// of panicking, which we surface as an error.
+fn date_part(ts: &str) -> Result<String, String> {
+    ts.get(..10)
+        .map(str::to_string)
+        .ok_or_else(|| format!("Malformed transacted_at timestamp: {:?}", ts))
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -438,7 +440,21 @@ mod tests {
 
     #[test]
     fn date_part_extracts_first_ten_chars() {
-        assert_eq!(date_part("2024-03-15T12:00:00Z"), "2024-03-15");
-        assert_eq!(date_part("2024-03-15"), "2024-03-15");
+        assert_eq!(date_part("2024-03-15T12:00:00Z").unwrap(), "2024-03-15");
+        assert_eq!(date_part("2024-03-15").unwrap(), "2024-03-15");
+    }
+
+    #[test]
+    fn date_part_rejects_string_shorter_than_ten_bytes() {
+        assert!(date_part("2024").is_err());
+    }
+
+    #[test]
+    fn date_part_rejects_non_char_boundary_instead_of_panicking() {
+        // 9 ASCII bytes followed by 'é' (2 UTF-8 bytes: 0xC3 0xA9) means byte
+        // offset 10 lands in the middle of 'é' — `&s[..10]` would panic here.
+        let malformed = "2024-03-1é";
+        assert_eq!(malformed.len(), 11, "sanity check: 11 bytes, 10 chars");
+        assert!(date_part(malformed).is_err());
     }
 }
