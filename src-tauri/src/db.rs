@@ -1044,7 +1044,7 @@ pub async fn get_dividends(pool: &SqlitePool) -> Result<Vec<Dividend>, String> {
                 d.ex_date, d.pay_date, d.created_at
          FROM dividends d
          JOIN holdings h ON h.id = d.holding_id
-         WHERE d.deleted_at IS NULL AND h.deleted_at IS NULL
+         WHERE d.deleted_at IS NULL
          ORDER BY d.ex_date DESC",
     )
     .fetch_all(pool)
@@ -1093,7 +1093,7 @@ pub async fn get_annual_dividend_income(
         "SELECT d.amount_per_unit * h.quantity, d.currency
          FROM dividends d
          JOIN holdings h ON h.id = d.holding_id
-         WHERE d.pay_date >= $1 AND d.deleted_at IS NULL AND h.deleted_at IS NULL",
+         WHERE d.pay_date >= $1 AND d.deleted_at IS NULL",
     )
     .bind(&cutoff)
     .fetch_all(pool)
@@ -1493,7 +1493,7 @@ pub async fn get_dividends_paginated(
                 d.ex_date, d.pay_date, d.created_at
          FROM dividends d
          JOIN holdings h ON h.id = d.holding_id
-         WHERE d.deleted_at IS NULL AND h.deleted_at IS NULL
+         WHERE d.deleted_at IS NULL
          ORDER BY d.ex_date DESC
          LIMIT $1 OFFSET $2",
     )
@@ -2532,6 +2532,44 @@ mod tests {
             holding.account_id.as_deref(),
             Some("acc-first"),
             "holding should be assigned to the earliest-created account of matching type"
+        );
+    }
+
+    #[tokio::test]
+    async fn dividends_remain_visible_after_holding_soft_deleted() {
+        // Regression guard for #673: transactions stay visible for a
+        // soft-deleted holding (get_all_transactions doesn't join/filter on
+        // holdings.deleted_at), but dividends previously vanished because
+        // get_dividends joined holdings and filtered `h.deleted_at IS NULL`.
+        // Align dividends with the existing transaction behavior.
+        let pool = open_test_db().await;
+        let holding = insert_holding(&pool, make_input("DIVSOFT"))
+            .await
+            .expect("insert holding");
+
+        insert_dividend(
+            &pool,
+            DividendInput {
+                holding_id: holding.id.clone(),
+                amount_per_unit: 1.5,
+                currency: "CAD".to_string(),
+                ex_date: "2024-01-01".to_string(),
+                pay_date: "2024-01-15".to_string(),
+            },
+            &holding.symbol,
+        )
+        .await
+        .expect("insert dividend");
+
+        delete_holding(&pool, &holding.id)
+            .await
+            .expect("soft-delete holding");
+
+        let dividends = get_dividends(&pool).await.expect("get_dividends");
+        assert_eq!(
+            dividends.len(),
+            1,
+            "dividend should remain visible after its holding is soft-deleted, matching transaction behavior"
         );
     }
 }

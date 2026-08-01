@@ -74,7 +74,12 @@ pub fn build_portfolio_snapshot(
             match price_map.get(&holding.symbol) {
                 Some(p) if p.price > 0.0 && p.price.is_finite() => {
                     let stale = is_price_stale(&p.updated_at);
-                    (p.price, p.change_percent, stale)
+                    let change_percent = if p.change_percent.is_finite() {
+                        p.change_percent
+                    } else {
+                        0.0
+                    };
+                    (p.price, change_percent, stale)
                 }
                 // A cached price of exactly 0.0 is ambiguous: it may be a
                 // genuinely worthless security (penny stock, delisted share,
@@ -83,10 +88,15 @@ pub fn build_portfolio_snapshot(
                 // back to cost_basis the same as a cache miss.
                 Some(p) if p.price == 0.0 => {
                     let stale = is_price_stale(&p.updated_at);
+                    let change_percent = if p.change_percent.is_finite() {
+                        p.change_percent
+                    } else {
+                        0.0
+                    };
                     if stale {
                         (holding.cost_basis, 0.0, true)
                     } else {
-                        (0.0, p.change_percent, false)
+                        (0.0, change_percent, false)
                     }
                 }
                 // Negative, infinite, or NaN prices are never legitimate — treat as a cache miss.
@@ -523,6 +533,49 @@ mod tests {
             "expected daily_pnl == 220 for prior-day holding, got {}",
             snapshot.daily_pnl
         );
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_guards_non_finite_change_percent() {
+        // Regression guard for #684: a price feed returning NaN/Infinity for
+        // change_percent must not silently propagate into daily_pnl or
+        // daily_change_percent — it should be treated as 0.0, matching the
+        // is_finite() guard already applied to `price` above.
+        let yesterday = (Utc::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+        let mut holding = make_holding("MSFT", AssetType::Stock, 10.0, 200.0, "CAD");
+        holding.created_at = yesterday;
+
+        let prices = vec![PriceData {
+            symbol: "MSFT".to_string(),
+            price: 220.0,
+            currency: "CAD".to_string(),
+            change: f64::NAN,
+            change_percent: f64::NAN,
+            updated_at: Utc::now().to_rfc3339(),
+            open: None,
+            previous_close: None,
+            volume: None,
+        }];
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &prices,
+            &[],
+            "CAD",
+            Utc::now().to_rfc3339(),
+            0.0,
+            0.0,
+        );
+
+        assert!(
+            snapshot.daily_pnl.is_finite(),
+            "daily_pnl must stay finite when change_percent is NaN, got {}",
+            snapshot.daily_pnl
+        );
+        assert_eq!(snapshot.daily_pnl, 0.0);
+        assert_eq!(snapshot.holdings[0].daily_change_percent, 0.0);
     }
 
     #[test]

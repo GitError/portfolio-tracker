@@ -46,6 +46,7 @@ pub async fn get_config(
     pool: &SqlitePool,
     params: GetConfigParams,
 ) -> Result<ConfigValue, McpError> {
+    validation::validate_config_key(&params.key)?;
     let value = db::get_config(pool, &params.key)
         .await
         .map_err(PortfolioMcpServer::tool_error)?;
@@ -54,6 +55,53 @@ pub async fn get_config(
         key: params.key,
         value,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory sqlite");
+        sqlx::query("CREATE TABLE app_config (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            .execute(&pool)
+            .await
+            .expect("create app_config table");
+        pool
+    }
+
+    #[tokio::test]
+    async fn get_config_rejects_unknown_key() {
+        // Regression guard for #662: get_config previously had no allowlist
+        // check at all (unlike set_config), so any key — including
+        // internal/sensitive ones — could be read.
+        let pool = test_pool().await;
+        let result = get_config(
+            &pool,
+            GetConfigParams {
+                key: "some_internal_secret".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "unknown config key must be rejected");
+    }
+
+    #[tokio::test]
+    async fn get_config_accepts_allowed_key() {
+        let pool = test_pool().await;
+        let result = get_config(
+            &pool,
+            GetConfigParams {
+                key: "base_currency".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_ok());
+    }
 }
 
 pub async fn set_config(

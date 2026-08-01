@@ -48,12 +48,66 @@ impl From<reqwest::Error> for AppError {
 
 impl From<String> for AppError {
     fn from(s: String) -> Self {
-        AppError::Validation(s)
+        // Most `db.rs` functions return `Result<T, String>` (built via
+        // `.map_err(|e| e.to_string())`), so by the time an error reaches
+        // this conversion the original `sqlx::Error` variant is gone.
+        // Pattern-match the well-known SQLite error text so uniqueness/FK
+        // violations and missing-row lookups still surface as Conflict/
+        // NotFound to the frontend instead of a blanket Validation error.
+        if s.contains("UNIQUE constraint failed") || s.contains("FOREIGN KEY constraint failed") {
+            AppError::Conflict(s)
+        } else if s.contains("no rows returned by a query") {
+            AppError::NotFound(s)
+        } else {
+            AppError::Validation(s)
+        }
     }
 }
 
 impl From<&str> for AppError {
     fn from(s: &str) -> Self {
-        AppError::Validation(s.to_string())
+        AppError::from(s.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_string_classifies_unique_constraint_as_conflict() {
+        let err = AppError::from(
+            "error returned from database: (code: 2067) UNIQUE constraint failed: holdings.id"
+                .to_string(),
+        );
+        assert!(matches!(err, AppError::Conflict(_)));
+    }
+
+    #[test]
+    fn from_string_classifies_foreign_key_violation_as_conflict() {
+        let err = AppError::from(
+            "error returned from database: (code: 787) FOREIGN KEY constraint failed".to_string(),
+        );
+        assert!(matches!(err, AppError::Conflict(_)));
+    }
+
+    #[test]
+    fn from_string_classifies_row_not_found_as_not_found() {
+        let err = AppError::from(
+            "no rows returned by a query that expected to return at least one row".to_string(),
+        );
+        assert!(matches!(err, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn from_string_falls_back_to_validation_for_unrecognized_errors() {
+        let err = AppError::from("quantity must be positive".to_string());
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+
+    #[test]
+    fn from_str_uses_same_classification_as_from_string() {
+        let err = AppError::from("UNIQUE constraint failed: accounts.id");
+        assert!(matches!(err, AppError::Conflict(_)));
     }
 }

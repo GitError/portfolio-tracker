@@ -283,7 +283,6 @@
   "help.def.dividend": "A payment made by a company to shareholders.",
   "help.term.yield": "Yield",
   "help.def.yield": "Annual dividend payment as a percentage of the current share price.",
-
   "insights.targetDrift.title": "{{symbol}} is {{direction}} by {{pct}}%",
   "insights.targetDrift.overweight": "overweight",
   "insights.targetDrift.underweight": "underweight",
@@ -297,5 +296,14 @@
   "insights.idleCash.action": "View Holdings",
   "insights.missingTargets.title": "Target weights not set",
   "insights.missingTargets.explanation": "{{missing}} of {{total}} holdings have no target weight. Set targets to enable rebalancing recommendations.",
-  "insights.missingTargets.action": "Set Targets"
+  "insights.missingTargets.action": "Set Targets",
+  "alerts.resetAlert": "Reset alert",
+  "alerts.emptyActive": "No active alerts. Click 'New Alert' to create one.",
+  "transactions.empty": "No transactions recorded yet.",
+  "transactions.columns.date": "Date",
+  "transactions.columns.type": "Type",
+  "transactions.columns.quantity": "Quantity",
+  "transactions.columns.price": "Price",
+  "transactions.columns.total": "Total Value",
+  "transactions.columns.actions": "Actions"
 }

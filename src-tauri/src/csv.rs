@@ -137,7 +137,10 @@ fn parse_required_field(
 /// excessively large inputs.
 fn sanitize_str(s: &str) -> String {
     let s = if s.len() > crate::config::MAX_FIELD_LEN {
-        &s[..crate::config::MAX_FIELD_LEN]
+        match s.char_indices().nth(crate::config::MAX_FIELD_LEN) {
+            Some((i, _)) => &s[..i],
+            None => s,
+        }
     } else {
         s
     };
@@ -389,6 +392,17 @@ pub fn parse_import_rows(csv_content: &str) -> Result<Vec<ParsedImportRow>, Stri
 mod tests {
     use super::*;
     use crate::test_helpers::make_holding;
+
+    #[test]
+    fn sanitize_str_does_not_panic_on_multibyte_char_boundary() {
+        // MAX_FIELD_LEN (500) falls mid-character when the input is made of
+        // 3-byte UTF-8 chars (500 is not a multiple of 3), which previously
+        // panicked via the byte-offset slice `&s[..MAX_FIELD_LEN]`.
+        let s: String = std::iter::repeat('日').take(200).collect(); // 600 bytes
+        let result = sanitize_str(&s);
+        assert!(!result.is_empty());
+        assert!(result.chars().count() <= 200);
+    }
 
     #[test]
     fn normalize_symbol_strips_country_suffix() {

@@ -16,6 +16,7 @@ const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "auto_refresh_market_hours_only",
     "cost_basis_method",
     "notifications_enabled",
+    "holdings_hidden_columns",
 ];
 
 fn validate_config_key(key: &str) -> Result<(), AppError> {
@@ -92,5 +93,13 @@ mod tests {
     #[test]
     fn validate_config_key_rejects_empty_key() {
         assert!(validate_config_key("").is_err());
+    }
+
+    #[test]
+    fn validate_config_key_accepts_holdings_hidden_columns() {
+        // Regression guard for #661: the frontend persists which Holdings
+        // table columns are hidden under this key, but it was missing from
+        // the allowlist, so get/set_config_cmd rejected it.
+        assert!(validate_config_key("holdings_hidden_columns").is_ok());
     }
 }

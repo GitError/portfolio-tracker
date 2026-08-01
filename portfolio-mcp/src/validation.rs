@@ -193,6 +193,7 @@ pub const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "auto_refresh_market_hours_only",
     "cost_basis_method",
     "notifications_enabled",
+    "holdings_hidden_columns",
 ];
 
 /// Mirrors the allowlist check in `src-tauri/src/commands/config.rs::set_config_cmd`.
