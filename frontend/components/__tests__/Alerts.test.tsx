@@ -2,17 +2,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Alerts } from '../Alerts';
+import { ToastProvider } from '../ui/Toast';
 
 // Initialize i18n (Alerts uses useTranslation)
 import i18next from '../../lib/i18n';
 
 const mockDeleteAlert = vi.fn();
+const mockAddAlert = vi.fn();
+const mockGetAlertsPaginated = vi.fn();
+
+// Mutable so individual tests can opt into the Tauri (add_alert command) path
+// while the rest of the suite keeps exercising the browser-mode MOCK_ALERTS path.
+let mockIsTauri = false;
 
 vi.mock('../../lib/tauri', () => ({
-  isTauri: () => false,
+  isTauri: () => mockIsTauri,
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: (cmd: string, ...args: unknown[]) => {
     if (cmd === 'delete_alert') return mockDeleteAlert(cmd, ...args);
+    if (cmd === 'add_alert') return mockAddAlert(cmd, ...args);
+    if (cmd === 'get_alerts_paginated') return mockGetAlertsPaginated(cmd, ...args);
     return Promise.resolve(null);
   },
 }));
@@ -45,7 +54,16 @@ beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
+  mockIsTauri = false;
   mockDeleteAlert.mockResolvedValue(true);
+  mockAddAlert.mockResolvedValue(null);
+  mockGetAlertsPaginated.mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 500,
+    totalPages: 0,
+  });
   // Pin language so English-text assertions don't break if the default locale changes.
   await i18next.changeLanguage('en');
 });
@@ -53,7 +71,9 @@ beforeEach(async () => {
 function renderAlerts() {
   return render(
     <MemoryRouter>
-      <Alerts />
+      <ToastProvider>
+        <Alerts />
+      </ToastProvider>
     </MemoryRouter>
   );
 }
@@ -123,5 +143,70 @@ describe('Alerts component smoke tests', () => {
       const remaining = screen.getAllByTitle('Delete alert');
       expect(remaining.length).toBe(initialCount - 1);
     });
+  });
+
+  it('shows an error and keeps the form open when add_alert is rejected by validation', async () => {
+    mockIsTauri = true;
+    mockAddAlert.mockRejectedValue(new Error('Alert currency must be a 2-3 letter ISO code'));
+
+    renderAlerts();
+    await waitFor(() => screen.getByRole('button', { name: /new alert/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /new alert/i }));
+    await waitFor(() => screen.getByText(/new price alert/i));
+
+    fireEvent.change(screen.getByPlaceholderText('e.g. AAPL'), {
+      target: { value: 'AAPL' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('0.00'), {
+      target: { value: '150' },
+    });
+
+    const form = screen.getByPlaceholderText('0.00').closest('form');
+    expect(form).not.toBeNull();
+    fireEvent.submit(form as HTMLFormElement);
+
+    await waitFor(() => expect(mockAddAlert).toHaveBeenCalledTimes(1));
+
+    // The error toast is shown...
+    await waitFor(() =>
+      expect(
+        screen.getByText(/failed to create alert.*alert currency must be a 2-3 letter iso code/i)
+      ).toBeTruthy()
+    );
+
+    // ...and the add-alert form stays open instead of being dismissed as if it succeeded.
+    expect(screen.getByText(/new price alert/i)).toBeTruthy();
+    // No alert was optimistically added to the list.
+    expect(screen.queryByText('AAPL')).toBeNull();
+  });
+
+  it('shows a persistent error with a retry button when loading fails, and retry re-fetches', async () => {
+    mockIsTauri = true;
+    mockGetAlertsPaginated.mockRejectedValue(new Error('network down'));
+
+    renderAlerts();
+
+    // Both the toast (transient) and the persistent inline banner surface the
+    // failure — the toast alone isn't enough since dismissing it would leave
+    // no indication the load failed.
+    await waitFor(() => expect(screen.getAllByText(/failed to load alerts/i).length).toBe(2));
+    const retryButton = screen.getByRole('button', { name: /retry/i });
+    expect(retryButton).toBeTruthy();
+
+    mockGetAlertsPaginated.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 500,
+      totalPages: 0,
+    });
+    fireEvent.click(retryButton);
+
+    await waitFor(() => expect(mockGetAlertsPaginated).toHaveBeenCalledTimes(2));
+    // The persistent banner (and its retry button) clears on a successful reload.
+    // The earlier error toast is transient and dismisses on its own timer, so we
+    // don't assert its absence here — only that the persistent state is gone.
+    await waitFor(() => expect(screen.queryByRole('button', { name: /retry/i })).toBeNull());
   });
 });

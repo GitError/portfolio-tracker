@@ -37,4 +37,35 @@ describe('mockData', () => {
     expect(snapshot.holdings).toHaveLength(0);
     expect(snapshot.totalValue).toBe(0);
   });
+
+  // Values below are hand-computed from the RAW_HOLDINGS fixture inputs in
+  // mockData.ts (USD_CAD = 1.36, EUR_CAD = 1.47), independent of the
+  // production formulas in buildSnapshot(), so a regression in either the
+  // fixture data or the aggregation math will fail these.
+  it('computes totalValue as the sum of every holding market value in CAD', () => {
+    // 50*189.84*1.36 + 30*415.52*1.36 + 25*875.4*1.36 + 150*81.24 + 80*135.88
+    //   + 40*481.55*1.36 + 200*112.4 + 0.85*87450 + 5*4380 + 8500*1.36
+    //   + 3000*1.47 + 12500
+    expect(MOCK_SNAPSHOT.totalValue).toBeCloseTo(256061.156, 2);
+  });
+
+  it("computes AAPL's gainLoss in CAD from its quantity, cost basis, and current price", () => {
+    const aapl = MOCK_SNAPSHOT.holdings.find((h) => h.id === '1');
+    // 50 * (189.84 - 155.0) * 1.36
+    expect(aapl?.gainLoss).toBeCloseTo(2369.12, 2);
+  });
+
+  it("computes TD.TO's portfolio weight as its share of totalValue", () => {
+    const td = MOCK_SNAPSHOT.holdings.find((h) => h.id === '4');
+    // (150 * 81.24) / 256061.156 * 100
+    expect(td?.weight).toBeCloseTo(4.759019, 4);
+  });
+
+  it('computes totalGainLoss as totalValue minus totalCost', () => {
+    expect(MOCK_SNAPSHOT.totalGainLoss).toBeCloseTo(82801.156, 2);
+    expect(MOCK_SNAPSHOT.totalGainLoss).toBeCloseTo(
+      MOCK_SNAPSHOT.totalValue - MOCK_SNAPSHOT.totalCost,
+      6
+    );
+  });
 });

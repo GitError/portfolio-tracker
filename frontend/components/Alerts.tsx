@@ -10,6 +10,7 @@ import type {
 } from '../types/portfolio';
 import { formatCurrency } from '../lib/format';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
+import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
 import { Spinner } from './ui/Spinner';
@@ -219,6 +220,7 @@ export function Alerts() {
   const { t } = useTranslation();
   const [alerts, setAlerts] = useState<PriceAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { showToast } = useToast();
   const { holdings, markAlertsSeen } = usePortfolio();
@@ -229,18 +231,22 @@ export function Alerts() {
   }, [markAlertsSeen]);
 
   const loadAlerts = useCallback(async () => {
+    setLoading(true);
     try {
       if (isTauri()) {
         const result = await tauriInvoke<PaginatedResult<PriceAlert>>('get_alerts_paginated', {
           page: 1,
-          pageSize: 500,
+          pageSize: PAGINATION_FETCH_ALL_SIZE,
         });
         setAlerts(result.items);
       } else {
         setAlerts(MOCK_ALERTS);
       }
+      setLoadError(null);
     } catch (err) {
-      showToast(`Failed to load alerts: ${getErrorMessage(err)}`, 'error');
+      const message = getErrorMessage(err);
+      setLoadError(message);
+      showToast(`Failed to load alerts: ${message}`, 'error');
     } finally {
       setLoading(false);
     }
@@ -378,76 +384,85 @@ export function Alerts() {
         <AddAlertForm holdings={holdings} onAdd={handleAdd} onCancel={() => setShowForm(false)} />
       )}
 
-      {/* Triggered alerts */}
-      {triggered.length > 0 && (
+      {loadError ? (
+        <EmptyState
+          message={t('alerts.loadError')}
+          action={{ label: t('common.retry'), onClick: () => void loadAlerts() }}
+        />
+      ) : (
         <>
+          {/* Triggered alerts */}
+          {triggered.length > 0 && (
+            <>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: 'var(--color-warning)',
+                  marginBottom: 8,
+                }}
+              >
+                {t('alerts.triggered')} ({triggered.length})
+              </div>
+              <div
+                style={{
+                  border: '1px solid var(--border-primary)',
+                  borderRadius: 2,
+                  marginBottom: 24,
+                  overflow: 'hidden',
+                }}
+              >
+                {triggered.map((alert, i) => (
+                  <AlertRow
+                    key={alert.id}
+                    alert={alert}
+                    isLast={i === triggered.length - 1}
+                    onDelete={handleDelete}
+                    onReset={handleReset}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Active alerts */}
           <div
             style={{
               fontSize: 11,
               fontWeight: 600,
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
-              color: 'var(--color-warning)',
+              color: 'var(--text-muted)',
               marginBottom: 8,
             }}
           >
-            {t('alerts.triggered')} ({triggered.length})
+            {t('alerts.active')} ({active.length})
           </div>
-          <div
-            style={{
-              border: '1px solid var(--border-primary)',
-              borderRadius: 2,
-              marginBottom: 24,
-              overflow: 'hidden',
-            }}
-          >
-            {triggered.map((alert, i) => (
-              <AlertRow
-                key={alert.id}
-                alert={alert}
-                isLast={i === triggered.length - 1}
-                onDelete={handleDelete}
-                onReset={handleReset}
-              />
-            ))}
-          </div>
+
+          {active.length === 0 && !showForm ? (
+            <EmptyState message={t('alerts.emptyActive')} />
+          ) : (
+            <div
+              style={{
+                border: '1px solid var(--border-primary)',
+                borderRadius: 2,
+                overflow: 'hidden',
+              }}
+            >
+              {active.map((alert, i) => (
+                <AlertRow
+                  key={alert.id}
+                  alert={alert}
+                  isLast={i === active.length - 1}
+                  onDelete={handleDelete}
+                  onReset={handleReset}
+                />
+              ))}
+            </div>
+          )}
         </>
-      )}
-
-      {/* Active alerts */}
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          color: 'var(--text-muted)',
-          marginBottom: 8,
-        }}
-      >
-        {t('alerts.active')} ({active.length})
-      </div>
-
-      {active.length === 0 && !showForm ? (
-        <EmptyState message={t('alerts.emptyActive')} />
-      ) : (
-        <div
-          style={{
-            border: '1px solid var(--border-primary)',
-            borderRadius: 2,
-            overflow: 'hidden',
-          }}
-        >
-          {active.map((alert, i) => (
-            <AlertRow
-              key={alert.id}
-              alert={alert}
-              isLast={i === active.length - 1}
-              onDelete={handleDelete}
-              onReset={handleReset}
-            />
-          ))}
-        </div>
       )}
     </div>
   );

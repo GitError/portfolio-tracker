@@ -9,6 +9,7 @@ import { Spinner } from './ui/Spinner';
 import { useToast } from './ui/Toast';
 import { Select } from './ui/Select';
 import { formatNumber } from '../lib/format';
+import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
 import type { Transaction, Holding, PaginatedResult } from '../types/portfolio';
 
 const TX_TYPE_COLORS: Record<string, string> = {
@@ -104,7 +105,7 @@ export function TransactionHistory() {
       if (isTauri()) {
         const result = await tauriInvoke<PaginatedResult<Transaction>>(
           'get_transactions_paginated',
-          { page: 1, pageSize: 500 }
+          { page: 1, pageSize: PAGINATION_FETCH_ALL_SIZE }
         );
         setTransactions(result.items);
       } else {

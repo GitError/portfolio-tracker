@@ -4,6 +4,16 @@ import { createElement } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useKeyboardShortcuts } from '../useKeyboardShortcuts';
 
+const mockNavigate = vi.fn();
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return {
+    ...actual,
+    useNavigate: () => mockNavigate,
+  };
+});
+
 function fireKeydown(overrides: Partial<KeyboardEventInit> & { target?: EventTarget }): void {
   const { target, ...init } = overrides;
   const event = new KeyboardEvent('keydown', { bubbles: true, ...init });
@@ -86,28 +96,45 @@ describe('useKeyboardShortcuts', () => {
 
   it('navigates to "/" when metaKey+1 is pressed', () => {
     renderHook(() => useKeyboardShortcuts({}), { wrapper });
-    // No throw = navigation was attempted (navigate is internal to the hook)
-    expect(() => fireKeydown({ key: '1', metaKey: true })).not.toThrow();
+    fireKeydown({ key: '1', metaKey: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/');
   });
 
   it('navigates to "/holdings" when metaKey+2 is pressed', () => {
     renderHook(() => useKeyboardShortcuts({}), { wrapper });
-    expect(() => fireKeydown({ key: '2', metaKey: true })).not.toThrow();
+    fireKeydown({ key: '2', metaKey: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/holdings');
   });
 
   it('navigates to "/performance" when metaKey+3 is pressed', () => {
     renderHook(() => useKeyboardShortcuts({}), { wrapper });
-    expect(() => fireKeydown({ key: '3', metaKey: true })).not.toThrow();
+    fireKeydown({ key: '3', metaKey: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/performance');
   });
 
   it('navigates to "/stress" when metaKey+4 is pressed', () => {
     renderHook(() => useKeyboardShortcuts({}), { wrapper });
-    expect(() => fireKeydown({ key: '4', metaKey: true })).not.toThrow();
+    fireKeydown({ key: '4', metaKey: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/stress');
   });
 
   it('navigates to "/settings" when metaKey+, is pressed', () => {
     renderHook(() => useKeyboardShortcuts({}), { wrapper });
-    expect(() => fireKeydown({ key: ',', metaKey: true })).not.toThrow();
+    fireKeydown({ key: ',', metaKey: true });
+    expect(mockNavigate).toHaveBeenCalledWith('/settings');
+  });
+
+  it('navigates to "/holdings" when plain 2 is pressed without a modifier', () => {
+    renderHook(() => useKeyboardShortcuts({}), { wrapper });
+    fireKeydown({ key: '2' });
+    expect(mockNavigate).toHaveBeenCalledWith('/holdings');
+  });
+
+  it('does NOT navigate when plain 2 is pressed with target in a form field', () => {
+    renderHook(() => useKeyboardShortcuts({}), { wrapper });
+    const inputEl = document.createElement('input');
+    fireKeydown({ key: '2', target: inputEl });
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('calls onToggleHelp when ? key is pressed without modifier', () => {

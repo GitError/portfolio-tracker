@@ -10,8 +10,8 @@ mod tests {
     use crate::db;
     use crate::error::AppError;
     use crate::types::{
-        AccountType, AlertDirection, AssetType, DividendInput, HoldingInput, PriceAlertInput,
-        TransactionInput, TransactionType,
+        AccountType, AlertDirection, AlertId, AssetType, DividendId, DividendInput, HoldingId,
+        HoldingInput, PriceAlertInput, TransactionId, TransactionInput, TransactionType,
     };
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -808,7 +808,75 @@ mod tests {
         let err = db::delete_account(&pool, &account_id)
             .await
             .expect_err("deleting an account referenced by a holding should error");
-        assert!(!err.is_empty());
+        // db::delete_account builds this message itself (not a raw SQLite
+        // constraint violation), so `AppError::from(String)`'s pattern match
+        // for "FOREIGN KEY constraint failed" doesn't fire — it falls through
+        // to Validation. Assert on the classification the frontend actually
+        // receives, not just that some message came back.
+        assert!(matches!(AppError::from(err), AppError::Validation(_)));
+    }
+
+    // ── negative-path: delete/reset on nonexistent IDs (#666) ─────────────────
+    // Unlike `delete_account` above, these commands are plain
+    // `UPDATE/DELETE ... WHERE id = $1`: zero rows affected is not
+    // distinguished from "row existed and was deleted". They return
+    // `Ok(false)` for a nonexistent ID instead of an error, and the
+    // Tauri command layer passes that bool straight through — this is the
+    // current, intentional behavior, not an oversight.
+
+    #[tokio::test]
+    async fn delete_holding_nonexistent_id_returns_false() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = HoldingId(uuid::Uuid::new_v4().to_string());
+
+        let deleted = db::delete_holding(&pool, &fake_id)
+            .await
+            .expect("deleting a nonexistent holding should not error");
+        assert!(!deleted);
+    }
+
+    #[tokio::test]
+    async fn delete_alert_nonexistent_id_returns_false() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = AlertId(uuid::Uuid::new_v4().to_string());
+
+        let deleted = db::delete_alert(&pool, &fake_id)
+            .await
+            .expect("deleting a nonexistent alert should not error");
+        assert!(!deleted);
+    }
+
+    #[tokio::test]
+    async fn reset_alert_nonexistent_id_returns_false() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = AlertId(uuid::Uuid::new_v4().to_string());
+
+        let reset = db::reset_alert(&pool, &fake_id)
+            .await
+            .expect("resetting a nonexistent alert should not error");
+        assert!(!reset);
+    }
+
+    #[tokio::test]
+    async fn delete_transaction_nonexistent_id_returns_false() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = TransactionId(uuid::Uuid::new_v4().to_string());
+
+        let deleted = db::delete_transaction(&pool, &fake_id)
+            .await
+            .expect("deleting a nonexistent transaction should not error");
+        assert!(!deleted);
+    }
+
+    #[tokio::test]
+    async fn delete_dividend_nonexistent_id_returns_false() {
+        let pool = crate::db::open_test_db().await;
+        let fake_id = DividendId(uuid::Uuid::new_v4().to_string());
+
+        let deleted = db::delete_dividend(&pool, &fake_id)
+            .await
+            .expect("deleting a nonexistent dividend should not error");
+        assert!(!deleted);
     }
 
     // ── DB integration: holdings CRUD ─────────────────────────────────────────
