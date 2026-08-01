@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import type { TFunction } from 'i18next';
 import { buildInsights } from '../useActionInsights';
 import type { HoldingWithPrice, PortfolioSnapshot } from '../../types/portfolio';
+
+// Initialize i18n (buildInsights defaults to it, and locale-formatting tests use it directly)
+import i18next from '../../lib/i18n';
 
 // ─── Test helpers ─────────────────────────────────────────────────────────────
 
@@ -354,5 +358,35 @@ describe('buildInsights', () => {
     expect(infoIdx).toBeGreaterThanOrEqual(0);
     expect(criticalIdx).toBeLessThan(warningIdx);
     expect(warningIdx).toBeLessThan(infoIdx);
+  });
+});
+
+describe('buildInsights localization', () => {
+  it('routes title/explanation/action text through the provided translate function', () => {
+    const holding = makeHolding({ targetWeight: 20, weight: 32, marketValueCad: 3200 });
+    const snapshot = makeSnapshot([holding]);
+    const fakeT = vi.fn((key: string) => `translated:${key}`);
+
+    const insights = buildInsights(snapshot, [holding], fakeT as unknown as TFunction, 'en');
+    const drift = insights.find((i) => i.type === 'target_drift');
+
+    expect(fakeT).toHaveBeenCalledWith('insights.targetDrift.action');
+    expect(drift!.action).toBe('translated:insights.targetDrift.action');
+    // Guard against the pre-fix behavior (hardcoded English strings, ignoring the translate fn).
+    expect(drift!.action).not.toBe('Review Rebalance');
+  });
+
+  it('formats interpolated numbers in title/explanation using the provided locale', () => {
+    const holding = makeHolding({ targetWeight: 20, weight: 32, marketValueCad: 3200 });
+    const snapshot = makeSnapshot([holding]);
+
+    const insights = buildInsights(snapshot, [holding], i18next.t.bind(i18next), 'de');
+    const drift = insights.find((i) => i.type === 'target_drift');
+
+    expect(drift!.title).toContain('12,0');
+    expect(drift!.explanation).toContain('32,0');
+    expect(drift!.explanation).toContain('20,0');
+    // Guard against the pre-fix behavior (raw toFixed() always uses '.' regardless of locale).
+    expect(drift!.title).not.toMatch(/12\.0/);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
 beforeEach(() => {
@@ -73,5 +73,31 @@ describe('useLanguage (non-Tauri path)', () => {
       expect(lang.name).toBeTruthy();
       expect(lang.nativeName).toBeTruthy();
     }
+  });
+
+  it('setLanguage logs and rejects when i18next.changeLanguage fails, without persisting the change', async () => {
+    const { useLanguage } = await import('../../hooks/useLanguage');
+    const { default: i18next } = await import('../../lib/i18n');
+
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const changeLanguageSpy = vi
+      .spyOn(i18next, 'changeLanguage')
+      .mockRejectedValueOnce(new Error('locale bundle failed to load'));
+
+    const { result } = renderHook(() => useLanguage());
+    await waitFor(() => expect(result.current.language).toBeDefined());
+
+    await expect(
+      act(async () => {
+        await result.current.setLanguage('de');
+      })
+    ).rejects.toThrow('locale bundle failed to load');
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    // Guard against the pre-fix behavior (silent failure — localStorage still updated despite the rejection).
+    expect(localStorage.getItem('app_language')).toBeNull();
+
+    changeLanguageSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
   });
 });

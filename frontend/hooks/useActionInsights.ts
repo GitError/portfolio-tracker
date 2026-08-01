@@ -1,4 +1,8 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import i18next from '../lib/i18n';
+import { formatNumber } from '../lib/format';
 import type {
   ActionInsight,
   HoldingWithPrice,
@@ -18,7 +22,9 @@ const SEVERITY_RANK: Record<InsightSeverity, number> = {
 
 export function buildInsights(
   snapshot: PortfolioSnapshot,
-  holdings: HoldingWithPrice[]
+  holdings: HoldingWithPrice[],
+  t: TFunction = i18next.t,
+  locale: string = i18next.language
 ): ActionInsight[] {
   if (holdings.length === 0 || snapshot.totalValue <= 0) return [];
 
@@ -33,6 +39,7 @@ export function buildInsights(
     if (drift <= 5) continue;
 
     const severity: InsightSeverity = drift > 10 ? 'critical' : 'warning';
+    // Plain (non-localized) decimal strings for metrics — parsed via parseFloat() during sorting.
     const driftPct = drift.toFixed(1);
     const actualPct = holding.weight.toFixed(1);
     const targetPct = holding.targetWeight.toFixed(1);
@@ -44,14 +51,21 @@ export function buildInsights(
       type: 'target_drift',
       severity,
       direction: insightDirection,
-      title: `${holding.symbol} is ${direction} by ${driftPct}%`,
-      explanation: `Current weight ${actualPct}% vs target ${targetPct}%. Consider rebalancing.`,
+      title: t('insights.targetDrift.title', {
+        symbol: holding.symbol,
+        direction: t(`insights.targetDrift.${direction}`),
+        pct: formatNumber(drift, 1, locale),
+      }),
+      explanation: t('insights.targetDrift.explanation', {
+        actual: formatNumber(holding.weight, 1, locale),
+        target: formatNumber(holding.targetWeight, 1, locale),
+      }),
       metrics: {
         current: actualPct,
         target: targetPct,
         drift: driftPct,
       },
-      action: 'Review Rebalance',
+      action: t('insights.targetDrift.action'),
       linkTo: '/rebalance',
     });
   }
@@ -68,12 +82,15 @@ export function buildInsights(
       type: 'concentration_risk',
       severity,
       direction: 'sell' as InsightDirection,
-      title: `${holding.symbol} dominates the portfolio`,
-      explanation: `${holding.symbol} represents ${weightPct.toFixed(1)}% of portfolio — consider diversifying.`,
+      title: t('insights.concentrationRisk.title', { symbol: holding.symbol }),
+      explanation: t('insights.concentrationRisk.explanation', {
+        symbol: holding.symbol,
+        weight: formatNumber(weightPct, 1, locale),
+      }),
       metrics: {
         weight: weightPct.toFixed(1),
       },
-      action: 'View Holdings',
+      action: t('insights.concentrationRisk.action'),
       linkTo: '/holdings',
     });
   }
@@ -89,12 +106,14 @@ export function buildInsights(
       type: 'idle_cash',
       severity: 'info',
       direction: 'buy' as InsightDirection,
-      title: 'High cash allocation',
-      explanation: `Cash represents ${cashPct.toFixed(1)}% of portfolio — consider deploying.`,
+      title: t('insights.idleCash.title'),
+      explanation: t('insights.idleCash.explanation', {
+        pct: formatNumber(cashPct, 1, locale),
+      }),
       metrics: {
         cashPct: cashPct.toFixed(1),
       },
-      action: 'View Holdings',
+      action: t('insights.idleCash.action'),
       linkTo: '/holdings',
     });
   }
@@ -107,13 +126,16 @@ export function buildInsights(
       type: 'missing_targets',
       severity: 'info',
       direction: 'review' as InsightDirection,
-      title: 'Target weights not set',
-      explanation: `${withoutTarget.length} of ${holdings.length} holdings have no target weight. Set targets to enable rebalancing recommendations.`,
+      title: t('insights.missingTargets.title'),
+      explanation: t('insights.missingTargets.explanation', {
+        missing: withoutTarget.length,
+        total: holdings.length,
+      }),
       metrics: {
         missing: withoutTarget.length,
         total: holdings.length,
       },
-      action: 'Set Targets',
+      action: t('insights.missingTargets.action'),
       linkTo: '/rebalance',
     });
   }
@@ -135,8 +157,9 @@ export function useActionInsights(
   snapshot: PortfolioSnapshot | null,
   holdings: HoldingWithPrice[]
 ): ActionInsight[] {
+  const { t, i18n } = useTranslation();
   return useMemo(() => {
     if (!snapshot) return [];
-    return buildInsights(snapshot, holdings);
-  }, [snapshot, holdings]);
+    return buildInsights(snapshot, holdings, t, i18n.language);
+  }, [snapshot, holdings, t, i18n.language]);
 }

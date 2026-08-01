@@ -37,8 +37,16 @@ export function useLanguage() {
   }, []);
 
   const setLanguage = async (code: string) => {
+    const previous = language;
     setLanguageState(code);
-    await i18next.changeLanguage(code);
+    try {
+      await i18next.changeLanguage(code);
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to change language:', error);
+      setLanguageState(previous);
+      throw error;
+    }
     // Mirror to localStorage even in Tauri mode: i18n.ts's synchronous
     // pre-render init only has access to localStorage, not the async Tauri
     // config store, so this cache is what prevents a language flash on the

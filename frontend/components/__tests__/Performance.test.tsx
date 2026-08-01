@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Performance } from '../Performance';
 import type { PortfolioSnapshot } from '../../types/portfolio';
 import { MOCK_SNAPSHOT } from '../../lib/mockData';
+
+// Initialize i18n (Performance uses useTranslation for locale-aware number formatting)
+import i18next from '../../lib/i18n';
 
 vi.mock('../../lib/tauri', () => ({
   isTauri: () => false,
@@ -17,6 +20,12 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
+});
+
+afterEach(async () => {
+  await act(async () => {
+    await i18next.changeLanguage('en');
+  });
 });
 
 function renderPerformance(props: { portfolio: PortfolioSnapshot | null; onRefresh?: () => void }) {
@@ -74,5 +83,23 @@ describe('Performance component', () => {
     renderPerformance({ portfolio: null, onRefresh });
     // With null portfolio, renders the "No portfolio data" empty state (no action shown)
     expect(screen.getByText(/no portfolio data available/i)).toBeTruthy();
+  });
+
+  it('renders Max Drawdown and Annualized Volatility with German locale separators', async () => {
+    await act(async () => {
+      await i18next.changeLanguage('de');
+    });
+
+    renderPerformance({ portfolio: MOCK_SNAPSHOT as PortfolioSnapshot });
+
+    const maxDrawdownValue = screen.getByText('Max Drawdown').nextElementSibling?.textContent;
+    const volatilityValue =
+      screen.getByText('Annualized Volatility').nextElementSibling?.textContent;
+
+    expect(maxDrawdownValue).toMatch(/^-\d+,\d%$/);
+    expect(volatilityValue).toMatch(/^\d+,\d%$/);
+    // Guard against the pre-fix behavior (raw toFixed() always uses '.' regardless of locale).
+    expect(maxDrawdownValue).not.toMatch(/\./);
+    expect(volatilityValue).not.toMatch(/\./);
   });
 });

@@ -169,10 +169,9 @@ function MetaCell({ value }: { value: string | number | undefined }) {
   );
 }
 
-function formatMarketCap(cap?: number, currency = 'USD'): string {
+function formatMarketCap(cap: number | undefined, currency = 'USD', locale = 'en'): string {
   if (cap == null) return '';
   const fmt = (value: number, suffix: string) => {
-    const locale = navigator.language || 'en';
     const formatted = new Intl.NumberFormat(locale, {
       style: 'decimal',
       minimumFractionDigits: 2,
@@ -183,12 +182,11 @@ function formatMarketCap(cap?: number, currency = 'USD'): string {
   if (cap >= 1e12) return fmt(cap / 1e12, 'T');
   if (cap >= 1e9) return fmt(cap / 1e9, 'B');
   if (cap >= 1e6) return fmt(cap / 1e6, 'M');
-  const locale = navigator.language || 'en';
   return `${new Intl.NumberFormat(locale, { style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(cap)} ${currency}`;
 }
 
 export function Analytics() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const formatNumber = useFormatNumber();
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [loading, setLoading] = useState(false);
@@ -707,7 +705,11 @@ export function Analytics() {
                         }
                       />
                       <MetaCell
-                        value={meta.marketCap != null ? formatMarketCap(meta.marketCap) : undefined}
+                        value={
+                          meta.marketCap != null
+                            ? formatMarketCap(meta.marketCap, undefined, i18n.language)
+                            : undefined
+                        }
                       />
                     </tr>
                   ))}

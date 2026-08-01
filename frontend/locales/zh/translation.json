@@ -282,5 +282,20 @@
   "help.term.dividend": "Dividend",
   "help.def.dividend": "A payment made by a company to shareholders.",
   "help.term.yield": "Yield",
-  "help.def.yield": "Annual dividend payment as a percentage of the current share price."
+  "help.def.yield": "Annual dividend payment as a percentage of the current share price.",
+
+  "insights.targetDrift.title": "{{symbol}} is {{direction}} by {{pct}}%",
+  "insights.targetDrift.overweight": "overweight",
+  "insights.targetDrift.underweight": "underweight",
+  "insights.targetDrift.explanation": "Current weight {{actual}}% vs target {{target}}%. Consider rebalancing.",
+  "insights.targetDrift.action": "Review Rebalance",
+  "insights.concentrationRisk.title": "{{symbol}} dominates the portfolio",
+  "insights.concentrationRisk.explanation": "{{symbol}} represents {{weight}}% of portfolio — consider diversifying.",
+  "insights.concentrationRisk.action": "View Holdings",
+  "insights.idleCash.title": "High cash allocation",
+  "insights.idleCash.explanation": "Cash represents {{pct}}% of portfolio — consider deploying.",
+  "insights.idleCash.action": "View Holdings",
+  "insights.missingTargets.title": "Target weights not set",
+  "insights.missingTargets.explanation": "{{missing}} of {{total}} holdings have no target weight. Set targets to enable rebalancing recommendations.",
+  "insights.missingTargets.action": "Set Targets"
 }

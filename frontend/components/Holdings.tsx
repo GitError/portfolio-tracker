@@ -825,12 +825,12 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
               {[
                 {
                   label: 'Assigned Target',
-                  value: `${rebalanceSummary.totalTargetWeight.toFixed(1)}%`,
+                  value: `${formatNumber(rebalanceSummary.totalTargetWeight, 1)}%`,
                   tone: 'var(--text-primary)',
                 },
                 {
                   label: 'Unassigned Target',
-                  value: `${rebalanceSummary.unassignedTargetWeight.toFixed(1)}%`,
+                  value: `${formatNumber(rebalanceSummary.unassignedTargetWeight, 1)}%`,
                   tone: 'var(--text-secondary)',
                 },
                 {
@@ -972,7 +972,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           textAlign: 'right',
                         }}
                       >
-                        {group.totalWeight.toFixed(1)}%
+                        {formatNumber(group.totalWeight, 1)}%
                       </span>
                     </button>
                     {/* Holdings rows */}
@@ -1143,7 +1143,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                       color: 'var(--text-secondary)',
                                     }}
                                   >
-                                    {h.weight.toFixed(1)}%
+                                    {formatNumber(h.weight, 1)}%
                                   </td>
                                   <td
                                     style={{
@@ -1368,7 +1368,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                                   color: 'var(--text-secondary)',
                                 }}
                               >
-                                {(group.totalWeight * 100).toFixed(2)}%
+                                {formatNumber(group.totalWeight * 100, 2)}%
                               </td>
                               <td colSpan={3} style={TD} />
                               <td
@@ -1749,7 +1749,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                               color: 'var(--text-secondary)',
                             }}
                           >
-                            {h.weight.toFixed(1)}%
+                            {formatNumber(h.weight, 1)}%
                           </td>
                         )}
                         {!hiddenColumns.has('targetWeight') && (
@@ -2108,7 +2108,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
                           fontSize: 13,
                         }}
                       >
-                        {totals.targetWeight > 0 ? `${totals.targetWeight.toFixed(1)}%` : '—'}
+                        {totals.targetWeight > 0 ? `${formatNumber(totals.targetWeight, 1)}%` : '—'}
                       </td>
                     )}
                     {!hiddenColumns.has('targetDeltaPercent') && (
