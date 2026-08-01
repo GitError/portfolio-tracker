@@ -114,6 +114,7 @@ pub async fn set_config(
     } else {
         params.value
     };
+    validation::validate_config_value(&params.key, &value)?;
 
     db::set_config(pool, &params.key, &value)
         .await

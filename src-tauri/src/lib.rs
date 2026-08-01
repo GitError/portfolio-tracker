@@ -135,6 +135,10 @@ pub fn run() {
 
             std::fs::create_dir_all(&app_data_dir)?;
 
+            if let Err(e) = commands::backup::cleanup_stale_staging_files(&app_data_dir) {
+                tracing::warn!("Failed to clean up stale backup staging files: {}", e);
+            }
+
             let db_path = app_data_dir.join(config::DB_FILE_NAME);
             let db_url = format!("sqlite:{}", db_path.to_string_lossy());
 
