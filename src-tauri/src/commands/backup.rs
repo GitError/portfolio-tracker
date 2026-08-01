@@ -3,17 +3,27 @@ use tauri::Manager;
 
 use crate::error::AppError;
 
-use super::DbState;
+use super::{BackupLockState, DbState};
 
 /// SQLite magic bytes: first 16 bytes of a valid SQLite database file.
 const SQLITE_MAGIC: &[u8] = b"SQLite format 3\0";
+
+/// Error returned when backup/restore is invoked while another instance of
+/// either is already running — both operate on the same live DB file.
+const LOCK_CONFLICT_MESSAGE: &str = "Backup or restore already in progress";
 
 #[tauri::command]
 pub async fn backup_database(
     app: tauri::AppHandle,
     state: tauri::State<'_, DbState>,
+    lock_state: tauri::State<'_, BackupLockState>,
     destination_path: String,
 ) -> Result<String, AppError> {
+    let _guard = lock_state
+        .0
+        .try_lock()
+        .map_err(|_| AppError::Conflict(LOCK_CONFLICT_MESSAGE.to_string()))?;
+
     // Flush WAL to ensure the file on disk is complete before we copy it.
     {
         let pool = &state.0;
@@ -87,7 +97,7 @@ pub async fn backup_database(
         }
     }
 
-    std::fs::copy(&source, &dest).map_err(|e| format!("Failed to copy database: {e}"))?;
+    atomic_copy(&source, &dest)?;
 
     Ok(dest.to_string_lossy().into_owned())
 }
@@ -96,8 +106,14 @@ pub async fn backup_database(
 pub async fn restore_database(
     app: tauri::AppHandle,
     state: tauri::State<'_, DbState>,
+    lock_state: tauri::State<'_, BackupLockState>,
     source_path: String,
 ) -> Result<String, AppError> {
+    let _guard = lock_state
+        .0
+        .try_lock()
+        .map_err(|_| AppError::Conflict(LOCK_CONFLICT_MESSAGE.to_string()))?;
+
     // Verify the source file is a valid SQLite database.
     let src = std::fs::canonicalize(&source_path)
         .map_err(|e| format!("Cannot resolve backup path: {e}"))?;
@@ -177,6 +193,41 @@ pub async fn restore_database(
     .await?;
 
     Ok("Database restored. Please restart the app to apply changes.".to_string())
+}
+
+/// Copies `source` to `dest` without ever exposing a partially-written file
+/// at `dest`. Stages the copy into a temp file in the same directory as
+/// `dest`, then atomically renames it into place — a same-directory rename
+/// is atomic, so `dest` is always either its prior contents or the complete
+/// new copy, never a half-written file from a failed or interrupted copy.
+///
+/// Fixes the check-then-write gap in #643: the old code checked whether
+/// `dest` existed while resolving the path, then separately wrote to it with
+/// `std::fs::copy`, leaving a window where a crash or error mid-copy could
+/// leave `dest` truncated or corrupted.
+fn atomic_copy(source: &std::path::Path, dest: &std::path::Path) -> Result<(), AppError> {
+    let mut tmp_name = dest
+        .file_name()
+        .ok_or("Destination path has no filename")?
+        .to_os_string();
+    tmp_name.push(".tmp");
+    let tmp_dest = dest.with_file_name(tmp_name);
+
+    if let Err(e) = std::fs::copy(source, &tmp_dest) {
+        let _ = std::fs::remove_file(&tmp_dest);
+        return Err(AppError::Validation(format!(
+            "Failed to copy database: {e}"
+        )));
+    }
+
+    if let Err(e) = std::fs::rename(&tmp_dest, dest) {
+        let _ = std::fs::remove_file(&tmp_dest);
+        return Err(AppError::Validation(format!(
+            "Failed to finalize backup: {e}"
+        )));
+    }
+
+    Ok(())
 }
 
 /// Quiesces `pool`, atomically replaces `dest` with `backup_src` on disk, and
@@ -351,6 +402,81 @@ mod tests {
             .expect("select marker");
         pool.close().await;
         row.map(|r| r.get::<String, _>(0))
+    }
+
+    #[test]
+    fn atomic_copy_replaces_dest_contents() {
+        let scratch = ScratchDir::new("atomic-copy-happy-path");
+        let source_path = scratch.path("source.db");
+        let dest_path = scratch.path("dest.db");
+
+        std::fs::write(&source_path, b"new contents").expect("write source");
+        std::fs::write(&dest_path, b"old contents").expect("write dest");
+
+        atomic_copy(&source_path, &dest_path).expect("atomic_copy should succeed");
+
+        let contents = std::fs::read(&dest_path).expect("read dest");
+        assert_eq!(contents, b"new contents");
+        assert!(
+            !scratch.path("dest.db.tmp").exists(),
+            "temp staging file should be cleaned up (consumed by rename) after success"
+        );
+    }
+
+    #[test]
+    fn atomic_copy_never_touches_existing_dest_when_source_is_missing() {
+        // Regression guard for #643: if the copy step fails, `dest` must be
+        // left byte-for-byte untouched rather than partially overwritten.
+        let scratch = ScratchDir::new("atomic-copy-missing-source");
+        let source_path = scratch.path("does-not-exist.db");
+        let dest_path = scratch.path("dest.db");
+
+        std::fs::write(&dest_path, b"original contents").expect("write dest");
+
+        let result = atomic_copy(&source_path, &dest_path);
+
+        assert!(result.is_err(), "copy from a missing source must fail");
+        let contents = std::fs::read(&dest_path).expect("read dest");
+        assert_eq!(
+            contents, b"original contents",
+            "dest must remain untouched when the copy step fails"
+        );
+        assert!(
+            !scratch.path("dest.db.tmp").exists(),
+            "failed temp staging file should be cleaned up rather than left behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn backup_lock_state_rejects_concurrent_acquisition() {
+        // Regression guard for #642: a second backup/restore attempt while one
+        // is already running must fail fast instead of racing on the DB file.
+        let lock_state = BackupLockState::new();
+        let _first_guard = lock_state
+            .0
+            .try_lock()
+            .expect("first lock acquisition should succeed");
+
+        assert!(
+            lock_state.0.try_lock().is_err(),
+            "a second concurrent lock acquisition must fail while the first is held"
+        );
+    }
+
+    #[tokio::test]
+    async fn backup_lock_state_allows_acquisition_after_release() {
+        let lock_state = BackupLockState::new();
+        {
+            let _guard = lock_state
+                .0
+                .try_lock()
+                .expect("first lock acquisition should succeed");
+        }
+
+        assert!(
+            lock_state.0.try_lock().is_ok(),
+            "lock should be acquirable again once the prior guard is dropped"
+        );
     }
 
     #[tokio::test]

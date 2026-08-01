@@ -140,7 +140,12 @@ pub fn build_portfolio_snapshot(
                     created_at = %holding.created_at,
                     "Corrupted created_at; holding excluded from daily PnL"
                 );
-                price_is_stale = true;
+                // Cash holdings never have a fetched price, so they must
+                // always report price_is_stale = false (#639) — a corrupted
+                // created_at only affects daily PnL exclusion, not pricing.
+                if !is_cash {
+                    price_is_stale = true;
+                }
                 ""
             }
         };
@@ -976,6 +981,31 @@ mod tests {
         );
         assert!(snapshot.holdings[0].market_value_cad.is_finite());
         assert!(snapshot.holdings[0].price_is_stale);
+    }
+
+    #[test]
+    fn build_portfolio_snapshot_cash_holding_with_corrupted_created_at_stays_non_stale() {
+        // Regression guard for #639: a corrupted/too-short created_at falls back
+        // to the "exclude from daily PnL" branch, which used to unconditionally
+        // set price_is_stale = true — even for cash holdings, which never have
+        // a fetched price and must always report price_is_stale = false.
+        let mut holding = make_holding("CAD-CASH", AssetType::Cash, 500.0, 1.0, "CAD");
+        holding.created_at = "bad".to_string(); // shorter than 10 chars
+
+        let snapshot = build_portfolio_snapshot(
+            &[holding],
+            &[],
+            &[],
+            "CAD",
+            "2024-01-01T00:00:00Z".to_string(),
+            0.0,
+            0.0,
+        );
+
+        assert!(
+            !snapshot.holdings[0].price_is_stale,
+            "cash holdings must always report price_is_stale = false"
+        );
     }
 
     #[test]
