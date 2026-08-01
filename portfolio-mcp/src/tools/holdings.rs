@@ -113,8 +113,59 @@ pub async fn delete_holding(
     pool: &SqlitePool,
     params: DeleteHoldingParams,
 ) -> Result<bool, McpError> {
+    validation::validate_id("id", &params.id)?;
     let id = HoldingId(params.id);
     db::delete_holding(pool, &id)
         .await
         .map_err(PortfolioMcpServer::tool_error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory sqlite");
+        // Table exists but is empty: an unvalidated malformed/empty ID would
+        // still run a syntactically valid UPDATE affecting 0 rows (Ok(false)),
+        // NOT an error — so this table is required to prove validation, not
+        // just a missing-table side effect, is what rejects the bad ID.
+        sqlx::query("CREATE TABLE holdings (id TEXT PRIMARY KEY, deleted_at TEXT)")
+            .execute(&pool)
+            .await
+            .expect("create holdings table");
+        pool
+    }
+
+    #[tokio::test]
+    async fn delete_holding_rejects_empty_id() {
+        // Regression guard for #685: an empty/malformed ID must be rejected
+        // before it ever reaches the database, mirroring the Tauri command.
+        let pool = test_pool().await;
+        let result = delete_holding(
+            &pool,
+            DeleteHoldingParams {
+                id: "".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "empty ID must be rejected");
+    }
+
+    #[tokio::test]
+    async fn delete_holding_rejects_malformed_id() {
+        let pool = test_pool().await;
+        let result = delete_holding(
+            &pool,
+            DeleteHoldingParams {
+                id: "not-a-uuid".to_string(),
+            },
+        )
+        .await;
+        assert!(result.is_err(), "malformed ID must be rejected");
+    }
 }

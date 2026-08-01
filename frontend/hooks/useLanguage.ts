@@ -53,7 +53,16 @@ export function useLanguage() {
     // next app launch.
     localStorage.setItem('app_language', code);
     if (isTauri()) {
-      await tauriInvoke('set_config_cmd', { key: 'app_language', value: code });
+      try {
+        await tauriInvoke('set_config_cmd', { key: 'app_language', value: code });
+      } catch (error) {
+        // The language change itself already succeeded (i18next + localStorage above),
+        // so unlike the changeLanguage failure above, don't roll back — just log and
+        // surface the persistence failure to the caller (see #698).
+        // eslint-disable-next-line no-console
+        console.error('Failed to persist language preference:', error);
+        throw error;
+      }
     }
   };
 

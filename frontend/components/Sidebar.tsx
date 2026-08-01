@@ -50,6 +50,7 @@ export function Sidebar({ portfolio, unseenAlertCount = 0 }: SidebarProps) {
   });
   const totalValue = portfolio?.totalValue ?? 0;
   const dailyPnl = portfolio?.dailyPnl ?? 0;
+  const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(expanded));
@@ -208,7 +209,7 @@ export function Sidebar({ portfolio, unseenAlertCount = 0 }: SidebarProps) {
             whiteSpace: 'nowrap',
           }}
         >
-          {formatCompact(totalValue)}
+          {formatCompact(totalValue, baseCurrency)}
         </div>
         {expanded && (
           <div
@@ -220,7 +221,7 @@ export function Sidebar({ portfolio, unseenAlertCount = 0 }: SidebarProps) {
             }}
           >
             {dailyPnl >= 0 ? '+' : ''}
-            {formatCompact(Math.abs(dailyPnl))} today
+            {formatCompact(Math.abs(dailyPnl), baseCurrency)} today
           </div>
         )}
       </div>

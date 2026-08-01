@@ -1148,7 +1148,7 @@ export function Dashboard({ portfolio, loading, onOpenCostBasisModal }: Dashboar
             },
             {
               label: t('dashboard.cashPosition'),
-              value: stats ? formatCompact(stats.cashTotal) : '—',
+              value: stats ? formatCompact(stats.cashTotal, baseCurrency) : '—',
               sub:
                 stats && totals.totalValue > 0
                   ? t('dashboard.ofPortfolio', {

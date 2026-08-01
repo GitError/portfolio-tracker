@@ -5,7 +5,29 @@
 //! previews). That copy is hand-maintained and must be kept in sync with this
 //! file if the shock model changes — see #645 / #646.
 
+use std::collections::HashMap;
+
 use crate::types::{PortfolioSnapshot, StressHoldingResult, StressResult, StressScenario};
+
+/// Lower bound for a single shock value: -100% (total wipeout).
+pub const MIN_SHOCK: f64 = -1.0;
+/// Upper bound for a single shock value: +500%.
+pub const MAX_SHOCK: f64 = 5.0;
+
+/// Validates that every shock value supplied by a caller is finite and within a
+/// sane range before it reaches [`run_stress_test`]. Called at the command
+/// boundary (Tauri and MCP) so a NaN/Infinity/absurd value from an untrusted
+/// caller can't propagate into the stress engine (see #665, #683).
+pub fn validate_shocks(shocks: &HashMap<String, f64>) -> Result<(), String> {
+    for (key, value) in shocks {
+        if !value.is_finite() || !(MIN_SHOCK..=MAX_SHOCK).contains(value) {
+            return Err(format!(
+                "shock '{key}' must be a finite number between {MIN_SHOCK} (-100%) and {MAX_SHOCK} (+500%), got {value}"
+            ));
+        }
+    }
+    Ok(())
+}
 
 fn fx_shock_key(currency: &str, base_currency: &str) -> String {
     format!(
@@ -48,8 +70,14 @@ pub fn run_stress_test(snapshot: &PortfolioSnapshot, scenario: &StressScenario) 
         let stressed_value = (current_value * (1.0 + asset_shock) * (1.0 + fx_shock)).max(0.0);
         let impact = stressed_value - current_value;
 
-        // Combined shock for display
-        let shock_applied = (1.0 + asset_shock) * (1.0 + fx_shock) - 1.0;
+        // Displayed impact percentage, derived from the (possibly floored) value change
+        // rather than the raw combined shock, so it never shows e.g. "-150%" next to a
+        // stressed_value that's already floored at $0 (see #682).
+        let shock_applied = if current_value != 0.0 {
+            impact / current_value
+        } else {
+            0.0
+        };
 
         holding_results.push(StressHoldingResult {
             holding_id: holding.id.clone(),
@@ -448,6 +476,84 @@ mod tests {
                 h.symbol
             );
         }
+    }
+
+    #[test]
+    fn validate_shocks_rejects_nan() {
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), f64::NAN);
+        assert!(validate_shocks(&shocks).is_err());
+    }
+
+    #[test]
+    fn validate_shocks_rejects_infinity() {
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), f64::INFINITY);
+        assert!(validate_shocks(&shocks).is_err());
+
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), f64::NEG_INFINITY);
+        assert!(validate_shocks(&shocks).is_err());
+    }
+
+    #[test]
+    fn validate_shocks_rejects_values_beyond_plus_500_percent() {
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), 5.01);
+        assert!(validate_shocks(&shocks).is_err());
+    }
+
+    #[test]
+    fn validate_shocks_rejects_values_beyond_minus_100_percent() {
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -1.01);
+        assert!(validate_shocks(&shocks).is_err());
+    }
+
+    #[test]
+    fn validate_shocks_accepts_boundary_values() {
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -1.0);
+        shocks.insert("crypto".to_string(), 5.0);
+        assert!(validate_shocks(&shocks).is_ok());
+    }
+
+    #[test]
+    fn validate_shocks_accepts_typical_values() {
+        let mut shocks = HashMap::new();
+        shocks.insert("stock".to_string(), -0.20);
+        shocks.insert("fx_usd_cad".to_string(), 0.05);
+        assert!(validate_shocks(&shocks).is_ok());
+    }
+
+    #[test]
+    fn validate_shocks_accepts_empty_map() {
+        assert!(validate_shocks(&HashMap::new()).is_ok());
+    }
+
+    #[test]
+    fn shock_applied_matches_floored_stressed_value_not_raw_combined_shock() {
+        // Regression guard for #682: shock_applied is the displayed impact percentage
+        // and must reflect the actual (floored) value change. Previously it was computed
+        // from the raw combined shock, so a -200% scenario showed "-200%" impact next to
+        // a stressed_value of $0 (a -100% change) — inconsistent with what's on screen.
+        let value = 10_000.0;
+        let snapshot = make_snapshot(vec![make_holding("BTC", AssetType::Crypto, "CAD", value)]);
+        let mut shocks = HashMap::new();
+        shocks.insert("crypto".to_string(), -2.0); // -200% shock
+        let scenario = StressScenario {
+            name: "Beyond total wipeout".to_string(),
+            shocks,
+        };
+
+        let result = run_stress_test(&snapshot, &scenario);
+        let holding = &result.holding_breakdown[0];
+
+        assert!(
+            (holding.shock_applied - (-1.0)).abs() < 0.000_001,
+            "shock_applied should be floored at -100% (-1.0) to match stressed_value=0, got {}",
+            holding.shock_applied
+        );
     }
 
     #[test]

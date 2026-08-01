@@ -24,16 +24,29 @@ export function formatCurrency(
   );
 }
 
-export function formatPercent(decimal: number | null | undefined): string {
+export function formatPercent(decimal: number | null | undefined, localeOverride?: string): string {
   if (!isValidNumber(decimal)) return INVALID_NUMBER;
-  const sign = decimal >= 0 ? '+' : '';
-  return `${sign}${decimal.toFixed(2)}%`;
+  const locale = localeOverride || i18next.language || 'en';
+  return new Intl.NumberFormat(locale, {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    signDisplay: 'always',
+  }).format(decimal / 100);
 }
 
 /** Formats a nullable target weight percentage. Null/undefined means "no target set" (→ "—"); 0 is an explicit target and renders as "0.0%". */
-export function formatTargetWeight(weight: number | null | undefined): string {
+export function formatTargetWeight(
+  weight: number | null | undefined,
+  localeOverride?: string
+): string {
   if (!isValidNumber(weight)) return INVALID_NUMBER;
-  return `${weight.toFixed(1)}%`;
+  const locale = localeOverride || i18next.language || 'en';
+  return new Intl.NumberFormat(locale, {
+    style: 'percent',
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(weight / 100);
 }
 
 export function formatNumber(
@@ -82,11 +95,19 @@ export function formatShortDate(
   return d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function formatCompact(n: number | null | undefined): string {
+export function formatCompact(
+  n: number | null | undefined,
+  currency = 'CAD',
+  localeOverride?: string
+): string {
   if (!isValidNumber(n)) return INVALID_NUMBER;
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '';
-  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1_000) return `${sign}$${(abs / 1_000).toFixed(1)}K`;
-  return `${sign}$${abs.toFixed(2)}`;
+  const locale = localeOverride || i18next.language || 'en';
+  const compact = Math.abs(n) >= 1_000;
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    notation: compact ? 'compact' : 'standard',
+    minimumFractionDigits: compact ? undefined : 2,
+    maximumFractionDigits: compact ? 1 : 2,
+  }).format(n);
 }

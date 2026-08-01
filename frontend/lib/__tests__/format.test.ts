@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import i18next from '../i18n';
 import {
   formatCurrency,
   formatPercent,
@@ -96,6 +97,20 @@ describe('formatPercent', () => {
     it('formats a negative value without plus sign', () => {
       expect(formatPercent(-5.25)).toBe('-5.25%');
     });
+
+    it('formats using an explicit locale override, not the hardcoded en formatting (#700)', () => {
+      expect(formatPercent(12.5, 'de')).toBe('+12,50 %');
+    });
+
+    it('reacts to i18next.language when no override is given, not navigator.language (#700)', async () => {
+      const original = i18next.language;
+      await i18next.changeLanguage('de');
+      try {
+        expect(formatPercent(12.5)).toBe('+12,50 %');
+      } finally {
+        await i18next.changeLanguage(original);
+      }
+    });
   });
 });
 
@@ -161,24 +176,36 @@ describe('formatCompact', () => {
   });
 
   describe('valid inputs format correctly', () => {
-    it('formats values under 1K with dollar sign', () => {
-      expect(formatCompact(500)).toBe('$500.00');
+    it('formats values under 1K with dollar sign for USD', () => {
+      expect(formatCompact(500, 'USD')).toBe('$500.00');
     });
 
-    it('formats values in thousands', () => {
-      expect(formatCompact(1500)).toBe('$1.5K');
+    it('formats values in thousands for USD', () => {
+      expect(formatCompact(1500, 'USD')).toBe('$1.5K');
     });
 
-    it('formats values in millions', () => {
-      expect(formatCompact(2_500_000)).toBe('$2.5M');
+    it('formats values in millions for USD', () => {
+      expect(formatCompact(2_500_000, 'USD')).toBe('$2.5M');
     });
 
-    it('formats negative values in thousands', () => {
-      expect(formatCompact(-3000)).toBe('-$3.0K');
+    it('formats negative values in thousands for USD', () => {
+      expect(formatCompact(-3000, 'USD')).toBe('-$3.0K');
     });
 
-    it('formats zero', () => {
-      expect(formatCompact(0)).toBe('$0.00');
+    it('formats zero for USD', () => {
+      expect(formatCompact(0, 'USD')).toBe('$0.00');
+    });
+
+    it('defaults to the app base currency (CAD) when no currency is given (#701)', () => {
+      expect(formatCompact(500)).toBe('CA$500.00');
+    });
+
+    it('respects a non-default base currency instead of hardcoding $ (#701)', () => {
+      expect(formatCompact(1500, 'EUR')).toBe('€1.5K');
+    });
+
+    it('respects GBP as the base currency', () => {
+      expect(formatCompact(2_500_000, 'GBP')).toBe('£2.5M');
     });
   });
 });
@@ -230,5 +257,9 @@ describe('formatTargetWeight', () => {
 
   it('formats a positive target with one decimal place', () => {
     expect(formatTargetWeight(12.5)).toBe('12.5%');
+  });
+
+  it('formats using an explicit locale override, not the hardcoded en formatting (#700)', () => {
+    expect(formatTargetWeight(12.5, 'de')).toBe('12,5 %');
   });
 });

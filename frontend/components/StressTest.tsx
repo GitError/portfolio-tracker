@@ -510,7 +510,7 @@ export function StressTest() {
                   />
                   <XAxis
                     type="number"
-                    tickFormatter={(v) => formatCompact(v)}
+                    tickFormatter={(v) => formatCompact(v, baseCurrency)}
                     tick={{
                       fill: 'var(--text-muted)',
                       fontSize: 9,

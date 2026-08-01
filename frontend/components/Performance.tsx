@@ -363,7 +363,7 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
               interval="preserveStartEnd"
             />
             <YAxis
-              tickFormatter={(v) => formatCompact(v)}
+              tickFormatter={(v) => formatCompact(v, baseCurrency)}
               tick={{ fill: 'var(--text-muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}
               axisLine={false}
               tickLine={false}
@@ -461,8 +461,8 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
             },
             {
               label: 'Period High / Low',
-              value: formatCompact(stats.periodHigh),
-              sub: formatCompact(stats.periodLow),
+              value: formatCompact(stats.periodHigh, baseCurrency),
+              sub: formatCompact(stats.periodLow, baseCurrency),
               color: 'var(--text-primary)',
             },
             {

@@ -30,6 +30,9 @@ pub async fn run_stress_test(
     pool: &SqlitePool,
     params: StressTestParams,
 ) -> Result<StressResult, McpError> {
+    crate::stress::validate_shocks(&params.shocks)
+        .map_err(|e| McpError::invalid_params(e, None))?;
+
     // Reuse the portfolio snapshot builder so the stress engine always operates
     // on the same view of the data as the main Tauri app.
     let snapshot = portfolio::get_portfolio_snapshot(pool).await?;
