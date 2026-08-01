@@ -8,7 +8,7 @@ use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{Holding, HoldingId, HoldingInput, PortfolioSnapshot};
 
 use super::{
-    get_base_currency, validate_holding_dividend_fields, validate_holding_fields,
+    get_base_currency, validate_holding_dividend_fields, validate_holding_fields, validate_id,
     validate_pagination, validate_target_weight, DbState, HttpClient, RealizedGainsCacheState,
     WEIGHT_EPSILON,
 };
@@ -156,6 +156,7 @@ pub async fn update_holding(db: State<'_, DbState>, holding: Holding) -> Result<
 
 #[tauri::command]
 pub async fn delete_holding(db: State<'_, DbState>, id: HoldingId) -> Result<bool, AppError> {
+    validate_id("holding ID", &id.0)?;
     let pool = &db.0;
     db::delete_holding(pool, &id).await.map_err(AppError::from)
 }

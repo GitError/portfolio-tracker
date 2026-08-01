@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::types::{Account, CreateAccountRequest};
 use chrono::Utc;
 
-use super::DbState;
+use super::{validate_id, DbState};
 
 const VALID_ACCOUNT_TYPES: &[&str] =
     &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"];
@@ -93,6 +93,7 @@ pub async fn delete_account(
     state: tauri::State<'_, DbState>,
     id: String,
 ) -> Result<bool, AppError> {
+    validate_id("account ID", &id)?;
     let pool = &state.0;
     db::delete_account(pool, &id).await?;
     Ok(true)

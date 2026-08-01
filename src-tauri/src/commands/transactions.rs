@@ -4,7 +4,9 @@ use crate::db;
 use crate::error::AppError;
 use crate::types::{HoldingId, PaginatedResult, Transaction, TransactionId, TransactionInput};
 
-use super::{validate_pagination, validate_transaction_fields, DbState, RealizedGainsCacheState};
+use super::{
+    validate_id, validate_pagination, validate_transaction_fields, DbState, RealizedGainsCacheState,
+};
 
 #[tauri::command]
 pub async fn add_transaction(
@@ -62,6 +64,7 @@ pub async fn delete_transaction(
     gains_cache: State<'_, RealizedGainsCacheState>,
     id: TransactionId,
 ) -> Result<bool, AppError> {
+    validate_id("transaction ID", &id.0)?;
     let pool = &db.0;
     let result = db::delete_transaction(pool, &id)
         .await

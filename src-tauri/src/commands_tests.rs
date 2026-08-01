@@ -316,7 +316,12 @@ mod tests {
     // ── alert validation (exercises the real add_alert validator) ─────────────
 
     fn validate_alert(input: &PriceAlertInput) -> Result<(), crate::error::AppError> {
-        crate::commands::validate_alert_fields(input.threshold)
+        crate::commands::validate_alert_fields(
+            &input.symbol,
+            input.threshold,
+            &input.currency,
+            &input.note,
+        )
     }
 
     #[test]
@@ -379,6 +384,126 @@ mod tests {
             note: String::new(),
         };
         assert!(validate_alert(&input).is_ok());
+    }
+
+    // ── alert validation: symbol/currency/note (#647) ──────────────────────────
+
+    #[test]
+    fn add_alert_rejects_empty_symbol() {
+        let mut input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: 200.0,
+            currency: "CAD".to_string(),
+            note: String::new(),
+        };
+        input.symbol = "".to_string();
+        assert!(validate_alert(&input).is_err());
+    }
+
+    #[test]
+    fn add_alert_rejects_whitespace_only_symbol() {
+        let mut input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: 200.0,
+            currency: "CAD".to_string(),
+            note: String::new(),
+        };
+        input.symbol = "   ".to_string();
+        assert!(validate_alert(&input).is_err());
+    }
+
+    #[test]
+    fn add_alert_rejects_malformed_currency() {
+        let mut input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: 200.0,
+            currency: "CAD".to_string(),
+            note: String::new(),
+        };
+        input.currency = "".to_string();
+        assert!(validate_alert(&input).is_err());
+
+        input.currency = "A".to_string(); // too short
+        assert!(validate_alert(&input).is_err());
+
+        input.currency = "ABCD".to_string(); // too long
+        assert!(validate_alert(&input).is_err());
+
+        input.currency = "usd".to_string(); // lowercase
+        assert!(validate_alert(&input).is_err());
+
+        input.currency = "U5D".to_string(); // non-alpha
+        assert!(validate_alert(&input).is_err());
+    }
+
+    #[test]
+    fn add_alert_accepts_two_and_three_letter_currency() {
+        let mut input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: 200.0,
+            currency: "CAD".to_string(),
+            note: String::new(),
+        };
+        assert!(validate_alert(&input).is_ok());
+
+        input.currency = "US".to_string();
+        assert!(validate_alert(&input).is_ok());
+    }
+
+    #[test]
+    fn add_alert_rejects_note_over_max_length() {
+        let input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: 200.0,
+            currency: "CAD".to_string(),
+            note: "a".repeat(501),
+        };
+        assert!(validate_alert(&input).is_err());
+    }
+
+    #[test]
+    fn add_alert_accepts_note_at_max_length() {
+        let input = PriceAlertInput {
+            symbol: "AAPL".to_string(),
+            direction: AlertDirection::Above,
+            threshold: 200.0,
+            currency: "CAD".to_string(),
+            note: "a".repeat(500),
+        };
+        assert!(validate_alert(&input).is_ok());
+    }
+
+    // ── ID validation for delete/reset commands (#648) ─────────────────────────
+
+    fn validate_id(field: &str, id: &str) -> Result<(), crate::error::AppError> {
+        crate::commands::validate_id(field, id)
+    }
+
+    #[test]
+    fn validate_id_rejects_empty_string() {
+        assert!(validate_id("holding ID", "").is_err());
+    }
+
+    #[test]
+    fn validate_id_rejects_whitespace_only_string() {
+        assert!(validate_id("holding ID", "   ").is_err());
+    }
+
+    #[test]
+    fn validate_id_rejects_non_uuid_string() {
+        assert!(validate_id("holding ID", "not-a-uuid").is_err());
+        assert!(validate_id("holding ID", "12345").is_err());
+    }
+
+    #[test]
+    fn validate_id_accepts_valid_uuid() {
+        let id = uuid::Uuid::new_v4().to_string();
+        assert!(validate_id("holding ID", &id).is_ok());
     }
 
     // ── page size validation (exercises the real *_paginated validator) ───────
