@@ -279,7 +279,7 @@ Open Settings from the sidebar or press `⌘,`.
 
 **Theme** — switch between dark and light themes. The preference is applied before React mounts so the app does not flash the wrong theme on startup.
 
-**Language** — choose the UI language. Translations are powered by i18next and the selected language is persisted across launches.
+**Language** — choose the UI language. Translations are powered by i18next and the selected language is persisted across launches. Number, percent, and compact-currency formatting throughout the app (Dashboard, Holdings, Analytics, Performance, action-insight recommendations, etc.) follow the selected locale rather than the browser default, and a failed language switch rolls back to the previous language with an error surfaced instead of leaving the UI in a mixed state.
 
 ### Data
 
@@ -435,3 +435,19 @@ Press `?` at any time to open the shortcuts overlay. Full list:
 Use **Export Data** (in the Holdings menu) to download a full JSON backup — holdings, alerts, transactions, dividends, and settings. Use **Import Data** to restore from that file. Import replaces all current data — export first if you want to preserve existing data.
 
 For a CSV-based backup of holdings only, use **Export CSV** (`⌘E`) from the Holdings view.
+
+Backups are written atomically and guarded against overlapping runs — starting a restore while a backup is in progress (or vice versa) is rejected rather than racing the same database file. The restore path verifies the source file's SQLite magic bytes and runs `PRAGMA integrity_check` before it replaces the live database.
+
+---
+
+## AI Assistant Integration (MCP)
+
+Portfolio Tracker ships a standalone MCP (Model Context Protocol) server, **portfolio-mcp**, that lets AI assistants (e.g. Claude Code) read and write your portfolio data directly against the same local SQLite database the desktop app uses. It exposes tools covering holdings (including full updates, not just add/delete), accounts, dividends, transactions, price alerts, portfolio snapshots, stress tests, and configuration. Every write tool applies the same field, ID-format, and config-key/value validation as the desktop app, so data written via an AI assistant can't bypass rules enforced in the UI.
+
+See `portfolio-mcp/README.md` for the full tool list and setup instructions.
+
+---
+
+## Reliability
+
+If a component crashes unexpectedly, an app-wide error boundary shows a fallback screen instead of a blank window. The Alerts and Dividends views keep their error message visible if their initial data load fails, rather than silently falling back to an empty list.

@@ -8,6 +8,8 @@
 
 A macOS desktop portfolio tracker built with Tauri v2. Tracks stocks, ETFs, crypto, and multi-currency cash positions with live pricing from Yahoo Finance, stress-test simulations, price alerts, dividend tracking, and portfolio rebalancing. All values are displayed in your chosen base currency (default: CAD). Data is stored locally in SQLite — no cloud account required.
 
+The Rust side is a Cargo workspace: the Tauri app (`src-tauri`) and a standalone MCP server (`portfolio-mcp`) both depend on a shared `portfolio-core` crate for portfolio-snapshot, FX, and stress-test logic, so the two surfaces always agree on computed values. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full breakdown.
+
 ---
 
 <!-- Screenshot placeholder -->
@@ -55,9 +57,23 @@ npm run dev         # Frontend only in browser (mock data, no Rust required)
 | Document | Description |
 |----------|-------------|
 | [docs/features.md](docs/features.md) | Full feature guide — every view and how to use it |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Tech stack, directory tree, data flow, Tauri command inventory |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Tech stack, directory tree, data flow, Tauri command inventory, MCP tool inventory |
 | [docs/roadmap.md](docs/roadmap.md) | Planned features and future work |
-| [docs/releases.md](docs/releases.md) | Release process and signing notes |
+| [docs/releases.md](docs/releases.md) | Release process, signing notes, and per-release summaries |
+| [portfolio-mcp/README.md](portfolio-mcp/README.md) | MCP server setup and tool reference for AI assistant integration |
+
+---
+
+## MCP Server
+
+`portfolio-mcp` is a standalone binary that exposes this app's SQLite database over the Model Context Protocol (stdio transport), so an AI assistant such as Claude Code can read and write your portfolio data — holdings, accounts, transactions, dividends, alerts, portfolio snapshots, stress tests, and config — subject to the same validation the desktop app enforces. Build it with:
+
+```bash
+. ~/.cargo/env
+cargo build -p portfolio-mcp --release
+```
+
+See [portfolio-mcp/README.md](portfolio-mcp/README.md) for the full tool list and Claude Code configuration.
 
 ---
 

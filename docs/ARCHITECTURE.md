@@ -19,7 +19,7 @@ Technical reference for the Portfolio Tracker codebase.
 
 ### Current Dependency Baseline
 
-As of the 2026-07-28 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19.2, Vite 8.0, Vitest 4.1.9, TypeScript 5.9, ESLint 10.5, Tailwind 4.2, lucide-react 1.27, recharts 3.10, i18next 26.3 / react-i18next 17.0, react-router-dom 7.14, and @tauri-apps/api 2.11 on the frontend; Tauri 2.10, Tokio 1.50, chrono 0.4.44, and uuid 1.23 on the backend. **SQLx is split across the workspace:** `src-tauri` requires `^0.9` (Cargo.lock resolves to 0.9.0), but `portfolio-mcp` still pins `^0.8` (resolves to 0.8.6) — the two binaries run different SQLx major versions. Worth aligning `portfolio-mcp/Cargo.toml` to `^0.9` in a follow-up if there's no reason for the split.
+As of the 2026-07-28 housekeeping pass, the app targets Node.js 22+ for frontend tooling and uses React 19.2, Vite 8.0, Vitest 4.1.9, TypeScript 5.9, ESLint 10.5, Tailwind 4.2, lucide-react 1.27, recharts 3.10, i18next 26.3 / react-i18next 17.0, react-router-dom 7.14, and @tauri-apps/api 2.11 on the frontend; Tauri 2.10, Tokio 1.50, chrono 0.4.44, and uuid 1.23 on the backend. **SQLx is now aligned to `^0.9` across the entire workspace** (`src-tauri`, `portfolio-mcp`, and transitively `portfolio-core`) — the two binaries previously ran different SQLx major versions (0.9 vs 0.8); that split was closed in a later housekeeping pass.
 
 ---
 
@@ -27,15 +27,23 @@ As of the 2026-07-28 housekeeping pass, the app targets Node.js 22+ for frontend
 
 ```
 portfolio-tracker/                          # Cargo workspace root
-├── Cargo.toml                              # Workspace members: src-tauri, portfolio-mcp
+├── Cargo.toml                              # Workspace members: src-tauri, portfolio-mcp, portfolio-core
+├── portfolio-core/                         # Shared Rust crate (no Tauri/MCP dependency)
+│   ├── Cargo.toml                          # Optional `ts` feature (ts-rs bindings) used by src-tauri
+│   └── src/
+│       ├── lib.rs                          # Module re-exports
+│       ├── types.rs                        # Types shared by both binaries (e.g. StressHoldingResult)
+│       ├── snapshot.rs                     # Portfolio snapshot calculation
+│       ├── fx.rs                           # FX rate/conversion helpers
+│       └── stress.rs                       # Stress test math
 ├── src-tauri/                              # Rust backend for Tauri desktop app
-│   ├── Cargo.toml
+│   ├── Cargo.toml                          # Depends on portfolio-core (features = ["ts"])
 │   ├── tauri.conf.json
 │   ├── build.rs
-│   ├── migrations/                         # SQLx migrations (0001–0011)
+│   ├── migrations/                         # SQLx migrations (0001–0013)
 │   └── src/
 │       ├── main.rs                         # Tauri entry point
-│       ├── lib.rs                          # App bootstrap, state init, command registration
+│       ├── lib.rs                          # App bootstrap, state init, command registration, WAL checkpoint task
 │       ├── config.rs                       # App-level constants (DB name, user-agent, TTLs)
 │       ├── error.rs                        # AppError — shared Tauri command error type
 │       ├── types.rs                        # All shared Rust types (serde camelCase)
@@ -44,8 +52,8 @@ portfolio-tracker/                          # Cargo workspace root
 │       │   ├── accounts.rs                 # Account CRUD commands
 │       │   ├── alerts.rs                   # Price alert commands
 │       │   ├── analytics.rs                # Analytics/rebalance commands
-│       │   ├── backup.rs                   # backup_database / restore_database
-│       │   ├── config.rs                   # get_config_cmd / set_config_cmd (key allowlist)
+│       │   ├── backup.rs                   # backup_database / restore_database (atomic, concurrency-guarded)
+│       │   ├── config.rs                   # get_config_cmd / set_config_cmd (key + value allowlist)
 │       │   ├── dividends.rs                # Dividend commands
 │       │   ├── import.rs                   # CSV import/export commands
 │       │   ├── portfolio.rs                # Holdings CRUD + get_portfolio
@@ -53,24 +61,28 @@ portfolio-tracker/                          # Cargo workspace root
 │       │   ├── stress.rs                   # run_stress_test_cmd
 │       │   └── transactions.rs             # Transaction commands
 │       ├── commands_tests.rs               # Command-level validation tests
+│       ├── maintenance.rs                  # Background WAL checkpoint loop
 │       ├── db.rs                           # SQLite schema, migrations, CRUD (async SQLx)
 │       ├── portfolio.rs                    # build_portfolio_snapshot + helpers
-│       ├── csv.rs                          # CSV import/export helpers
-│       ├── price.rs                        # Yahoo Finance price fetching
+│       ├── csv.rs                          # CSV import/export helpers (incl. sanitize_str)
+│       ├── price.rs                        # Yahoo Finance price fetching + symbol validation
 │       ├── fx.rs                           # FX rate fetching + conversion helpers
 │       ├── search.rs                       # Symbol search via Yahoo Finance
 │       ├── analytics.rs                    # Realized gains + portfolio analytics
 │       └── stress.rs                       # Stress test engine
 ├── portfolio-mcp/                          # Standalone MCP server binary
-│   ├── Cargo.toml
+│   ├── Cargo.toml                          # Depends on portfolio-core
 │   └── src/
 │       ├── main.rs                         # MCP server entry (stdio transport)
 │       ├── db.rs                           # SQLite access via SQLx
+│       ├── validation.rs                   # Input validation mirroring the Tauri command layer
 │       ├── snapshot.rs                     # Portfolio snapshot calculation
 │       ├── stress.rs                       # Stress test execution
 │       ├── types.rs                        # MCP-specific types
-│       └── tools/                          # 14 MCP tools
-│           ├── holdings.rs                 # list_holdings, add_holding, delete_holding
+│       └── tools/                          # 20 MCP tools
+│           ├── holdings.rs                 # list_holdings, add_holding, update_holding, delete_holding
+│           ├── accounts.rs                 # list_accounts, create_account
+│           ├── dividends.rs                # list_dividends, add_dividend, delete_dividend
 │           ├── transactions.rs             # list_transactions, add_transaction, delete_transaction
 │           ├── alerts.rs                   # list_alerts, add_alert, delete_alert, reset_alert
 │           ├── portfolio.rs                # get_portfolio_snapshot
@@ -99,6 +111,7 @@ portfolio-tracker/                          # Cargo workspace root
     │   ├── mockData.ts                     # Realistic mock data for browser dev mode
     │   └── currencyContext.tsx             # Base currency React context
     └── components/
+        ├── ErrorBoundary.tsx               # Wraps the app root; renders a fallback UI on component crash
         ├── Layout.tsx                      # App shell: sidebar + topbar + content area
         ├── Sidebar.tsx                     # Icon nav, mini portfolio value
         ├── TopBar.tsx                      # Refresh, base currency picker, daily P&L, countdown
@@ -128,7 +141,7 @@ portfolio-tracker/                          # Cargo workspace root
 ## Data Flow
 
 1. **Price refresh** — The React frontend calls `tauriInvoke('refresh_prices')`. The Rust backend fetches live quotes from Yahoo Finance (User-Agent header required) and FX rates for all currency pairs present in holdings. Results are written to the local SQLite database.
-2. **Portfolio snapshot** — `tauriInvoke('get_portfolio')` triggers `build_portfolio_snapshot` in `portfolio.rs`, which reads holdings and cached prices from SQLite, applies FX conversion, and returns a `PortfolioSnapshot` struct serialized as JSON.
+2. **Portfolio snapshot** — `tauriInvoke('get_portfolio')` triggers `build_portfolio_snapshot` in `portfolio.rs`, which reads holdings and cached prices from SQLite, applies FX conversion (via `portfolio-core::fx`), and returns a `PortfolioSnapshot` struct serialized as JSON. `portfolio-mcp`'s `get_portfolio_snapshot` tool builds the same snapshot from the shared `portfolio-core` crate, so both surfaces agree on values.
 3. **Frontend rendering** — The `usePortfolio` hook holds the snapshot in React state. Components read from the hook and format values using `frontend/lib/format.ts` helpers.
 4. **Persistence** — The SQLite database lives at `~/Library/Application Support/portfolio-tracker/portfolio.db` (Tauri's `app_data_dir`). All DB access is async via an SQLx connection pool in WAL mode (5 connections).
 5. **Browser dev mode** — When running `npm run dev` outside Tauri, `isTauri()` returns `false` and `tauriInvoke()` falls back to mock data from `frontend/lib/mockData.ts`.
@@ -230,7 +243,7 @@ All commands are invoked via `tauriInvoke()` from `frontend/lib/tauri.ts`. Comma
 
 | Command | Arguments | Returns |
 |---------|-----------|---------|
-| `backup_database` | `{ destinationPath }` | `string` — path the backup was written to; a bare filename resolves under `app_data_dir`, WAL is checkpointed first |
+| `backup_database` | `{ destinationPath }` | `string` — path the backup was written to; a bare filename resolves under `app_data_dir`, WAL is checkpointed first. Guarded by `BackupLockState` so an overlapping backup/restore call is rejected with `AppError::Conflict` instead of racing the same file |
 | `restore_database` | `{ sourcePath }` | `string` — status message; source is verified via SQLite magic bytes + `PRAGMA integrity_check` before it replaces the live DB |
 
 ### Configuration
@@ -252,18 +265,30 @@ All TypeScript types are defined in `frontend/types/portfolio.ts` and mirror the
 
 - **Transport**: stdio-based MCP (Model Context Protocol)
 - **Database**: Connects to the same SQLite database as the Tauri app (read+write)
-- **Tools**: 14 MCP tools exposing holdings, transactions, alerts, portfolio snapshots, stress tests, and configuration
+- **Shared logic**: Snapshot, FX, and stress-test math come from the `portfolio-core` crate, so the MCP server and the desktop app compute portfolio values identically
+- **Tools**: 20 MCP tools exposing holdings, accounts, dividends, transactions, alerts, portfolio snapshots, stress tests, and configuration
+- **Validation**: `src/validation.rs` mirrors the checks enforced by the Tauri command layer (field validation, UUID format on every delete/reset ID, config key + value allowlist, stress-shock bounds) so the MCP layer can't write data the desktop app itself would reject
 - **Prices**: Reads cached prices populated by the Tauri app; does not fetch live prices itself
 
 ### Tools Exposed
 
-**Holdings & Accounts**
+**Holdings**
 - `list_holdings` — List all current holdings
 - `add_holding` — Create a new holding
+- `update_holding` — Full-replace update of an existing holding's editable fields
 - `delete_holding` — Soft-delete a holding by UUID
 
+**Accounts**
+- `list_accounts` — List all accounts (id, name, type, institution)
+- `create_account` — Create a new account
+
+**Dividends**
+- `list_dividends` — List dividend records, optionally filtered by holding UUID
+- `add_dividend` — Record a new dividend payment for a holding
+- `delete_dividend` — Soft-delete a dividend record by UUID
+
 **Transactions**
-- `list_transactions` — List buy/sell transactions (optionally filtered by holdingId)
+- `list_transactions` — List buy/sell transactions across all holdings
 - `add_transaction` — Record a new transaction
 - `delete_transaction` — Soft-delete a transaction
 
@@ -275,11 +300,11 @@ All TypeScript types are defined in `frontend/types/portfolio.ts` and mirror the
 
 **Portfolio Analysis**
 - `get_portfolio_snapshot` — Full snapshot with live prices, market values, gains/losses, weights
-- `run_stress_test` — Apply asset-class and FX shocks to portfolio
+- `run_stress_test` — Apply asset-class and FX shocks to portfolio (shocks validated at the tool boundary)
 
 **Configuration**
-- `get_config` — Read a config value (e.g., base_currency)
-- `set_config` — Write a config value
+- `get_config` — Read a config value (key must be on the allowlist; e.g. `base_currency`)
+- `set_config` — Write a config value (key + value both validated, mirroring `commands/config.rs`)
 
 ### Build & Deployment
 
@@ -319,5 +344,6 @@ Add to `~/.claude/settings.json`:
 - The MCP server **reads from the Tauri app's database**; it does not initialize a new database.
 - Prices and FX rates are cached by the Tauri app. The MCP server does not fetch live data independently.
 - `realized_gains` and `annual_dividend_income` in `get_portfolio_snapshot` report as `0` in the MCP context; use the Tauri app for authoritative figures.
-- All tools validate input and return structured JSON responses following MCP conventions.
+- All tools validate input and return structured JSON responses following MCP conventions. Every delete/reset tool rejects a malformed or empty ID before it reaches SQLite (a bad ID previously no-opped silently instead of erroring).
+- The MCP list tools (`list_holdings`, `list_transactions`, `list_alerts`, `list_dividends`) are **not** paginated — they return the full result set. Pagination (1-indexed `{ page, pageSize }`) exists only on the Tauri `*_paginated` commands (see the Tauri Command Inventory above).
 - For full documentation, see `portfolio-mcp/README.md`.

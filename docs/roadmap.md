@@ -38,12 +38,17 @@ Incremental improvements to the existing feature set.
 | ✅ | i18n / Multi-language | Language picker in Settings with i18next-based translations; Analytics, Alerts, Settings, and Dividends now fully wired to `t()` alongside Dashboard/TopBar. |
 | ✅ | Dependency Maintenance Refresh | May 2026 Dependabot updates merged for React ecosystem, Tauri packages, Tokio, uuid, i18next, lucide-react, and dev tooling. A further July 2026 round merged 9 more PRs (chrono, serde, sqlx, tauri-build, lucide-react, recharts, i18next, uuid, @tauri-apps/api, dev-dependencies group, tauri-action, checkout). |
 | ✅ | CI/Security Regression Fixes | July 2026 — a later dependency merge had reintroduced nonexistent `actions/checkout@v6`/`setup-node@v6` and a disabled CSP; both re-fixed, plus the theme/language flash-of-wrong-preference bug on Tauri launch. See `docs/analysis-2026-03-22.md` for the full verified fix list. |
+| ✅ | Shared `portfolio-core` Crate | Snapshot, FX, and stress-test math extracted from `src-tauri` into a shared workspace crate so `portfolio-mcp` computes portfolio values identically instead of duplicating the logic. |
+| ✅ | MCP Server Expansion | `portfolio-mcp` gained `update_holding`, account CRUD (`list_accounts`/`create_account`), and dividend CRUD (`list_dividends`/`add_dividend`/`delete_dividend`) tools, plus config-key/value allowlisting, UUID validation on every delete/reset tool, and stress-shock validation matching the Tauri layer. |
+| ✅ | Backend Hardening (2026-08-02 housekeeping) | Atomic, concurrency-guarded backup/restore; background WAL checkpoint task; bounded DB-pool shutdown timeout; `AppError::NotFound`/`Conflict` variants; per-key config value validation; symbol validation before Yahoo Finance URL construction. See `docs/releases.md`. |
+| ✅ | Comprehensive Locale-Aware Formatting | Percent, compact-currency, and target-weight formatting now respect the active locale everywhere, including the action-insight recommendations (`useActionInsights`), closing the remaining gaps from the i18n rollout. |
+| ✅ | Error Boundary | A React error boundary wraps the app root; a component crash now shows a fallback screen instead of a blank window. Alerts and Dividends also keep a persistent error banner if their initial load fails. |
 
 ---
 
 ## Next Up: Guided Import + Insights
 
-Design finalized, not yet implemented — see [`docs/superpowers/specs/2026-05-24-import-plus-insights-design.md`](superpowers/specs/2026-05-24-import-plus-insights-design.md) for the full spec. This is the next major feature and should be the default starting point for new feature work.
+🔲 Design finalized, not yet implemented — see [`docs/superpowers/specs/2026-05-24-import-plus-insights-design.md`](superpowers/specs/2026-05-24-import-plus-insights-design.md) for the full spec. This remains the next major feature (no implementation work has started as of the 2026-08-02 housekeeping pass, which was backend/reliability-focused) and should be the default starting point for new feature work.
 
 Replaces the current strict, CSV-only, canonical-header importer with a guided wizard: upload CSV or XLSX → pick account context once → deterministic column inference against a broker-alias registry → reviewable import plan (`create`/`update`/`skip`/`needs_fix`/`warning` per row) → commit clean rows → post-import insight panel (new positions, drift from target weights, stale symbols, cash balance changes). Explicitly out of scope for v1: brokerage API integration, LLM-based column inference, and full transaction-history reconstruction.
 
@@ -80,6 +85,7 @@ Features that require significant architectural work or are still being evaluate
 
 | Version | Feature |
 |---------|---------|
+| Unreleased | 2026-08-02 housekeeping pass (PRs #599–#715): `portfolio-core` shared crate, MCP account/dividend/update-holding tools + validation parity, atomic/concurrency-guarded backup-restore, WAL checkpoint task, config allowlist + per-key value validation, React `ErrorBoundary`, comprehensive locale-aware formatting — see `docs/releases.md` |
 | Unreleased | CI/CSP/theme-flash regression fixes (PR #575), remaining i18n wiring (Analytics/Alerts/Settings/Dividends), 9 more Dependabot merges — not yet tagged as a new version |
 | v0.1.0-8 | Dependency maintenance refresh; all open dependency PRs merged and frontend lint config aligned with updated React Hooks plugin |
 | v0.1.0-4 | SQLx migration (async pool + WAL mode), `src/` → `frontend/` rename, export/import extended to include transactions and dividends |
