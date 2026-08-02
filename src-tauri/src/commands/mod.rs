@@ -161,6 +161,27 @@ pub(crate) async fn get_base_currency(pool: &SqlitePool) -> String {
         .unwrap_or_else(|| crate::config::BASE_CURRENCY.to_string())
 }
 
+/// Normalizes a stored `cost_basis_method` config value into one `analytics::compute_realized_gains`
+/// accepts (`"avco"` / `"fifo"`). `set_config_cmd` validates new writes against this enum (#714), but
+/// a value written before that validation existed — or edited directly in the DB file — could still
+/// be invalid; falling back here instead of propagating an error keeps the whole portfolio snapshot
+/// from failing over a single bad config value.
+pub(crate) fn normalize_cost_basis_method(value: Option<String>) -> String {
+    match value {
+        Some(v) if v.eq_ignore_ascii_case("avco") || v.eq_ignore_ascii_case("fifo") => {
+            v.to_lowercase()
+        }
+        Some(v) => {
+            tracing::warn!(
+                "Invalid cost_basis_method {:?} in config; falling back to avco",
+                v
+            );
+            "avco".to_string()
+        }
+        None => "avco".to_string(),
+    }
+}
+
 pub(crate) async fn validate_symbol(
     db: &State<'_, DbState>,
     client: &State<'_, HttpClient>,
@@ -399,6 +420,39 @@ mod tests {
         let error = parse_import_rows(csv).expect_err("missing cost_basis should fail");
 
         assert!(error.contains("Missing required column: cost_basis"));
+    }
+
+    #[test]
+    fn normalize_cost_basis_method_passes_through_valid_values() {
+        assert_eq!(
+            super::normalize_cost_basis_method(Some("avco".to_string())),
+            "avco"
+        );
+        assert_eq!(
+            super::normalize_cost_basis_method(Some("fifo".to_string())),
+            "fifo"
+        );
+        assert_eq!(
+            super::normalize_cost_basis_method(Some("FIFO".to_string())),
+            "fifo"
+        );
+    }
+
+    #[test]
+    fn normalize_cost_basis_method_defaults_to_avco_when_unset() {
+        assert_eq!(super::normalize_cost_basis_method(None), "avco");
+    }
+
+    #[test]
+    fn normalize_cost_basis_method_falls_back_to_avco_on_invalid_stored_value() {
+        // Regression guard for #714: a value written before the set_config_cmd
+        // enum validation existed (or edited directly in the DB) previously made
+        // compute_realized_gains_grouped error out, failing the whole portfolio
+        // snapshot instead of degrading gracefully.
+        assert_eq!(
+            super::normalize_cost_basis_method(Some("garbage".to_string())),
+            "avco"
+        );
     }
 
     #[test]
