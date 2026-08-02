@@ -353,6 +353,14 @@ pub fn validate_config_value(key: &str, value: &str) -> Result<(), McpError> {
                 ));
             }
         }
+        "cost_basis_method" => {
+            if !value.eq_ignore_ascii_case("avco") && !value.eq_ignore_ascii_case("fifo") {
+                return Err(McpError::invalid_params(
+                    format!("cost_basis_method must be one of: avco, fifo (got: {value})"),
+                    None,
+                ));
+            }
+        }
         _ => {
             if value.len() > MAX_CONFIG_VALUE_LEN {
                 return Err(McpError::invalid_params(
@@ -631,13 +639,31 @@ mod tests {
 
     #[test]
     fn validate_config_value_accepts_other_keys_within_max_length() {
-        assert!(validate_config_value("cost_basis_method", "avco").is_ok());
+        assert!(validate_config_value("auto_refresh_interval_ms", "60000").is_ok());
     }
 
     #[test]
     fn validate_config_value_rejects_other_keys_over_max_length() {
         let too_long = "a".repeat(MAX_CONFIG_VALUE_LEN + 1);
-        assert!(validate_config_value("cost_basis_method", &too_long).is_err());
+        assert!(validate_config_value("auto_refresh_interval_ms", &too_long).is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_avco_and_fifo_case_insensitively() {
+        // Regression guard for #714: cost_basis_method previously fell through
+        // to the generic max-length check, so any string was accepted.
+        for value in ["avco", "fifo", "AVCO", "FIFO", "Avco", "Fifo"] {
+            assert!(
+                validate_config_value("cost_basis_method", value).is_ok(),
+                "{value} should be accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_config_value_rejects_invalid_cost_basis_method() {
+        assert!(validate_config_value("cost_basis_method", "fefo").is_err());
+        assert!(validate_config_value("cost_basis_method", "").is_err());
     }
 
     #[test]

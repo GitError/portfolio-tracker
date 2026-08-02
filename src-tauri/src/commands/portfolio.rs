@@ -8,9 +8,9 @@ use crate::portfolio::build_portfolio_snapshot;
 use crate::types::{Holding, HoldingId, HoldingInput, PortfolioSnapshot};
 
 use super::{
-    get_base_currency, validate_holding_dividend_fields, validate_holding_fields, validate_id,
-    validate_pagination, validate_target_weight, DbState, HttpClient, RealizedGainsCacheState,
-    WEIGHT_EPSILON,
+    get_base_currency, normalize_cost_basis_method, validate_holding_dividend_fields,
+    validate_holding_fields, validate_id, validate_pagination, validate_target_weight, DbState,
+    HttpClient, RealizedGainsCacheState, WEIGHT_EPSILON,
 };
 
 #[tauri::command]
@@ -37,7 +37,7 @@ async fn get_portfolio_impl(
     // If the user has never explicitly chosen a method, flag the snapshot so the frontend
     // can prompt for an explicit selection before displaying realized gains.
     let requires_cost_basis_selection = cost_basis_method_opt.is_none();
-    let cost_basis_method = cost_basis_method_opt.unwrap_or_else(|| "avco".to_string());
+    let cost_basis_method = normalize_cost_basis_method(cost_basis_method_opt);
 
     let realized_gains = {
         let summary = if let Some(cached) = gains_cache.get() {

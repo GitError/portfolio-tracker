@@ -1066,6 +1066,23 @@ mod tests {
         assert_eq!(updated.as_deref(), Some("USD"));
     }
 
+    #[test]
+    fn set_config_rejects_invalid_cost_basis_method() {
+        // Regression guard for #714: cost_basis_method was in the allowlist but
+        // had no value validation, so an arbitrary string could be stored and
+        // would later fail to parse in compute_realized_gains, breaking the
+        // whole portfolio snapshot.
+        let result = crate::commands::config::validate_config_value("cost_basis_method", "invalid");
+        assert!(matches!(result, Err(AppError::Validation(_))));
+    }
+
+    #[test]
+    fn set_config_accepts_valid_cost_basis_method() {
+        assert!(
+            crate::commands::config::validate_config_value("cost_basis_method", "fifo").is_ok()
+        );
+    }
+
     // ── DB integration: target weight sum ────────────────────────────────────
 
     #[tokio::test]

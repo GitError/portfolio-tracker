@@ -13,7 +13,9 @@ use crate::types::{
     SectorWeight, SymbolMetadata, Transaction,
 };
 
-use super::{get_base_currency, DbState, HttpClient, RealizedGainsCacheState};
+use super::{
+    get_base_currency, normalize_cost_basis_method, DbState, HttpClient, RealizedGainsCacheState,
+};
 
 /// Fetch per-symbol sector/industry/country from Yahoo Finance's v11 quoteSummary
 /// `assetProfile` module. Returns `None` for all three fields on any fetch/parse failure
@@ -441,9 +443,8 @@ pub async fn get_realized_gains(
     holding_id: Option<HoldingId>,
 ) -> Result<RealizedGainsSummary, AppError> {
     let pool = &db.0;
-    let cost_basis_method = db::get_config(pool, "cost_basis_method")
-        .await?
-        .unwrap_or_else(|| "avco".to_string());
+    let cost_basis_method =
+        normalize_cost_basis_method(db::get_config(pool, "cost_basis_method").await?);
 
     // Use the cache only for the full-portfolio (no per-holding filter) query.
     if holding_id.is_none() {
