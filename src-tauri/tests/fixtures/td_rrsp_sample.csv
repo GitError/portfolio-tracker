@@ -1,0 +1,19 @@
+Portfolio report for RRSP account # 55901234 as of 2026-07-15T08:30:00
+
+Cash Details
+Currency,Account Type,Settled Cash,Trade Cash
+CAD,CASH,4521.90,4521.90
+USD,CASH,1875.33,1875.33
+
+Holding Details
+Asset Class,Sector,Security Description,Symbol,Quantity,Average Cost,Average Cost Currency,Total Cost,Market Value,Trade Date,Settlement Date,Maturity Date,Coupon Rate,Dividend Yield (%),Annualized Income,Ex-Dividend Date
+Equity,Information Technology,APPLE INC,AAPL:US,45,148.2200,USD,,7830.00,2024-03-01,2024-03-04,,,0.51,27.60,2026-05-10
+Equity,Financials,ROYAL BANK OF CANADA,RY:CA,60,98.4500,CAD,,7620.00,2024-04-11,2024-04-14,,,3.90,354.00,2026-04-24
+ETF,Broad Market,VANGUARD SP 500 INDEX ETF,VFV:CA,120,112.3000,CAD,,15200.00,2023-11-02,2023-11-05,,,1.20,180.00,2026-06-20
+Fixed Income,Fixed Income,GOVT OF CANADA BOND 2030,CA135087J546,10,1000.0000,CAD,,10250.00,2022-06-01,2022-06-03,2030-06-01,3.25,,,
+Equity,Consumer Discretionary,SHOPIFY INC,SHOP:CA,25,,CAD,2500.00,3100.00,2025-01-15,2025-01-17,,,,,
+Equity,Speculative,MYSTERY CORP,MYST:US,5,,USD,,500.00,2025-02-01,2025-02-03,,,,,
+Equity,Utilities,UNKNOWN POSITION,,15,45.0000,CAD,,675.00,2025-03-01,2025-03-03,,,,,
+
+
+Exchange Rate: 1 CAD = 0.7126USD  1 USD = 1.4033CAD
