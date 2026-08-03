@@ -37,6 +37,10 @@ pub const MAX_IMPORT_ROWS: usize = 500;
 /// Maximum length (in bytes) for any individual string field in a CSV import row.
 pub const MAX_FIELD_LEN: usize = 500;
 
+/// Maximum size (in bytes) of a file accepted by the `parse_import_file` pipeline.
+/// Guards against loading an excessively large or malicious file fully into memory.
+pub const MAX_IMPORT_FILE_BYTES: u64 = 10 * 1024 * 1024; // 10 MiB
+
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 
 /// How long (seconds) a symbol search result is cached in memory and SQLite.

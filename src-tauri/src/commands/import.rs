@@ -5,11 +5,36 @@ use tauri::State;
 use crate::csv::{build_holdings_csv, parse_import_rows};
 use crate::db;
 use crate::error::AppError;
+use crate::import_pipeline;
 use crate::types::{
-    AssetType, HoldingInput, ImportError, ImportResult, PreviewImportResult, PreviewRow,
+    AssetType, HoldingInput, ImportCommitRequest, ImportCommitResult, ImportContext, ImportError,
+    ImportPlan, ImportResult, PreviewImportResult, PreviewRow,
 };
 
 use super::{validate_symbol, DbState, HttpClient, WEIGHT_EPSILON};
+
+/// Reads and normalizes a source file (CSV; multi-section bank exports are
+/// auto-detected) into a reviewable `ImportPlan`. Never writes to the DB —
+/// see `commit_import` for that. This is the new Import Plus Insights
+/// pipeline, separate from `import_holdings_csv`/`preview_import_csv` above.
+#[tauri::command]
+pub async fn parse_import_file(
+    db: State<'_, DbState>,
+    file_path: String,
+    context: ImportContext,
+) -> Result<ImportPlan, AppError> {
+    import_pipeline::build_import_plan(&db.0, &file_path, &context).await
+}
+
+/// Writes the rows the user selected from an `ImportPlan` to the DB and
+/// returns a summary with insight deltas for the post-import panel.
+#[tauri::command]
+pub async fn commit_import(
+    db: State<'_, DbState>,
+    request: ImportCommitRequest,
+) -> Result<ImportCommitResult, AppError> {
+    import_pipeline::commit_import_rows(&db.0, &request).await
+}
 
 #[tauri::command]
 pub async fn export_holdings_csv(db: State<'_, DbState>) -> Result<String, AppError> {

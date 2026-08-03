@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -483,6 +485,129 @@ pub struct RebalanceSuggestion {
     pub suggested_trade_cad: f64, // positive = sell, negative = buy
     pub suggested_units: f64,     // positive = sell, negative = buy
     pub current_price_cad: f64,
+}
+
+// ── Import Plus Insights pipeline ──────────────────────────────────────────────
+// See docs/superpowers/specs/2026-05-24-import-plus-insights-design.md.
+// This is a new pipeline, separate from the legacy `parse_import_rows` path
+// above (`ImportError`/`ImportResult`/`PreviewRow`/`PreviewImportResult`),
+// which remains as a compatibility path per the design doc.
+
+/// User-supplied context applied to every row of an import unless the file
+/// provides stronger per-row account information.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportContext {
+    /// TFSA, RRSP, FHSA, Taxable, Cash, Crypto, or Other.
+    pub account_type: String,
+    pub account_name: Option<String>,
+    pub account_id: Option<String>,
+    /// Hint such as "CanadianBankMultiSection", "GenericCSV".
+    pub source_profile: Option<String>,
+    /// User-selected column overrides: source column header -> canonical field name.
+    #[serde(default)]
+    pub column_overrides: HashMap<String, String>,
+}
+
+/// The action the import plan proposes for a given row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum RowAction {
+    Create,
+    Update,
+    Skip,
+    NeedsFix,
+    Warning,
+}
+
+/// Describes how a source column was mapped to a canonical holding field.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnMapping {
+    pub source_header: String,
+    pub canonical_field: Option<String>,
+    /// "exact" | "alias" | "profile" | "user" | "derived"
+    pub confidence: String,
+    pub reason: String,
+}
+
+/// Canonical interpretation of one source row, produced by the row normalizer.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedImportRow {
+    pub row_number: usize,
+    pub action: RowAction,
+    pub symbol: Option<String>,
+    pub resolved_symbol: Option<String>,
+    pub name: Option<String>,
+    pub asset_type: Option<String>,
+    pub quantity: Option<f64>,
+    pub cost_basis: Option<f64>,
+    /// e.g. "average_cost", "derived:total_cost/qty"
+    pub cost_basis_source: Option<String>,
+    pub currency: Option<String>,
+    pub book_value: Option<f64>,
+    pub market_value: Option<f64>,
+    pub account_type: String,
+    pub account_name: Option<String>,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+    /// Original CSV values for this row, keyed by source header.
+    pub raw: HashMap<String, String>,
+    // ── Insight metadata: surfaced post-import, never written to the holdings table ──
+    pub dividend_yield: Option<f64>,
+    pub annualized_income: Option<f64>,
+    pub ex_dividend_date: Option<String>,
+}
+
+/// Preview payload returned by `parse_import_file`. Never writes to the DB.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPlan {
+    pub profile_detected: String,
+    pub column_mappings: Vec<ColumnMapping>,
+    pub rows: Vec<NormalizedImportRow>,
+    pub count_create: usize,
+    pub count_update: usize,
+    pub count_skip: usize,
+    pub count_needs_fix: usize,
+    pub count_warning: usize,
+    pub suggested_account_type: Option<String>,
+    pub suggested_account_number: Option<String>,
+    pub cash_rows: Vec<NormalizedImportRow>,
+}
+
+/// Selected rows to write to the DB, as chosen by the user in the review UI.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCommitRequest {
+    pub plan_rows: Vec<NormalizedImportRow>,
+    pub account_id: String,
+    pub include_cash: bool,
+}
+
+/// Result of committing an import plan, including insight deltas for the
+/// post-import summary panel.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportCommitResult {
+    pub created: usize,
+    pub updated: usize,
+    pub skipped: usize,
+    pub errors: Vec<String>,
+    pub new_symbols: Vec<String>,
+    pub changed_symbols: Vec<String>,
+    /// Existing holdings in the target account not present in the imported file.
+    /// Surfaced as review candidates only — never auto-deleted.
+    pub missing_from_import: Vec<String>,
+    pub stale_symbols: Vec<String>,
 }
 
 // ── Pagination ────────────────────────────────────────────────────────────────
