@@ -286,6 +286,90 @@ export interface PreviewImportResult {
   readyCount: number;
   skipCount: number;
 }
+
+// ── Import Plus Insights pipeline ──────────────────────────────────────────────
+// Used by parse_import_file / commit_import, separate from the legacy
+// import_holdings_csv / preview_import_csv path above.
+
+export interface ImportContext {
+  /** TFSA, RRSP, FHSA, Taxable, Cash, Crypto, or Other. */
+  accountType: string;
+  accountName: string | null;
+  accountId: string | null;
+  /** Hint such as "CanadianBankMultiSection", "GenericCSV". */
+  sourceProfile: string | null;
+  /** User-selected column overrides: source column header -> canonical field name. */
+  columnOverrides: Record<string, string>;
+}
+
+export type RowAction = 'create' | 'update' | 'skip' | 'needs_fix' | 'warning';
+
+export interface ColumnMapping {
+  sourceHeader: string;
+  canonicalField: string | null;
+  /** "exact" | "alias" | "profile" | "user" | "derived" */
+  confidence: string;
+  reason: string;
+}
+
+export interface NormalizedImportRow {
+  rowNumber: number;
+  action: RowAction;
+  symbol: string | null;
+  resolvedSymbol: string | null;
+  name: string | null;
+  assetType: string | null;
+  quantity: number | null;
+  costBasis: number | null;
+  /** e.g. "average_cost", "derived:total_cost/qty" */
+  costBasisSource: string | null;
+  currency: string | null;
+  bookValue: number | null;
+  marketValue: number | null;
+  accountType: string;
+  accountName: string | null;
+  warnings: string[];
+  errors: string[];
+  /** Original CSV values for this row, keyed by source header. */
+  raw: Record<string, string>;
+  dividendYield: number | null;
+  annualizedIncome: number | null;
+  exDividendDate: string | null;
+}
+
+export interface ImportPlan {
+  profileDetected: string;
+  columnMappings: ColumnMapping[];
+  rows: NormalizedImportRow[];
+  countCreate: number;
+  countUpdate: number;
+  countSkip: number;
+  countNeedsFix: number;
+  countWarning: number;
+  suggestedAccountType: string | null;
+  suggestedAccountNumber: string | null;
+  cashRows: NormalizedImportRow[];
+}
+
+export interface ImportCommitRequest {
+  planRows: NormalizedImportRow[];
+  accountId: string;
+  includeCash: boolean;
+}
+
+export interface ImportCommitResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+  newSymbols: string[];
+  changedSymbols: string[];
+  /** Existing holdings in the target account not present in the imported file.
+   * Surfaced as review candidates only — never auto-deleted. */
+  missingFromImport: string[];
+  staleSymbols: string[];
+}
+
 export interface RebalanceSuggestion {
   holdingId: string;
   symbol: string;
