@@ -3,12 +3,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ImportHoldingsModal } from '../ImportHoldingsModal';
 import type { PreviewRow, PreviewImportResult } from '../../types/portfolio';
 
-beforeEach(() => {
+// Initialize i18n (ImportHoldingsModal uses useTranslation)
+import i18next from '../../lib/i18n';
+
+beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   vi.clearAllMocks();
+  // Pin language so English-text assertions don't break if the default locale changes.
+  await i18next.changeLanguage('en');
 });
 
 function makeReadyRow(overrides: Partial<PreviewRow> = {}): PreviewRow {

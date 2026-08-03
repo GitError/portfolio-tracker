@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { ImportResult, PreviewImportResult, PreviewRow } from '../types/portfolio';
 import { ASSET_TYPE_CONFIG } from '../lib/constants';
 import { useFormatNumber } from '../hooks/useFormatters';
@@ -14,13 +16,13 @@ interface Props {
 
 const MONO: React.CSSProperties = { fontFamily: 'var(--font-mono)' };
 
-const STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  ready: { label: 'Ready', color: 'var(--color-gain)' },
-  cash: { label: 'Cash', color: 'var(--color-cash)' },
-  duplicate: { label: 'Duplicate', color: 'var(--color-warning)' },
-  invalid_symbol: { label: 'Invalid symbol', color: 'var(--color-loss)' },
-  validation_failed: { label: 'Check failed', color: 'var(--color-loss)' },
-  currency_mismatch: { label: 'Currency mismatch', color: 'var(--color-warning)' },
+const STATUS_META: Record<string, { key: string; color: string }> = {
+  ready: { key: 'import.status.ready', color: 'var(--color-gain)' },
+  cash: { key: 'import.status.cash', color: 'var(--color-cash)' },
+  duplicate: { key: 'import.status.duplicate', color: 'var(--color-warning)' },
+  invalid_symbol: { key: 'import.status.invalidSymbol', color: 'var(--color-loss)' },
+  validation_failed: { key: 'import.status.checkFailed', color: 'var(--color-loss)' },
+  currency_mismatch: { key: 'import.status.currencyMismatch', color: 'var(--color-warning)' },
 };
 
 /**
@@ -40,12 +42,12 @@ function normalisePreviewRows(rows: PreviewRow[]): PreviewRow[] {
   });
 }
 
-function statusCell(row: PreviewRow) {
+function statusCell(row: PreviewRow, t: TFunction) {
   if (row.status === 'currency_mismatch') {
-    let label = 'Currency mismatch';
+    let label = t('import.status.currencyMismatch');
     if (row.currencyMismatchDetail) {
       const [actual, expected] = row.currencyMismatchDetail.split(':');
-      label = `Currency mismatch — file: ${actual}, holding: ${expected}`;
+      label = t('import.status.currencyMismatchDetail', { actual, expected });
     }
     return (
       <span style={{ ...MONO, fontSize: 11, color: 'var(--color-warning)', fontWeight: 600 }}>
@@ -53,8 +55,10 @@ function statusCell(row: PreviewRow) {
       </span>
     );
   }
-  const s = STATUS_LABEL[row.status] ?? { label: row.status, color: 'var(--text-muted)' };
-  return <span style={{ ...MONO, fontSize: 11, color: s.color, fontWeight: 600 }}>{s.label}</span>;
+  const meta = STATUS_META[row.status];
+  const label = meta ? t(meta.key) : row.status;
+  const color = meta?.color ?? 'var(--text-muted)';
+  return <span style={{ ...MONO, fontSize: 11, color, fontWeight: 600 }}>{label}</span>;
 }
 
 function assetTypeBadge(type: string) {
@@ -90,6 +94,7 @@ const TD: React.CSSProperties = {
 };
 
 function PreviewTable({ rows }: { rows: PreviewRow[] }) {
+  const { t } = useTranslation();
   const formatNumber = useFormatNumber();
   return (
     <div style={{ border: '1px solid var(--border-primary)', overflowX: 'auto' }}>
@@ -97,17 +102,17 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
         <thead>
           <tr style={{ background: 'var(--bg-surface-alt)' }}>
             {[
-              '#',
-              'Symbol (CSV)',
-              'Resolved',
-              'Name',
-              'Type',
-              'Exch',
-              'CCY',
-              'Qty',
-              'Cost',
-              'Target %',
-              'Status',
+              t('import.columns.row'),
+              t('import.columns.symbolCsv'),
+              t('import.columns.resolved'),
+              t('import.columns.name'),
+              t('import.columns.type'),
+              t('import.columns.exchange'),
+              t('import.columns.currency'),
+              t('import.columns.quantity'),
+              t('import.columns.cost'),
+              t('import.columns.targetPct'),
+              t('import.columns.status'),
             ].map((h) => (
               <th
                 key={h}
@@ -173,7 +178,7 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
               <td style={{ ...TD, ...MONO, color: 'var(--text-secondary)', textAlign: 'right' }}>
                 {formatTargetWeight(r.targetWeight)}
               </td>
-              <td style={TD}>{statusCell(r)}</td>
+              <td style={TD}>{statusCell(r, t)}</td>
             </tr>
           ))}
         </tbody>
@@ -183,6 +188,7 @@ function PreviewTable({ rows }: { rows: PreviewRow[] }) {
 }
 
 export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Props) {
+  const { t } = useTranslation();
   const [filename, setFilename] = useState('');
   const [csvContent, setCsvContent] = useState('');
   const [previewing, setPreviewing] = useState(false);
@@ -212,7 +218,7 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
 
   async function handleImport() {
     if (!csvContent.trim()) {
-      setError('Select a CSV file first');
+      setError(t('import.selectFileFirst'));
       return;
     }
     setRunning(true);
@@ -284,14 +290,17 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
                 color: 'var(--text-primary)',
               }}
             >
-              Import Holdings
+              {t('import.title')}
             </div>
             <div style={{ ...MONO, fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              Supports <code style={{ color: 'var(--text-secondary)' }}>SYMBOL:COUNTRY</code> (e.g.{' '}
-              <code style={{ color: 'var(--text-secondary)' }}>BMO:CA</code>), plain symbols, and
-              cash rows. Optional{' '}
-              <code style={{ color: 'var(--text-secondary)' }}>target_weight</code> values are
-              preserved on import and export.
+              <Trans
+                i18nKey="import.subtitle"
+                components={{
+                  code1: <code style={{ color: 'var(--text-secondary)' }} />,
+                  code2: <code style={{ color: 'var(--text-secondary)' }} />,
+                  code3: <code style={{ color: 'var(--text-secondary)' }} />,
+                }}
+              />
             </div>
           </div>
           <button
@@ -307,7 +316,7 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
               cursor: running || previewing ? 'not-allowed' : 'pointer',
             }}
           >
-            Close
+            {t('common.close')}
           </button>
         </div>
 
@@ -325,9 +334,9 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
               cursor: 'pointer',
             }}
           >
-            <div>{filename || 'Choose a .csv file'}</div>
+            <div>{filename || t('import.chooseFile')}</div>
             <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-              Max 500 rows · comma or semicolon delimiters accepted
+              {t('import.fileHint')}
             </div>
           </div>
           <input
@@ -362,7 +371,7 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
               cursor: 'pointer',
             }}
           >
-            Download Template
+            {t('import.downloadTemplate')}
           </button>
           <button
             onClick={() => void handleImport()}
@@ -379,10 +388,15 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
             }}
           >
             {running
-              ? 'Importing…'
+              ? t('import.importing')
               : preview
-                ? `Import ${preview.readyCount} row${preview.readyCount !== 1 ? 's' : ''}`
-                : 'Import'}
+                ? t(
+                    preview.readyCount === 1
+                      ? 'import.importRowsButton'
+                      : 'import.importRowsButton_plural',
+                    { count: preview.readyCount }
+                  )
+                : t('common.import')}
           </button>
         </div>
 
@@ -406,7 +420,7 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
         {/* Previewing spinner */}
         {previewing ? (
           <div style={{ ...MONO, fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-            Validating symbols…
+            {t('import.validatingSymbols')}
           </div>
         ) : null}
 
@@ -425,10 +439,14 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
                 gap: 16,
               }}
             >
-              <span>Preview</span>
-              <span style={{ color: 'var(--color-gain)' }}>{preview.readyCount} ready</span>
+              <span>{t('import.previewLabel')}</span>
+              <span style={{ color: 'var(--color-gain)' }}>
+                {t('import.readyCount', { count: preview.readyCount })}
+              </span>
               {preview.skipCount > 0 && (
-                <span style={{ color: 'var(--color-loss)' }}>{preview.skipCount} will skip</span>
+                <span style={{ color: 'var(--color-loss)' }}>
+                  {t('import.skipCount', { count: preview.skipCount })}
+                </span>
               )}
             </div>
             <PreviewTable rows={preview.rows} />
@@ -447,14 +465,21 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
                 marginBottom: 8,
               }}
             >
-              Imported {result.imported.length} of {result.totalRows} rows
+              {t('import.importedSummary', {
+                imported: result.imported.length,
+                total: result.totalRows,
+              })}
             </div>
             {result.skipped.length > 0 ? (
               <div style={{ border: '1px solid var(--border-primary)', overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                   <thead>
                     <tr style={{ background: 'var(--bg-surface-alt)' }}>
-                      {['Row', 'Symbol', 'Reason'].map((h) => (
+                      {[
+                        t('import.resultColumns.row'),
+                        t('import.resultColumns.symbol'),
+                        t('import.resultColumns.reason'),
+                      ].map((h) => (
                         <th
                           key={h}
                           style={{
@@ -473,23 +498,26 @@ export function ImportHoldingsModal({ isOpen, onClose, onImport, onPreview }: Pr
                     </tr>
                   </thead>
                   <tbody>
-                    {result.skipped.map((item) => (
-                      <tr key={`${item.row}-${item.symbol}`}>
-                        <td style={{ ...TD, ...MONO, color: 'var(--text-muted)' }}>{item.row}</td>
-                        <td style={{ ...TD, ...MONO, color: 'var(--text-primary)' }}>
-                          {item.symbol || '—'}
-                        </td>
-                        <td style={{ ...TD, ...MONO, color: 'var(--color-loss)' }}>
-                          {STATUS_LABEL[item.reason]?.label ?? item.reason}
-                        </td>
-                      </tr>
-                    ))}
+                    {result.skipped.map((item) => {
+                      const meta = STATUS_META[item.reason];
+                      return (
+                        <tr key={`${item.row}-${item.symbol}`}>
+                          <td style={{ ...TD, ...MONO, color: 'var(--text-muted)' }}>{item.row}</td>
+                          <td style={{ ...TD, ...MONO, color: 'var(--text-primary)' }}>
+                            {item.symbol || '—'}
+                          </td>
+                          <td style={{ ...TD, ...MONO, color: 'var(--color-loss)' }}>
+                            {meta ? t(meta.key) : item.reason}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div style={{ ...MONO, fontSize: 12, color: 'var(--color-gain)' }}>
-                All rows imported successfully.
+                {t('import.allRowsSuccess')}
               </div>
             )}
           </div>
