@@ -20,7 +20,9 @@ fn context() -> ImportContext {
         // Every test here leaves `account_id` unset. `build_import_plan` only
         // queries the DB (via `classify_against_existing`) when an account id
         // is present, so a pool that's never actually queried is fine —
-        // no migrations needed for these tests.
+        // no migrations needed for these tests. A test that sets `account_id`
+        // needs a migrated pool instead (see `db::open_test_db` in the crate's
+        // own unit tests) or it'll fail with "no such table: holdings".
         account_id: None,
         source_profile: None,
         column_overrides: HashMap::new(),
