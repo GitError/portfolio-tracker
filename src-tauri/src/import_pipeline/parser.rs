@@ -5,6 +5,13 @@
 //!   Cash Details block, Holding Details block, Exchange Rate footer), as
 //!   validated against TD Direct Investing RRSP/TFSA portfolio reports.
 //! - Generic flat CSV: a single header row followed by data rows.
+//!
+//! Note: the file is first split into lines, then each line is parsed as one
+//! CSV record — this correctly handles a quoted field containing an embedded
+//! delimiter (e.g. `"Bank of Montreal, Inc"`), but not a quoted field
+//! containing an embedded newline, which would be split across two lines
+//! before the CSV parser ever sees it. Low real-world risk for the numeric/
+//! symbol-heavy brokerage exports this pipeline targets.
 
 use std::collections::HashMap;
 
@@ -74,16 +81,23 @@ fn extract_account_context(line: &str) -> Option<(String, String)> {
     Some((account_type.trim().to_string(), account_number.to_string()))
 }
 
-/// Collects contiguous non-blank data lines starting at `start`, stopping at
-/// the first blank line, the `Exchange Rate:` footer, or end of file.
-/// Returns the collected lines and the number of lines consumed (including
-/// any trailing blank line, so the caller can resume scanning after it).
+/// Collects contiguous data lines starting at `start`, stopping at the first
+/// blank line, the `Exchange Rate:` footer, the next section marker
+/// (`Cash Details` / `Holding Details`), or end of file. The section-marker
+/// check guards against a real-world export that omits the blank line
+/// between sections — without it, a missing separator would let this
+/// section's scan swallow the next section's header and data rows.
 fn collect_section_lines(lines: &[&str], start: usize) -> Vec<(usize, String)> {
     let mut collected = Vec::new();
     let mut idx = start;
     while idx < lines.len() {
         let line = lines[idx];
-        if line.trim().is_empty() || line.trim_start().starts_with("Exchange Rate:") {
+        let trimmed = line.trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with("Exchange Rate:")
+            || trimmed == "Cash Details"
+            || trimmed == "Holding Details"
+        {
             break;
         }
         collected.push((idx, line.to_string()));
@@ -305,6 +319,33 @@ Exchange Rate: 1 CAD = 0.7126USD  1 USD = 1.4033CAD\n";
         let content = "Portfolio report for TFSA account # 999 as of now\n\nCash Details\nCurrency,Account Type,Settled Cash,Trade Cash\nCAD,CASH,1.0,1.0\n";
         let err = detect_and_parse(content).expect_err("should error without Holding Details");
         assert!(err.contains("Holding Details"));
+    }
+
+    #[test]
+    fn cash_section_does_not_swallow_holding_details_when_blank_separator_is_missing() {
+        // Same as SAMPLE, but the blank line between the Cash Details row and
+        // the "Holding Details" marker is omitted — the parser must still stop
+        // the cash section at the section marker, not consume it as data.
+        let content = "Portfolio report for RRSP account # 12345 as of 2026-01-01T09:08:10\n\
+\n\
+Cash Details\n\
+Currency,Account Type,Settled Cash,Trade Cash\n\
+CAD,CASH,89192.24,89192.24\n\
+Holding Details\n\
+Asset Class,Sector,Security Description,Symbol,Quantity,Average Cost,Average Cost Currency\n\
+Equity,Information Tech.,APPLE INC,AAPL:US,100,135.5045,USD\n";
+
+        let detected = detect_and_parse(content).expect("should parse");
+        let cash = detected
+            .cash_section
+            .expect("cash section should be present");
+        assert_eq!(
+            cash.rows.len(),
+            1,
+            "cash section must not include the Holding Details header/row"
+        );
+        assert_eq!(detected.holdings_section.rows.len(), 1);
+        assert_eq!(detected.holdings_section.headers[0], "Asset Class");
     }
 
     #[test]

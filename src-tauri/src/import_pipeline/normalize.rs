@@ -16,25 +16,43 @@ fn raw_get<'a>(row: &'a HashMap<String, String>, header: &str) -> Option<&'a str
         .filter(|v| !v.trim().is_empty())
 }
 
-/// Builds a canonical-field -> value map from a row's headers, using the
-/// alias registry. The first header that maps to a given canonical field
-/// wins, so an earlier, more specific column (e.g. `Average Cost Currency`)
-/// is not silently overwritten by a later generic alias collision.
-fn build_canonical_map(row: &HashMap<String, String>) -> HashMap<&'static str, String> {
+/// Builds a canonical-field -> value map from a row, walking `headers` in
+/// their original column order (not `row`'s `HashMap` iteration order, which
+/// is unordered) so that when two columns alias to the same canonical field,
+/// the earlier-declared column deterministically wins rather than whichever
+/// happened to be visited last. `overrides` (user-selected column mappings
+/// from the review UI) take priority over the static alias registry.
+fn build_canonical_map(
+    row: &HashMap<String, String>,
+    headers: &[String],
+    overrides: &HashMap<String, String>,
+) -> HashMap<String, String> {
     let mut map = HashMap::new();
-    for (header, value) in row {
+    for header in headers {
+        let Some(value) = row.get(header) else {
+            continue;
+        };
         if value.trim().is_empty() {
             continue;
         }
-        if let Some(field) = canonical_field(header) {
+        let field = overrides
+            .get(header)
+            .cloned()
+            .or_else(|| canonical_field(header).map(str::to_string));
+        if let Some(field) = field {
             map.entry(field).or_insert_with(|| value.clone());
         }
     }
     map
 }
 
+/// Parses a numeric field, rejecting non-finite results (`NaN`/`Infinity`,
+/// including overflow like `1e400`) that would otherwise silently bypass the
+/// `>= 0` sign checks below and the `holdings` table's `CHECK` constraints.
 fn parse_f64(value: Option<&str>) -> Option<f64> {
-    value.and_then(|v| v.trim().parse::<f64>().ok())
+    value
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|n| n.is_finite())
 }
 
 /// Derives `(cost_basis, cost_basis_source)`:
@@ -61,8 +79,12 @@ fn derive_cost_basis(
 /// `NormalizedImportRow`. Shared by both `CanadianBankMultiSection` and
 /// generic-CSV profiles — the profile only affects section detection, not
 /// this per-row algorithm.
-pub fn normalize_row(raw: &RawRow, context: &ImportContext) -> NormalizedImportRow {
-    let canonical = build_canonical_map(&raw.values);
+pub fn normalize_row(
+    raw: &RawRow,
+    headers: &[String],
+    context: &ImportContext,
+) -> NormalizedImportRow {
+    let canonical = build_canonical_map(&raw.values, headers, &context.column_overrides);
 
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
@@ -134,8 +156,12 @@ pub fn normalize_row(raw: &RawRow, context: &ImportContext) -> NormalizedImportR
     let average_cost = parse_f64(canonical.get("average_cost").map(|s| s.as_str()));
     let book_value = parse_f64(canonical.get("book_value").map(|s| s.as_str()));
     let (cost_basis, cost_basis_source) = derive_cost_basis(average_cost, book_value, quantity);
-    if cost_basis.is_none() {
-        errors.push("Could not determine cost basis (no Average Cost, and no Total Cost/Quantity to derive from)".to_string());
+    match cost_basis {
+        None => errors.push(
+            "Could not determine cost basis (no Average Cost, and no Total Cost/Quantity to derive from)".to_string(),
+        ),
+        Some(cb) if cb < 0.0 => errors.push(format!("Cost basis cannot be negative ({cb})")),
+        _ => {}
     }
 
     let market_value = parse_f64(canonical.get("market_value").map(|s| s.as_str()));
@@ -251,9 +277,24 @@ mod tests {
         RawRow { row_number, values }
     }
 
+    fn headers_of(pairs: &[(&str, &str)]) -> Vec<String> {
+        pairs.iter().map(|(k, _)| k.to_string()).collect()
+    }
+
+    /// Builds a row from `pairs` (in the given order) and normalizes it,
+    /// so column-order-sensitive behavior (e.g. alias-collision precedence)
+    /// is exercised the same way production code builds `headers`.
+    fn normalize(
+        pairs: &[(&str, &str)],
+        row_number: usize,
+        ctx: &ImportContext,
+    ) -> NormalizedImportRow {
+        normalize_row(&row(pairs, row_number), &headers_of(pairs), ctx)
+    }
+
     #[test]
     fn cost_basis_direct_from_average_cost() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "AAPL:US"),
                 ("Asset Class", "Equity"),
@@ -262,8 +303,8 @@ mod tests {
                 ("Average Cost Currency", "USD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.cost_basis, Some(135.50));
         assert_eq!(
             normalized.cost_basis_source,
@@ -274,7 +315,7 @@ mod tests {
 
     #[test]
     fn cost_basis_derived_from_total_cost_over_quantity() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "AAPL:US"),
                 ("Asset Class", "Equity"),
@@ -283,8 +324,8 @@ mod tests {
                 ("Currency", "USD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.cost_basis, Some(135.5));
         assert_eq!(
             normalized.cost_basis_source,
@@ -294,7 +335,7 @@ mod tests {
 
     #[test]
     fn needs_fix_when_cost_basis_undeterminable() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "AAPL:US"),
                 ("Asset Class", "Equity"),
@@ -302,8 +343,8 @@ mod tests {
                 ("Currency", "USD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.action, RowAction::NeedsFix);
         assert!(normalized.cost_basis.is_none());
         assert!(normalized.errors.iter().any(|e| e.contains("cost basis")));
@@ -311,7 +352,7 @@ mod tests {
 
     #[test]
     fn needs_fix_when_symbol_blank() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", ""),
                 ("Asset Class", "Equity"),
@@ -320,8 +361,8 @@ mod tests {
                 ("Currency", "USD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.action, RowAction::NeedsFix);
         assert!(normalized.symbol.is_none());
         assert!(normalized.errors.iter().any(|e| e.contains("symbol")));
@@ -329,7 +370,7 @@ mod tests {
 
     #[test]
     fn warning_when_asset_class_is_fixed_income() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "GIC123"),
                 ("Asset Class", "Fixed Income"),
@@ -338,8 +379,8 @@ mod tests {
                 ("Currency", "CAD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.action, RowAction::Warning);
         assert_eq!(normalized.asset_type, Some("Other".to_string()));
         assert!(normalized
@@ -350,7 +391,7 @@ mod tests {
 
     #[test]
     fn currency_priority_prefers_average_cost_currency_over_settlement_currency() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "AAPL:US"),
                 ("Asset Class", "Equity"),
@@ -360,8 +401,8 @@ mod tests {
                 ("Settlement Currency", "CAD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.currency, Some("USD".to_string()));
         assert!(normalized
             .warnings
@@ -371,7 +412,7 @@ mod tests {
 
     #[test]
     fn negative_quantity_is_a_warning_not_needs_fix() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "AAPL:US"),
                 ("Asset Class", "Equity"),
@@ -380,15 +421,15 @@ mod tests {
                 ("Currency", "USD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.action, RowAction::Warning);
         assert!(normalized.warnings.iter().any(|w| w.contains("Negative")));
     }
 
     #[test]
     fn zero_quantity_is_needs_fix() {
-        let r = row(
+        let normalized = normalize(
             &[
                 ("Symbol", "AAPL:US"),
                 ("Asset Class", "Equity"),
@@ -397,9 +438,95 @@ mod tests {
                 ("Currency", "USD"),
             ],
             8,
+            &context(),
         );
-        let normalized = normalize_row(&r, &context());
         assert_eq!(normalized.action, RowAction::NeedsFix);
+    }
+
+    #[test]
+    fn non_finite_quantity_is_needs_fix_not_silently_accepted() {
+        let normalized = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "NaN"),
+                ("Average Cost", "135.50"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::NeedsFix);
+        assert!(normalized.quantity.is_none());
+    }
+
+    #[test]
+    fn negative_cost_basis_is_needs_fix() {
+        let normalized = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "10"),
+                ("Average Cost", "-5"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::NeedsFix);
+        assert!(normalized.errors.iter().any(|e| e.contains("negative")));
+    }
+
+    #[test]
+    fn column_override_maps_an_unrecognized_header_to_a_canonical_field() {
+        let mut ctx = context();
+        ctx.column_overrides
+            .insert("My Custom Qty".to_string(), "quantity".to_string());
+        let normalized = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("My Custom Qty", "42"),
+                ("Average Cost", "135.50"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &ctx,
+        );
+        assert_eq!(normalized.quantity, Some(42.0));
+    }
+
+    #[test]
+    fn alias_collision_deterministically_prefers_earlier_declared_column() {
+        // Both "Total Cost" and "Book Value" alias to `book_value`; the
+        // earlier-declared column (by header order) must always win, not
+        // whichever the HashMap happened to visit last.
+        let a = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "10"),
+                ("Total Cost", "100"),
+                ("Book Value", "200"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        let b = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "10"),
+                ("Book Value", "200"),
+                ("Total Cost", "100"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(a.book_value, Some(100.0));
+        assert_eq!(b.book_value, Some(200.0));
     }
 
     #[test]

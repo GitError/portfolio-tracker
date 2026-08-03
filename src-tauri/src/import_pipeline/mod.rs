@@ -22,9 +22,31 @@ use crate::types::{ColumnMapping, ImportContext, ImportPlan, NormalizedImportRow
 
 pub use commit::commit_import_rows;
 
+/// Extensions accepted by `parse_import_file`. `file_path` is expected to
+/// come from a native file-picker dialog (as `restore_database`'s
+/// `source_path` does), but this pipeline has no content-based validation
+/// analogous to `restore_database`'s SQLite magic-byte check, so the
+/// extension allowlist is the cheapest guard against pointing it at an
+/// arbitrary file on disk.
+const ALLOWED_IMPORT_EXTENSIONS: &[&str] = &["csv", "txt"];
+
 fn read_import_file(file_path: &str) -> Result<String, AppError> {
     let path = std::fs::canonicalize(file_path)
         .map_err(|e| AppError::Validation(format!("Cannot resolve file path: {e}")))?;
+    let has_allowed_extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            ALLOWED_IMPORT_EXTENSIONS
+                .iter()
+                .any(|a| ext.eq_ignore_ascii_case(a))
+        });
+    if !has_allowed_extension {
+        return Err(AppError::Validation(format!(
+            "Import file must have one of these extensions: {}",
+            ALLOWED_IMPORT_EXTENSIONS.join(", ")
+        )));
+    }
     let metadata = std::fs::metadata(&path)
         .map_err(|e| AppError::Validation(format!("Cannot read file: {e}")))?;
     if metadata.len() > crate::config::MAX_IMPORT_FILE_BYTES {
@@ -203,7 +225,7 @@ pub async fn build_import_plan(
         .holdings_section
         .rows
         .iter()
-        .map(|raw| normalize::normalize_row(raw, context))
+        .map(|raw| normalize::normalize_row(raw, &detected.holdings_section.headers, context))
         .collect();
     let mut cash_rows: Vec<NormalizedImportRow> = detected
         .cash_section
@@ -368,5 +390,21 @@ Exchange Rate: 1 CAD = 0.7126USD  1 USD = 1.4033CAD\n";
             .await
             .expect_err("missing file should error");
         assert!(matches!(err, AppError::Validation(_)));
+    }
+
+    #[tokio::test]
+    async fn disallowed_file_extension_is_rejected() {
+        let pool = db::open_test_db().await;
+        let dir = std::env::temp_dir().join(format!("import-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("sample.exe");
+        std::fs::write(&path, SAMPLE).unwrap();
+
+        let err = build_import_plan(&pool, path.to_str().unwrap(), &context(None))
+            .await
+            .expect_err("disallowed extension should be rejected");
+        assert!(matches!(err, AppError::Validation(_)));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

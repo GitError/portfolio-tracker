@@ -72,6 +72,13 @@ pub async fn commit_import_rows(
         .collect();
 
     let mut committed_symbols: HashSet<String> = HashSet::new();
+    // Guards against two rows in the same request resolving to the same
+    // symbol (e.g. a duplicate the plan flagged as `Skip` gets flipped back
+    // on by the client): `existing_by_symbol` is a snapshot taken once
+    // before this loop and is never updated as rows are written, so without
+    // this a second matching row would independently miss it and insert a
+    // duplicate holding rather than being treated as an update.
+    let mut attempted_symbols: HashSet<String> = HashSet::new();
     let symbols_in_request: HashSet<String> = request
         .plan_rows
         .iter()
@@ -125,7 +132,25 @@ pub async fn commit_import_rows(
             continue;
         };
 
+        if quantity < 0.0 {
+            result.errors.push(format!(
+                "Row {}: negative quantity ({}) — short positions are not supported; skipped",
+                row.row_number, quantity
+            ));
+            result.skipped += 1;
+            continue;
+        }
+
         let symbol_key = symbol.to_uppercase();
+        if !attempted_symbols.insert(symbol_key.clone()) {
+            result.errors.push(format!(
+                "Row {}: duplicate symbol '{}' already processed earlier in this commit request; skipped",
+                row.row_number, symbol
+            ));
+            result.skipped += 1;
+            continue;
+        }
+
         let name = row
             .name
             .clone()
@@ -410,6 +435,62 @@ mod tests {
 
         assert_eq!(result.created, 0);
         assert_eq!(result.skipped, 1);
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_negative_quantity_with_a_friendly_error_not_a_raw_db_error() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.action = RowAction::Warning;
+        row.quantity = Some(-5.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("negative quantity") && !e.contains("CHECK")));
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_second_row_with_a_duplicate_symbol_in_the_same_request() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut second = base_row(9);
+        second.quantity = Some(20.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![base_row(8), second],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(
+            result.created, 1,
+            "only the first occurrence should be created"
+        );
+        assert_eq!(result.skipped, 1);
+        assert!(result.errors.iter().any(|e| e.contains("duplicate symbol")));
+
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(
+            holdings.len(),
+            1,
+            "the duplicate must not create a second row"
+        );
     }
 
     #[tokio::test]
