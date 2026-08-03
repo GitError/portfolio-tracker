@@ -99,7 +99,7 @@ pub fn build_holdings_csv(holdings: &[Holding]) -> Result<String, String> {
     String::from_utf8(bytes).map_err(|e| e.to_string())
 }
 
-fn detect_csv_delimiter(content: &str) -> u8 {
+pub(crate) fn detect_csv_delimiter(content: &str) -> u8 {
     let first_line = content.lines().next().unwrap_or_default();
     if first_line.contains(';') && !first_line.contains(',') {
         b';'

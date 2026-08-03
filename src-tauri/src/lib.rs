@@ -7,6 +7,7 @@ mod csv;
 mod db;
 pub mod error;
 mod fx;
+mod import_pipeline;
 mod maintenance;
 mod portfolio;
 mod price;
@@ -21,13 +22,14 @@ mod ts_binding_tests {
     use ts_rs::{Config, TS as _};
 
     use crate::types::{
-        Account, AccountType, AlertDirection, AssetType, CountryWeight, CreateAccountRequest,
-        Dividend, DividendInput, ExportPayload, FxRate, Holding, HoldingInput, HoldingWithPrice,
-        ImportError, ImportResult, PerformancePoint, PortfolioAnalytics, PortfolioRiskMetrics,
-        PortfolioSnapshot, PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData,
-        RealizedGainsSummary, RealizedLot, RebalanceSuggestion, RefreshResult, SectorWeight,
-        StressResult, StressScenario, SymbolMetadata, SymbolResult, Transaction, TransactionInput,
-        TransactionType,
+        Account, AccountType, AlertDirection, AssetType, ColumnMapping, CountryWeight,
+        CreateAccountRequest, Dividend, DividendInput, ExportPayload, FxRate, Holding,
+        HoldingInput, HoldingWithPrice, ImportCommitRequest, ImportCommitResult, ImportContext,
+        ImportError, ImportPlan, ImportResult, NormalizedImportRow, PerformancePoint,
+        PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult,
+        PreviewRow, PriceAlert, PriceAlertInput, PriceData, RealizedGainsSummary, RealizedLot,
+        RebalanceSuggestion, RefreshResult, RowAction, SectorWeight, StressResult, StressScenario,
+        SymbolMetadata, SymbolResult, Transaction, TransactionInput, TransactionType,
     };
     // StressHoldingResult is only reachable via portfolio-core in this crate (it's
     // nested inside StressResult, not referenced standalone) — import it directly
@@ -44,6 +46,7 @@ mod ts_binding_tests {
         AccountType::export_all(&cfg).expect("AccountType");
         AlertDirection::export_all(&cfg).expect("AlertDirection");
         AssetType::export_all(&cfg).expect("AssetType");
+        ColumnMapping::export_all(&cfg).expect("ColumnMapping");
         CountryWeight::export_all(&cfg).expect("CountryWeight");
         CreateAccountRequest::export_all(&cfg).expect("CreateAccountRequest");
         Dividend::export_all(&cfg).expect("Dividend");
@@ -53,8 +56,13 @@ mod ts_binding_tests {
         Holding::export_all(&cfg).expect("Holding");
         HoldingInput::export_all(&cfg).expect("HoldingInput");
         HoldingWithPrice::export_all(&cfg).expect("HoldingWithPrice");
+        ImportCommitRequest::export_all(&cfg).expect("ImportCommitRequest");
+        ImportCommitResult::export_all(&cfg).expect("ImportCommitResult");
+        ImportContext::export_all(&cfg).expect("ImportContext");
         ImportError::export_all(&cfg).expect("ImportError");
+        ImportPlan::export_all(&cfg).expect("ImportPlan");
         ImportResult::export_all(&cfg).expect("ImportResult");
+        NormalizedImportRow::export_all(&cfg).expect("NormalizedImportRow");
         PerformancePoint::export_all(&cfg).expect("PerformancePoint");
         PortfolioAnalytics::export_all(&cfg).expect("PortfolioAnalytics");
         PortfolioRiskMetrics::export_all(&cfg).expect("PortfolioRiskMetrics");
@@ -68,6 +76,7 @@ mod ts_binding_tests {
         RealizedLot::export_all(&cfg).expect("RealizedLot");
         RebalanceSuggestion::export_all(&cfg).expect("RebalanceSuggestion");
         RefreshResult::export_all(&cfg).expect("RefreshResult");
+        RowAction::export_all(&cfg).expect("RowAction");
         SectorWeight::export_all(&cfg).expect("SectorWeight");
         StressHoldingResult::export_all(&cfg).expect("StressHoldingResult");
         StressResult::export_all(&cfg).expect("StressResult");
@@ -228,6 +237,8 @@ pub fn run() {
             commands::import_holdings_csv,
             commands::preview_import_csv,
             commands::export_holdings_csv,
+            commands::parse_import_file,
+            commands::commit_import,
             commands::refresh_prices,
             commands::run_stress_test_cmd,
             commands::get_performance,
