@@ -7,7 +7,7 @@ mod csv;
 mod db;
 pub mod error;
 mod fx;
-mod import_pipeline;
+pub mod import_pipeline;
 mod maintenance;
 mod portfolio;
 mod price;
@@ -15,7 +15,7 @@ mod search;
 mod stress;
 #[cfg(test)]
 mod test_helpers;
-mod types;
+pub mod types;
 
 #[cfg(test)]
 mod ts_binding_tests {
