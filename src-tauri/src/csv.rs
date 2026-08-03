@@ -398,7 +398,7 @@ mod tests {
         // MAX_FIELD_LEN (500) falls mid-character when the input is made of
         // 3-byte UTF-8 chars (500 is not a multiple of 3), which previously
         // panicked via the byte-offset slice `&s[..MAX_FIELD_LEN]`.
-        let s: String = std::iter::repeat('日').take(200).collect(); // 600 bytes
+        let s: String = "日".repeat(200); // 600 bytes
         let result = sanitize_str(&s);
         assert!(!result.is_empty());
         assert!(result.chars().count() <= 200);
