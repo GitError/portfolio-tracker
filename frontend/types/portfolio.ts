@@ -276,12 +276,7 @@ export interface PreviewRow {
   costBasis: number;
   targetWeight: number | null;
   status:
-    | 'ready'
-    | 'cash'
-    | 'duplicate'
-    | 'invalid_symbol'
-    | 'validation_failed'
-    | 'currency_mismatch';
+    'ready' | 'cash' | 'duplicate' | 'invalid_symbol' | 'validation_failed' | 'currency_mismatch';
   /** Present when status is 'currency_mismatch'. Format: '{actual}:{expected}', e.g. 'USD:CAD'. */
   currencyMismatchDetail?: string;
 }
@@ -349,11 +344,7 @@ export type InsightDirection = 'buy' | 'sell' | 'review';
 export interface ActionInsight {
   id: string;
   type:
-    | 'target_drift'
-    | 'concentration_risk'
-    | 'idle_cash'
-    | 'missing_targets'
-    | 'account_imbalance';
+    'target_drift' | 'concentration_risk' | 'idle_cash' | 'missing_targets' | 'account_imbalance';
   severity: InsightSeverity;
   /** Suggested action direction for grouping (buy/sell/review). */
   direction: InsightDirection;
