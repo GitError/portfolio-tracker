@@ -326,6 +326,8 @@ export interface NormalizedImportRow {
   currency: string | null;
   bookValue: number | null;
   marketValue: number | null;
+  exchange: string | null;
+  targetWeight: number | null;
   accountType: string;
   accountName: string | null;
   warnings: string[];

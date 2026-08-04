@@ -552,6 +552,8 @@ pub struct NormalizedImportRow {
     pub currency: Option<String>,
     pub book_value: Option<f64>,
     pub market_value: Option<f64>,
+    pub exchange: Option<String>,
+    pub target_weight: Option<f64>,
     pub account_type: String,
     pub account_name: Option<String>,
     pub warnings: Vec<String>,

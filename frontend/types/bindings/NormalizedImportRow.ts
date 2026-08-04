@@ -8,7 +8,7 @@ export type NormalizedImportRow = { rowNumber: number, action: RowAction, symbol
 /**
  * e.g. "average_cost", "derived:total_cost/qty"
  */
-costBasisSource: string | null, currency: string | null, bookValue: number | null, marketValue: number | null, accountType: string, accountName: string | null, warnings: Array<string>, errors: Array<string>, 
+costBasisSource: string | null, currency: string | null, bookValue: number | null, marketValue: number | null, exchange: string | null, targetWeight: number | null, accountType: string, accountName: string | null, warnings: Array<string>, errors: Array<string>, 
 /**
  * Original CSV values for this row, keyed by source header.
  */
