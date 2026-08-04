@@ -120,7 +120,15 @@ pub fn normalize_row(
         errors.push("Missing asset class".to_string());
     }
     if let Some(w) = asset_type_warning {
-        warnings.push(w);
+        // `AssetType` (and the DB's CHECK constraint) has no "Other" variant,
+        // so a row that maps here can never actually be committed — treat it
+        // as `NeedsFix` rather than `Warning`, which would falsely imply it's
+        // includable in a "commit clean rows including warnings" action.
+        if asset_type.as_deref() == Some("Other") {
+            errors.push(w);
+        } else {
+            warnings.push(w);
+        }
     }
 
     // ── Quantity ──
@@ -375,7 +383,7 @@ mod tests {
     }
 
     #[test]
-    fn warning_when_asset_class_is_fixed_income() {
+    fn needs_fix_when_asset_class_is_fixed_income() {
         let normalized = normalize(
             &[
                 ("Symbol", "GIC123"),
@@ -387,10 +395,10 @@ mod tests {
             8,
             &context(),
         );
-        assert_eq!(normalized.action, RowAction::Warning);
+        assert_eq!(normalized.action, RowAction::NeedsFix);
         assert_eq!(normalized.asset_type, Some("Other".to_string()));
         assert!(normalized
-            .warnings
+            .errors
             .iter()
             .any(|w| w.contains("no live pricing")));
     }
