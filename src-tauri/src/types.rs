@@ -113,7 +113,6 @@ impl TS for DividendId {
 // ── Transaction types ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
-#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum TransactionType {
     Buy,
@@ -143,7 +142,6 @@ impl std::str::FromStr for TransactionType {
 
 /// A single buy or sell transaction for a holding.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub id: TransactionId,
@@ -159,7 +157,6 @@ pub struct Transaction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInput {
     pub holding_id: HoldingId,
@@ -173,7 +170,6 @@ pub struct TransactionInput {
 
 /// One matched lot that was sold.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RealizedLot {
     /// ISO date of the sell transaction (YYYY-MM-DD).
@@ -188,7 +184,6 @@ pub struct RealizedLot {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RealizedGainsSummary {
     pub total_realized_gain: f64,
@@ -198,7 +193,6 @@ pub struct RealizedGainsSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Account {
     pub id: String,
@@ -209,7 +203,6 @@ pub struct Account {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateAccountRequest {
     pub name: String,
@@ -218,7 +211,6 @@ pub struct CreateAccountRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct HoldingInput {
     pub symbol: String,
@@ -238,7 +230,6 @@ pub struct HoldingInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolResult {
     pub symbol: String,
@@ -249,7 +240,6 @@ pub struct SymbolResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportError {
     pub row: usize,
@@ -258,7 +248,6 @@ pub struct ImportError {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub imported: Vec<Holding>,
@@ -267,7 +256,6 @@ pub struct ImportResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewRow {
     pub row: usize,
@@ -287,7 +275,6 @@ pub struct PreviewRow {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewImportResult {
     pub rows: Vec<PreviewRow>,
@@ -296,7 +283,6 @@ pub struct PreviewImportResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PerformancePoint {
     pub date: String,
@@ -304,7 +290,6 @@ pub struct PerformancePoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct Dividend {
     pub id: DividendId,
@@ -318,7 +303,6 @@ pub struct Dividend {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct DividendInput {
     pub holding_id: HoldingId,
@@ -330,7 +314,6 @@ pub struct DividendInput {
 
 /// Direction for a price alert threshold.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertDirection {
     Above,
@@ -359,7 +342,6 @@ impl std::str::FromStr for AlertDirection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlert {
     pub id: AlertId,
@@ -373,7 +355,6 @@ pub struct PriceAlert {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceAlertInput {
     pub symbol: String,
@@ -386,7 +367,6 @@ pub struct PriceAlertInput {
 /// Returned by the `refresh_prices` command.
 /// Separates successfully refreshed prices from symbols that failed.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshResult {
     pub prices: Vec<PriceData>,
@@ -406,7 +386,6 @@ pub struct RefreshResult {
 /// Full data export payload — includes all user data for backup/restore.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportPayload {
     pub holdings: Vec<Holding>,
@@ -419,7 +398,6 @@ pub struct ExportPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolMetadata {
     pub symbol: String,
@@ -434,7 +412,6 @@ pub struct SymbolMetadata {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct SectorWeight {
     pub sector: String,
@@ -442,7 +419,6 @@ pub struct SectorWeight {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct CountryWeight {
     pub country: String,
@@ -450,7 +426,6 @@ pub struct CountryWeight {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioRiskMetrics {
     pub weighted_beta: Option<f64>,
@@ -461,7 +436,6 @@ pub struct PortfolioRiskMetrics {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioAnalytics {
     pub metadata: Vec<SymbolMetadata>,
@@ -471,7 +445,6 @@ pub struct PortfolioAnalytics {
 }
 
 #[derive(Debug, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct RebalanceSuggestion {
     pub holding_id: HoldingId,
@@ -496,7 +469,6 @@ pub struct RebalanceSuggestion {
 /// User-supplied context applied to every row of an import unless the file
 /// provides stronger per-row account information.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportContext {
     /// TFSA, RRSP, FHSA, Taxable, Cash, Crypto, or Other.
@@ -512,7 +484,6 @@ pub struct ImportContext {
 
 /// The action the import plan proposes for a given row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum RowAction {
     Create,
@@ -524,7 +495,6 @@ pub enum RowAction {
 
 /// Describes how a source column was mapped to a canonical holding field.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnMapping {
     pub source_header: String,
@@ -536,7 +506,6 @@ pub struct ColumnMapping {
 
 /// Canonical interpretation of one source row, produced by the row normalizer.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct NormalizedImportRow {
     pub row_number: usize,
@@ -568,7 +537,6 @@ pub struct NormalizedImportRow {
 
 /// Preview payload returned by `parse_import_file`. Never writes to the DB.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportPlan {
     pub profile_detected: String,
@@ -586,7 +554,6 @@ pub struct ImportPlan {
 
 /// Selected rows to write to the DB, as chosen by the user in the review UI.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCommitRequest {
     pub plan_rows: Vec<NormalizedImportRow>,
@@ -597,7 +564,6 @@ pub struct ImportCommitRequest {
 /// Result of committing an import plan, including insight deltas for the
 /// post-import summary panel.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCommitResult {
     pub created: usize,
