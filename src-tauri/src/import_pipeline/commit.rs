@@ -505,6 +505,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn commit_creates_a_holding_from_a_warning_row_with_a_supported_asset_type() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        // A row can be classified `Warning` for reasons unrelated to asset
+        // type (e.g. Settlement Currency mismatching Average Cost Currency)
+        // while its asset_type is still one of the four the DB supports.
+        // Such a row is genuinely committable — the warning is informational
+        // only — and must be written to the DB, not treated like `NeedsFix`.
+        let mut row = base_row(8);
+        row.action = RowAction::Warning;
+        row.warnings = vec![
+            "Settlement Currency (CAD) does not match Average Cost Currency (USD)".to_string(),
+        ];
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 1);
+        assert_eq!(result.skipped, 0);
+        assert!(result.errors.is_empty());
+
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(holdings.len(), 1);
+        assert_eq!(holdings[0].symbol, "AAPL");
+    }
+
+    #[tokio::test]
     async fn commit_rejects_unsupported_asset_type_other_with_error() {
         let pool = db::open_test_db().await;
         db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)

@@ -195,7 +195,7 @@ async fn test_blank_symbol_is_needs_fix() {
 }
 
 #[tokio::test]
-async fn test_fixed_income_is_warning() {
+async fn test_fixed_income_is_needs_fix() {
     let pool = unused_pool().await;
     let dir = std::env::temp_dir().join(format!("import-it-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
@@ -210,9 +210,12 @@ async fn test_fixed_income_is_warning() {
         .iter()
         .find(|r| r.symbol.as_deref() == Some("CA135087J546"))
         .expect("bond row");
-    assert_eq!(bond.action, RowAction::Warning);
+    // `AssetType` has no "Other" variant and the DB's CHECK constraint
+    // rejects it outright, so this row can never actually be committed —
+    // it must be `NeedsFix`, not `Warning` (see #733).
+    assert_eq!(bond.action, RowAction::NeedsFix);
     assert_eq!(bond.asset_type, Some("Other".to_string()));
-    assert!(bond.warnings.iter().any(|w| w.contains("pricing")));
+    assert!(bond.errors.iter().any(|w| w.contains("pricing")));
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -259,13 +262,14 @@ async fn test_full_plan_counts() {
         .await
         .expect("plan should build");
 
-    // 6 create (4 clean holdings + 2 cash rows), 1 warning (Fixed Income
-    // bond), 2 needs_fix (blank symbol, and Market-Value-only with no
-    // derivable cost basis). No updates/skips — nothing pre-exists in the DB
-    // and there are no intra-file duplicate symbols.
+    // 6 create (4 clean holdings + 2 cash rows), 0 warning, 3 needs_fix
+    // (blank symbol, Market-Value-only with no derivable cost basis, and the
+    // Fixed Income bond — asset_type "Other" can never commit, see #733).
+    // No updates/skips — nothing pre-exists in the DB and there are no
+    // intra-file duplicate symbols.
     assert_eq!(plan.count_create, 6);
-    assert_eq!(plan.count_warning, 1);
-    assert_eq!(plan.count_needs_fix, 2);
+    assert_eq!(plan.count_warning, 0);
+    assert_eq!(plan.count_needs_fix, 3);
     assert_eq!(plan.count_update, 0);
     assert_eq!(plan.count_skip, 0);
 
