@@ -8,6 +8,7 @@ dist/
 # Rust / Cargo
 target/
 src-tauri/bindings/
+portfolio-core/bindings/
 src-tauri/target/
 
 # Tauri generated

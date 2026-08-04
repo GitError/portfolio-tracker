@@ -44,7 +44,6 @@ impl ts_rs::TS for HoldingId {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum AssetType {
     Stock,
@@ -80,7 +79,6 @@ impl std::str::FromStr for AssetType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "lowercase")]
 pub enum AccountType {
     Tfsa,
@@ -125,7 +123,6 @@ impl std::str::FromStr for AccountType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct Holding {
     pub id: HoldingId,
@@ -152,7 +149,6 @@ pub struct Holding {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PriceData {
     pub symbol: String,
@@ -168,7 +164,6 @@ pub struct PriceData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct FxRate {
     pub pair: String,
@@ -178,7 +173,6 @@ pub struct FxRate {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct HoldingWithPrice {
     #[serde(flatten)]
@@ -217,7 +211,6 @@ impl std::ops::DerefMut for HoldingWithPrice {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct PortfolioSnapshot {
     pub holdings: Vec<HoldingWithPrice>,
@@ -243,7 +236,6 @@ pub struct PortfolioSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StressScenario {
     pub name: String,
@@ -252,7 +244,6 @@ pub struct StressScenario {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StressHoldingResult {
     pub holding_id: HoldingId,
@@ -266,7 +257,6 @@ pub struct StressHoldingResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[cfg_attr(feature = "ts", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct StressResult {
     pub scenario: String,
