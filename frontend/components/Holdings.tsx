@@ -17,7 +17,7 @@ import { usePortfolio } from '../hooks/usePortfolio';
 import { useConfig } from '../hooks/useConfig';
 import { AddHoldingModal } from './AddHoldingModal';
 import { AddTransactionModal } from './AddTransactionModal';
-import { ImportHoldingsModal } from './ImportHoldingsModal';
+import { ImportWizardModal } from './import/ImportWizardModal';
 import { AccountBadge, Badge, ExchangeBadge } from './ui/Badge';
 import { EmptyState } from './ui/EmptyState';
 import { Select } from './ui/Select';
@@ -103,9 +103,8 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     addHolding,
     updateHolding,
     deleteHolding,
-    importHoldingsCsv,
-    previewImportCsv,
     exportHoldingsCsv,
+    refreshPrices,
   } = usePortfolio();
   const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -370,17 +369,6 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       setIsDeleting(false);
       setPendingDelete(null);
     }
-  }
-
-  async function handleImport(csvContent: string) {
-    const result = await importHoldingsCsv(csvContent);
-    if (result.imported.length > 0) {
-      showToast(`Imported ${result.imported.length} holdings`, 'success');
-    }
-    if (result.skipped.length > 0) {
-      showToast(`Skipped ${result.skipped.length} rows`, 'info');
-    }
-    return result;
   }
 
   const handleExport = useCallback(async () => {
@@ -2273,11 +2261,10 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
         onSave={handleSave}
         editingHolding={editing}
       />
-      <ImportHoldingsModal
+      <ImportWizardModal
         isOpen={importOpen}
         onClose={() => setImportOpen(false)}
-        onImport={handleImport}
-        onPreview={previewImportCsv}
+        onImported={() => void refreshPrices()}
       />
       {txModalHolding && (
         <AddTransactionModal
