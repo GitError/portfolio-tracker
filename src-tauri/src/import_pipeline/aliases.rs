@@ -43,6 +43,8 @@ pub fn canonical_field(header: &str) -> Option<&'static str> {
         "asset class" | "asset type" | "type" | "security type" | "category"
         | "investment type" | "product type" => Some("asset_type"),
         "exchange" | "market" | "listing exchange" | "market code" => Some("exchange"),
+        "target weight" | "target weight (%)" | "target allocation" | "target %"
+        | "target_weight" => Some("target_weight"),
         "settled cash" | "trade cash" | "cash balance" | "cash" | "cash position" | "balance" => {
             Some("cash_balance")
         }
@@ -173,6 +175,14 @@ mod tests {
     fn canonical_field_matches_exchange_aliases() {
         assert_eq!(canonical_field("Exchange"), Some("exchange"));
         assert_eq!(canonical_field("Listing Exchange"), Some("exchange"));
+    }
+
+    #[test]
+    fn canonical_field_matches_target_weight_aliases() {
+        assert_eq!(canonical_field("Target Weight"), Some("target_weight"));
+        assert_eq!(canonical_field("Target Weight (%)"), Some("target_weight"));
+        assert_eq!(canonical_field("Target Allocation"), Some("target_weight"));
+        assert_eq!(canonical_field("target_weight"), Some("target_weight"));
     }
 
     #[test]

@@ -165,6 +165,8 @@ pub fn normalize_row(
     }
 
     let market_value = parse_f64(canonical.get("market_value").map(|s| s.as_str()));
+    let exchange = canonical.get("exchange").cloned();
+    let target_weight = parse_f64(canonical.get("target_weight").map(|s| s.as_str()));
     let dividend_yield = parse_f64(canonical.get("dividend_yield").map(|s| s.as_str()));
     let annualized_income = parse_f64(canonical.get("annualized_income").map(|s| s.as_str()));
     let ex_dividend_date = canonical.get("ex_dividend_date").cloned();
@@ -190,6 +192,8 @@ pub fn normalize_row(
         currency,
         book_value,
         market_value,
+        exchange,
+        target_weight,
         account_type: context.account_type.clone(),
         account_name: context.account_name.clone(),
         warnings,
@@ -244,6 +248,8 @@ pub fn normalize_cash_row(raw: &RawRow, context: &ImportContext) -> NormalizedIm
         currency: currency.clone(),
         book_value: None,
         market_value: None,
+        exchange: None,
+        target_weight: None,
         account_type: context.account_type.clone(),
         account_name: context.account_name.clone(),
         warnings,
@@ -527,6 +533,42 @@ mod tests {
         );
         assert_eq!(a.book_value, Some(100.0));
         assert_eq!(b.book_value, Some(200.0));
+    }
+
+    #[test]
+    fn exchange_and_target_weight_are_captured_from_canonical_columns() {
+        let normalized = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "100"),
+                ("Average Cost", "135.50"),
+                ("Currency", "USD"),
+                ("Exchange", "NASDAQ"),
+                ("Target Weight", "12.5"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.exchange, Some("NASDAQ".to_string()));
+        assert_eq!(normalized.target_weight, Some(12.5));
+    }
+
+    #[test]
+    fn exchange_and_target_weight_are_none_when_columns_absent() {
+        let normalized = normalize(
+            &[
+                ("Symbol", "AAPL:US"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "100"),
+                ("Average Cost", "135.50"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.exchange, None);
+        assert_eq!(normalized.target_weight, None);
     }
 
     #[test]

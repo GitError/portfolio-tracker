@@ -173,8 +173,11 @@ pub async fn commit_import_rows(
                 quantity,
                 cost_basis,
                 currency,
-                exchange: existing.exchange.clone(),
-                target_weight: existing.target_weight,
+                exchange: row
+                    .exchange
+                    .clone()
+                    .unwrap_or_else(|| existing.exchange.clone()),
+                target_weight: row.target_weight.or(existing.target_weight),
                 created_at: existing.created_at.clone(),
                 updated_at: existing.updated_at.clone(),
                 indicated_annual_dividend: existing.indicated_annual_dividend,
@@ -210,8 +213,8 @@ pub async fn commit_import_rows(
                 quantity,
                 cost_basis,
                 currency,
-                exchange: String::new(),
-                target_weight: None,
+                exchange: row.exchange.clone().unwrap_or_default(),
+                target_weight: row.target_weight,
                 indicated_annual_dividend: None,
                 indicated_annual_dividend_currency: None,
                 dividend_frequency: None,
@@ -286,6 +289,8 @@ mod tests {
             currency: Some("USD".to_string()),
             book_value: None,
             market_value: None,
+            exchange: None,
+            target_weight: None,
             account_type: "taxable".to_string(),
             account_name: None,
             warnings: Vec::new(),
@@ -361,6 +366,118 @@ mod tests {
         assert_eq!(result.updated, 1);
         assert_eq!(result.created, 0);
         assert_eq!(result.changed_symbols, vec!["AAPL".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn commit_creates_a_new_holding_with_exchange_and_target_weight_from_the_row() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.exchange = Some("NASDAQ".to_string());
+        row.target_weight = Some(12.5);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+        assert_eq!(result.created, 1);
+
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(holdings[0].exchange, "NASDAQ");
+        assert_eq!(holdings[0].target_weight, Some(12.5));
+    }
+
+    #[tokio::test]
+    async fn commit_update_writes_exchange_and_target_weight_when_row_provides_them() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+        db::insert_holding(
+            &pool,
+            HoldingInput {
+                symbol: "AAPL".to_string(),
+                name: "Apple Inc.".to_string(),
+                asset_type: AssetType::Stock,
+                account: AccountType::Taxable,
+                account_id: Some("acct-1".to_string()),
+                quantity: 5.0,
+                cost_basis: 100.0,
+                currency: "USD".to_string(),
+                exchange: String::new(),
+                target_weight: None,
+                indicated_annual_dividend: None,
+                indicated_annual_dividend_currency: None,
+                dividend_frequency: None,
+                maturity_date: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut row = base_row(8);
+        row.action = RowAction::Update;
+        row.exchange = Some("NYSE".to_string());
+        row.target_weight = Some(8.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+        assert_eq!(result.updated, 1);
+
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(holdings[0].exchange, "NYSE");
+        assert_eq!(holdings[0].target_weight, Some(8.0));
+    }
+
+    #[tokio::test]
+    async fn commit_update_preserves_existing_exchange_and_target_weight_when_row_omits_them() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+        db::insert_holding(
+            &pool,
+            HoldingInput {
+                symbol: "AAPL".to_string(),
+                name: "Apple Inc.".to_string(),
+                asset_type: AssetType::Stock,
+                account: AccountType::Taxable,
+                account_id: Some("acct-1".to_string()),
+                quantity: 5.0,
+                cost_basis: 100.0,
+                currency: "USD".to_string(),
+                exchange: "NASDAQ".to_string(),
+                target_weight: Some(20.0),
+                indicated_annual_dividend: None,
+                indicated_annual_dividend_currency: None,
+                dividend_frequency: None,
+                maturity_date: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut row = base_row(8);
+        row.action = RowAction::Update;
+        row.quantity = Some(10.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+        assert_eq!(result.updated, 1);
+
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(holdings[0].exchange, "NASDAQ");
+        assert_eq!(holdings[0].target_weight, Some(20.0));
     }
 
     #[tokio::test]
