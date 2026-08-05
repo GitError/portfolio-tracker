@@ -8,9 +8,9 @@ echo "🚀 Pre-push verification for branch: $BRANCH"
 # ── Stage 1: Lint + type check + format (< 15s) ──────────────────────────────
 echo ""
 echo "Stage 1: Lint + type check + format..."
-npm run lint --silent
-npm run typecheck --silent
-npm run format:check --silent
+NODE_ENV=development npm run lint --silent
+NODE_ENV=development npm run typecheck --silent
+NODE_ENV=development npm run format:check --silent
 if [ -x "$CARGO" ]; then
   (cd src-tauri && "$CARGO" fmt --check) || { echo "  ✗ cargo fmt check failed — run: cd src-tauri && cargo fmt"; exit 1; }
 fi
@@ -21,7 +21,7 @@ echo ""
 echo "Stage 2: Build verification..."
 
 echo "  → Frontend build (tsc + vite)..."
-npm run build --silent
+NODE_ENV=development npm run build --silent
 
 echo "  → Backend build (cargo)..."
 if [ -x "$CARGO" ]; then
@@ -36,7 +36,7 @@ echo ""
 echo "Stage 3: Tests..."
 
 echo "  → Frontend tests..."
-npm run test --silent
+NODE_ENV=development npm run test --silent
 
 echo "  → Backend tests..."
 if [ -x "$CARGO" ]; then
