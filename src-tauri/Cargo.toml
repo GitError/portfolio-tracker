@@ -35,4 +35,3 @@ urlencoding = "2"
 
 [dev-dependencies]
 mockito = "1"
-rust_xlsxwriter = "0.79"
