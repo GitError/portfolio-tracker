@@ -111,6 +111,13 @@ pub(crate) fn validate_config_value(key: &str, value: &str) -> Result<(), AppErr
                 )));
             }
         }
+        "notifications_enabled" | "auto_refresh_market_hours_only" => {
+            if !["true", "false"].contains(&value) {
+                return Err(AppError::Validation(format!(
+                    "{key} must be one of: true, false (got: {value})"
+                )));
+            }
+        }
         _ => {
             if value.len() > MAX_CONFIG_VALUE_LEN {
                 return Err(AppError::Validation(format!(

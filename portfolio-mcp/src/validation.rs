@@ -361,6 +361,14 @@ pub fn validate_config_value(key: &str, value: &str) -> Result<(), McpError> {
                 ));
             }
         }
+        "notifications_enabled" | "auto_refresh_market_hours_only" => {
+            if !["true", "false"].contains(&value) {
+                return Err(McpError::invalid_params(
+                    format!("{key} must be one of: true, false (got: {value})"),
+                    None,
+                ));
+            }
+        }
         _ => {
             if value.len() > MAX_CONFIG_VALUE_LEN {
                 return Err(McpError::invalid_params(
