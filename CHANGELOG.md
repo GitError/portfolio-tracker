@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-05
+
 ### Fixed
 - **CI broken again** — a later dependency merge reintroduced `actions/checkout@v6` / `actions/setup-node@v6`, which do not exist; re-pinned to `@v4` across all three workflow jobs.
 - **CSP disabled again** — `tauri.conf.json` had regressed to `"csp": null`; restored a restrictive policy (`default-src 'self'`, explicit `script-src`/`style-src`/`connect-src`/`img-src`, Google Fonts allowlisted under `style-src`/`font-src`).
