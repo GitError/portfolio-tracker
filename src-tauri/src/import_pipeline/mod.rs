@@ -9,6 +9,7 @@
 
 pub mod aliases;
 pub mod commit;
+pub mod cra_xml;
 pub mod normalize;
 pub mod parser;
 mod xlsx;

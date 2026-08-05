@@ -590,3 +590,61 @@ pub struct PaginatedResult<T> {
     pub page_size: i64,
     pub total_pages: i64,
 }
+
+// ── CRA tax-slip import ───────────────────────────────────────────────────────
+
+/// A single securities-disposition record parsed from a CRA T5008 XML file.
+/// Maps to Statement of Securities Transactions (Box 15–21).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct T5008Disposition {
+    /// Security description (Box 17: id_scty_dsps_txt).
+    pub name: String,
+    /// Mapped asset type string derived from T5008 security type code (Box 15).
+    /// One of "stock", "etf", "other".
+    pub asset_type: String,
+    /// Units disposed (Box 16: dsps_scty_cnt).
+    pub quantity: Option<f64>,
+    /// CUSIP or ISIN identifier (Box 18: dsps_cusip_nbr).
+    pub cusip_isin: Option<String>,
+    /// ISO 4217 currency (Box 13: fgn_crcy_cd); defaults to "CAD".
+    pub currency: String,
+    /// Total cost or book value (Box 20: cost_bok_val_amt).
+    pub book_value: Option<f64>,
+    /// Proceeds of disposition (Box 21: dispn_amt).
+    pub proceeds: Option<f64>,
+    /// Taxation year from T5008Summary.
+    pub tax_year: u16,
+    /// Broker-assigned account number (ident_record: rcpnt_acct_nbr).
+    pub account_number: Option<String>,
+}
+
+/// A single income record parsed from a CRA T5 XML file.
+/// Maps to Statement of Investment Income fields.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct T5IncomeRecord {
+    /// Income type: one of "dividend_eligible", "dividend_non_eligible",
+    /// "interest", "foreign_income", "other_canadian", "royalty",
+    /// "capital_gains_dividend".
+    pub income_type: String,
+    /// Dollar amount of the income.
+    pub amount: f64,
+    /// ISO 4217 currency (Box 27: fgn_crcy_ind); defaults to "CAD".
+    pub currency: String,
+    /// Foreign tax paid (Box 16: fgn_tx_pay_amt), if any.
+    pub withholding_tax: Option<f64>,
+    /// Taxation year from T5Summary.
+    pub tax_year: u16,
+    /// Broker-assigned account number (Box 29: rcpnt_fi_acct_nbr).
+    pub account_number: Option<String>,
+}
+
+/// Discriminated result returned by `parse_cra_xml` — callers switch on
+/// `kind` to decide which list to display.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum CraXmlResult {
+    T5008 { dispositions: Vec<T5008Disposition> },
+    T5 { income: Vec<T5IncomeRecord> },
+}

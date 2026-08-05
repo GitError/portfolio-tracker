@@ -6,9 +6,10 @@ use crate::csv::{build_holdings_csv, parse_import_rows};
 use crate::db;
 use crate::error::AppError;
 use crate::import_pipeline;
+use crate::import_pipeline::cra_xml;
 use crate::types::{
-    AssetType, HoldingInput, ImportCommitRequest, ImportCommitResult, ImportContext, ImportError,
-    ImportPlan, ImportResult, PreviewImportResult, PreviewRow,
+    AssetType, CraXmlResult, HoldingInput, ImportCommitRequest, ImportCommitResult, ImportContext,
+    ImportError, ImportPlan, ImportResult, PreviewImportResult, PreviewRow,
 };
 
 use super::{validate_symbol, DbState, HttpClient, WEIGHT_EPSILON};
@@ -34,6 +35,15 @@ pub async fn commit_import(
     request: ImportCommitRequest,
 ) -> Result<ImportCommitResult, AppError> {
     import_pipeline::commit_import_rows(&db.0, &request).await
+}
+
+/// Parses a CRA T5 or T5008 XML file and returns a typed [`CraXmlResult`].
+///
+/// The file must come from a native file-picker dialog or the CRA My Account
+/// portal download. Detection of T5 vs T5008 is automatic from the XML content.
+#[tauri::command]
+pub fn parse_cra_xml_cmd(file_path: String) -> Result<CraXmlResult, AppError> {
+    cra_xml::parse_cra_xml_file(&file_path).map_err(AppError::Validation)
 }
 
 #[tauri::command]

@@ -198,6 +198,7 @@ pub fn run() {
             commands::get_transactions_paginated,
             commands::get_alerts_paginated,
             commands::get_dividends_paginated,
+            commands::parse_cra_xml_cmd,
         ])
         .run(tauri::generate_context!());
 
@@ -213,13 +214,14 @@ mod ts_binding_tests {
 
     use crate::types::{
         Account, AccountType, AlertDirection, AssetType, ColumnMapping, CountryWeight,
-        CreateAccountRequest, Dividend, DividendInput, ExportPayload, FxRate, Holding,
-        HoldingInput, HoldingWithPrice, ImportCommitRequest, ImportCommitResult, ImportContext,
-        ImportError, ImportPlan, ImportResult, NormalizedImportRow, PerformancePoint,
-        PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot, PreviewImportResult,
-        PreviewRow, PriceAlert, PriceAlertInput, PriceData, RealizedGainsSummary, RealizedLot,
-        RebalanceSuggestion, RefreshResult, RowAction, SectorWeight, StressResult, StressScenario,
-        SymbolMetadata, SymbolResult, Transaction, TransactionInput, TransactionType,
+        CraXmlResult, CreateAccountRequest, Dividend, DividendInput, ExportPayload, FxRate,
+        Holding, HoldingInput, HoldingWithPrice, ImportCommitRequest, ImportCommitResult,
+        ImportContext, ImportError, ImportPlan, ImportResult, NormalizedImportRow,
+        PerformancePoint, PortfolioAnalytics, PortfolioRiskMetrics, PortfolioSnapshot,
+        PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData,
+        RealizedGainsSummary, RealizedLot, RebalanceSuggestion, RefreshResult, RowAction,
+        SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, T5008Disposition,
+        T5IncomeRecord, Transaction, TransactionInput, TransactionType,
     };
     // StressHoldingResult is only reachable via portfolio-core in this crate (it's
     // nested inside StressResult, not referenced standalone) — import it directly
@@ -237,6 +239,9 @@ mod ts_binding_tests {
         AlertDirection::export_all(&cfg).expect("AlertDirection");
         AssetType::export_all(&cfg).expect("AssetType");
         ColumnMapping::export_all(&cfg).expect("ColumnMapping");
+        CraXmlResult::export_all(&cfg).expect("CraXmlResult");
+        T5008Disposition::export_all(&cfg).expect("T5008Disposition");
+        T5IncomeRecord::export_all(&cfg).expect("T5IncomeRecord");
         CountryWeight::export_all(&cfg).expect("CountryWeight");
         CreateAccountRequest::export_all(&cfg).expect("CreateAccountRequest");
         Dividend::export_all(&cfg).expect("Dividend");
