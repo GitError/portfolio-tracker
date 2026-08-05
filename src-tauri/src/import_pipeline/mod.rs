@@ -11,6 +11,7 @@ pub mod aliases;
 pub mod commit;
 pub mod normalize;
 pub mod parser;
+mod xlsx;
 
 use std::collections::HashSet;
 
@@ -28,19 +29,17 @@ pub use commit::commit_import_rows;
 /// analogous to `restore_database`'s SQLite magic-byte check, so the
 /// extension allowlist is the cheapest guard against pointing it at an
 /// arbitrary file on disk.
-const ALLOWED_IMPORT_EXTENSIONS: &[&str] = &["csv", "txt"];
+const ALLOWED_IMPORT_EXTENSIONS: &[&str] = &["csv", "txt", "xlsx"];
 
 fn read_import_file(file_path: &str) -> Result<String, AppError> {
     let path = std::fs::canonicalize(file_path)
         .map_err(|e| AppError::Validation(format!("Cannot resolve file path: {e}")))?;
-    let has_allowed_extension = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| {
-            ALLOWED_IMPORT_EXTENSIONS
-                .iter()
-                .any(|a| ext.eq_ignore_ascii_case(a))
-        });
+    let extension = path.extension().and_then(|ext| ext.to_str());
+    let has_allowed_extension = extension.is_some_and(|ext| {
+        ALLOWED_IMPORT_EXTENSIONS
+            .iter()
+            .any(|a| ext.eq_ignore_ascii_case(a))
+    });
     if !has_allowed_extension {
         return Err(AppError::Validation(format!(
             "Import file must have one of these extensions: {}",
@@ -54,6 +53,9 @@ fn read_import_file(file_path: &str) -> Result<String, AppError> {
             "Import file exceeds the maximum size of {} bytes",
             crate::config::MAX_IMPORT_FILE_BYTES
         )));
+    }
+    if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("xlsx")) {
+        return xlsx::read_xlsx_as_csv(&path);
     }
     std::fs::read_to_string(&path)
         .map_err(|e| AppError::Validation(format!("Cannot read file: {e}")))

@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use portfolio_tracker_lib::import_pipeline::{build_import_plan, parser};
 use portfolio_tracker_lib::types::{ImportContext, RowAction};
+use rust_xlsxwriter::Workbook;
 use sqlx::sqlite::SqlitePool;
 
 const FIXTURE: &str = include_str!("fixtures/td_rrsp_sample.csv");
@@ -40,6 +41,46 @@ async fn unused_pool() -> SqlitePool {
 async fn write_fixture(dir: &std::path::Path) -> std::path::PathBuf {
     let path = dir.join("td_rrsp_sample.csv");
     std::fs::write(&path, FIXTURE).expect("write fixture");
+    path
+}
+
+/// One spreadsheet cell value, written with the matching native Excel type
+/// (`write_string` vs `write_number`) so numeric fields round-trip through
+/// calamine as `Data::Float`/`Data::Int` the way a real XLSX export would,
+/// rather than as text.
+enum XlsxCell {
+    Text(&'static str),
+    Number(f64),
+}
+
+/// Generates a `.xlsx` fixture whose first sheet contains one row per entry
+/// in `rows`; an empty inner `Vec` produces a blank row, used to reproduce
+/// the multi-section format's blank separator lines.
+fn write_xlsx_fixture(
+    dir: &std::path::Path,
+    filename: &str,
+    rows: &[Vec<XlsxCell>],
+) -> std::path::PathBuf {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    for (r, row) in rows.iter().enumerate() {
+        for (c, cell) in row.iter().enumerate() {
+            match cell {
+                XlsxCell::Text(s) => {
+                    worksheet
+                        .write_string(r as u32, c as u16, *s)
+                        .expect("write string cell");
+                }
+                XlsxCell::Number(n) => {
+                    worksheet
+                        .write_number(r as u32, c as u16, *n)
+                        .expect("write number cell");
+                }
+            }
+        }
+    }
+    let path = dir.join(filename);
+    workbook.save(&path).expect("save xlsx fixture");
     path
 }
 
@@ -381,6 +422,164 @@ async fn test_blank_asset_class_is_needs_fix_not_warning() {
         .errors
         .iter()
         .any(|e| e.contains("asset class")));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// XLSX support (#732): a flat, single-sheet workbook is detected as
+/// `GenericCSV` and normalized identically to the equivalent CSV file.
+#[tokio::test]
+async fn test_xlsx_generic_flat_is_parsed() {
+    let pool = unused_pool().await;
+    let dir = std::env::temp_dir().join(format!("import-it-xlsx-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let rows = vec![
+        vec![
+            XlsxCell::Text("Symbol"),
+            XlsxCell::Text("Asset Class"),
+            XlsxCell::Text("Quantity"),
+            XlsxCell::Text("Average Cost"),
+            XlsxCell::Text("Currency"),
+        ],
+        vec![
+            XlsxCell::Text("AAPL"),
+            XlsxCell::Text("Equity"),
+            XlsxCell::Number(10.0),
+            XlsxCell::Number(150.0),
+            XlsxCell::Text("USD"),
+        ],
+    ];
+    let path = write_xlsx_fixture(&dir, "simple_holdings.xlsx", &rows);
+
+    let plan = build_import_plan(&pool, path.to_str().unwrap(), &context())
+        .await
+        .expect("plan should build from an xlsx file");
+
+    assert_eq!(plan.profile_detected, parser::PROFILE_GENERIC_CSV);
+    assert_eq!(plan.rows.len(), 1);
+    let aapl = &plan.rows[0];
+    assert_eq!(aapl.resolved_symbol, Some("AAPL".to_string()));
+    assert_eq!(aapl.quantity, Some(10.0));
+    assert_eq!(aapl.cost_basis, Some(150.0));
+    assert_eq!(aapl.action, RowAction::Create);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// XLSX support (#732): the `CanadianBankMultiSection` marker-line detection
+/// (account header, `Cash Details`, `Holding Details`, `Exchange Rate:`
+/// footer) works the same way on rows read from an XLSX sheet as it does on
+/// CSV text lines.
+#[tokio::test]
+async fn test_xlsx_multi_section_format_is_detected() {
+    let pool = unused_pool().await;
+    let dir = std::env::temp_dir().join(format!("import-it-xlsx-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let rows = vec![
+        vec![XlsxCell::Text(
+            "Portfolio report for RRSP account # 12345 as of 2026-01-01T09:08:10",
+        )],
+        vec![], // blank separator line
+        vec![XlsxCell::Text("Cash Details")],
+        vec![
+            XlsxCell::Text("Currency"),
+            XlsxCell::Text("Account Type"),
+            XlsxCell::Text("Settled Cash"),
+            XlsxCell::Text("Trade Cash"),
+        ],
+        vec![
+            XlsxCell::Text("CAD"),
+            XlsxCell::Text("CASH"),
+            XlsxCell::Number(89192.24),
+            XlsxCell::Number(89192.24),
+        ],
+        vec![], // blank separator line
+        vec![XlsxCell::Text("Holding Details")],
+        vec![
+            XlsxCell::Text("Asset Class"),
+            XlsxCell::Text("Sector"),
+            XlsxCell::Text("Security Description"),
+            XlsxCell::Text("Symbol"),
+            XlsxCell::Text("Quantity"),
+            XlsxCell::Text("Average Cost"),
+            XlsxCell::Text("Average Cost Currency"),
+        ],
+        vec![
+            XlsxCell::Text("Equity"),
+            XlsxCell::Text("Information Tech."),
+            XlsxCell::Text("APPLE INC"),
+            XlsxCell::Text("AAPL:US"),
+            XlsxCell::Number(100.0),
+            XlsxCell::Number(135.5045),
+            XlsxCell::Text("USD"),
+        ],
+        vec![], // blank
+        vec![], // blank
+        vec![XlsxCell::Text(
+            "Exchange Rate: 1 CAD = 0.7126USD  1 USD = 1.4033CAD",
+        )],
+    ];
+    let path = write_xlsx_fixture(&dir, "td_rrsp_sample.xlsx", &rows);
+
+    let plan = build_import_plan(&pool, path.to_str().unwrap(), &context())
+        .await
+        .expect("plan should build from a multi-section xlsx file");
+
+    assert_eq!(
+        plan.profile_detected,
+        parser::PROFILE_CANADIAN_BANK_MULTI_SECTION
+    );
+    assert_eq!(plan.suggested_account_type, Some("RRSP".to_string()));
+    assert_eq!(plan.suggested_account_number, Some("12345".to_string()));
+
+    assert_eq!(plan.cash_rows.len(), 1);
+    assert_eq!(
+        plan.cash_rows[0].resolved_symbol,
+        Some("CAD-CASH".to_string())
+    );
+    assert_eq!(plan.cash_rows[0].quantity, Some(89192.24));
+
+    assert_eq!(plan.rows.len(), 1);
+    let aapl = &plan.rows[0];
+    assert_eq!(aapl.resolved_symbol, Some("AAPL".to_string()));
+    assert_eq!(aapl.quantity, Some(100.0));
+    assert_eq!(aapl.cost_basis, Some(135.5045));
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// XLSX support (#732): extension matching must be case-insensitive, exactly
+/// like the existing CSV/TXT extension check.
+#[tokio::test]
+async fn test_xlsx_extension_detection_is_case_insensitive() {
+    let pool = unused_pool().await;
+    let dir = std::env::temp_dir().join(format!("import-it-xlsx-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let rows = vec![
+        vec![
+            XlsxCell::Text("Symbol"),
+            XlsxCell::Text("Asset Class"),
+            XlsxCell::Text("Quantity"),
+            XlsxCell::Text("Average Cost"),
+            XlsxCell::Text("Currency"),
+        ],
+        vec![
+            XlsxCell::Text("AAPL"),
+            XlsxCell::Text("Equity"),
+            XlsxCell::Number(10.0),
+            XlsxCell::Number(150.0),
+            XlsxCell::Text("USD"),
+        ],
+    ];
+    let path = write_xlsx_fixture(&dir, "UPPERCASE.XLSX", &rows);
+
+    let plan = build_import_plan(&pool, path.to_str().unwrap(), &context())
+        .await
+        .expect("uppercase .XLSX extension should be accepted");
+    assert_eq!(plan.rows.len(), 1);
 
     std::fs::remove_dir_all(&dir).ok();
 }
