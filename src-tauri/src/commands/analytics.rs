@@ -95,10 +95,24 @@ pub(crate) async fn get_symbol_metadata_with_cache(
     let mut stale_indices: Vec<usize> = Vec::new();
 
     if let Some(pool) = pool {
+        // Single batch query instead of one query per symbol (fixes N+1, #738).
+        let symbol_refs: Vec<&str> = symbols.iter().map(|s| s.as_str()).collect();
+        let cached_batch =
+            db::get_symbol_fundamentals_from_cache_batch(pool, &symbol_refs, CACHE_TTL_SECS)
+                .await
+                .unwrap_or_default();
+
+        // Build an O(1) lookup map (owned-key so no lifetime issues).
+        let cached_map: std::collections::HashMap<String, SymbolMetadata> = cached_batch
+            .into_iter()
+            .map(|m| (m.symbol.clone(), m))
+            .collect();
+
         for (i, symbol) in symbols.iter().enumerate() {
-            match db::get_symbol_fundamentals_from_cache(pool, symbol, CACHE_TTL_SECS).await {
-                Ok(Some(cached)) => results[i] = Some(cached),
-                _ => stale_indices.push(i),
+            if let Some(meta) = cached_map.get(symbol) {
+                results[i] = Some(meta.clone());
+            } else {
+                stale_indices.push(i);
             }
         }
     } else {

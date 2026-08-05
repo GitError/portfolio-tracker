@@ -649,51 +649,66 @@ pub async fn upsert_symbol_fundamentals(
     Ok(())
 }
 
-/// Returns cached fundamentals for a symbol if they were updated within `max_age_secs` seconds.
-/// Returns `None` when there is no cache entry or the entry is stale.
-pub async fn get_symbol_fundamentals_from_cache(
+/// Batch version of the old single-symbol fundamentals lookup: fetches all cached
+/// fundamentals for the given symbols in one SQL query and returns only entries
+/// that are still fresh (younger than `max_age_secs`).
+pub async fn get_symbol_fundamentals_from_cache_batch(
     pool: &SqlitePool,
-    symbol: &str,
+    symbols: &[&str],
     max_age_secs: i64,
-) -> Result<Option<SymbolMetadata>, String> {
-    use sqlx::Row;
-    let row = sqlx::query(
-        "SELECT symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, market_cap, fundamentals_updated_at
-         FROM symbol_cache
-         WHERE symbol = UPPER($1) AND fundamentals_updated_at IS NOT NULL
-         LIMIT 1",
-    )
-    .bind(symbol)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let row = match row {
-        Some(r) => r,
-        None => return Ok(None),
-    };
-
-    // Check freshness
-    let updated_at: String = row.get(9);
-    let cached_time = chrono::DateTime::parse_from_rfc3339(&updated_at)
-        .map(|dt| dt.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now() - chrono::Duration::seconds(max_age_secs + 1));
-    let age = (Utc::now() - cached_time).num_seconds();
-    if age > max_age_secs {
-        return Ok(None);
+) -> Result<Vec<SymbolMetadata>, String> {
+    if symbols.is_empty() {
+        return Ok(vec![]);
     }
 
-    Ok(Some(SymbolMetadata {
-        symbol: row.get(0),
-        sector: row.get::<Option<String>, _>(1),
-        industry: row.get::<Option<String>, _>(2),
-        country: row.get::<Option<String>, _>(3),
-        beta: row.get::<Option<f64>, _>(4),
-        pe_ratio: row.get::<Option<f64>, _>(5),
-        dividend_yield: row.get::<Option<f64>, _>(6),
-        eps: row.get::<Option<f64>, _>(7),
-        market_cap: row.get::<Option<f64>, _>(8),
-    }))
+    use sqlx::{QueryBuilder, Row};
+
+    // Use QueryBuilder for dynamic IN clause — this is sqlx's idiomatic way to
+    // build parameterised queries with a variable number of bind values.
+    let mut builder = QueryBuilder::new(
+        "SELECT symbol, sector, industry, country, beta, pe_ratio, dividend_yield, eps, \
+         market_cap, fundamentals_updated_at \
+         FROM symbol_cache WHERE symbol IN (",
+    );
+    let mut sep = builder.separated(", ");
+    for s in symbols {
+        sep.push_bind(s.to_uppercase());
+    }
+    builder.push(") AND fundamentals_updated_at IS NOT NULL");
+
+    let rows = builder
+        .build()
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let cutoff = Utc::now() - chrono::Duration::seconds(max_age_secs);
+
+    let results = rows
+        .into_iter()
+        .filter_map(|row| {
+            let updated_at: String = row.get(9);
+            let cached_time = chrono::DateTime::parse_from_rfc3339(&updated_at)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| Utc::now() - chrono::Duration::seconds(max_age_secs + 1));
+            if cached_time < cutoff {
+                return None; // stale
+            }
+            Some(SymbolMetadata {
+                symbol: row.get(0),
+                sector: row.get::<Option<String>, _>(1),
+                industry: row.get::<Option<String>, _>(2),
+                country: row.get::<Option<String>, _>(3),
+                beta: row.get::<Option<f64>, _>(4),
+                pe_ratio: row.get::<Option<f64>, _>(5),
+                dividend_yield: row.get::<Option<f64>, _>(6),
+                eps: row.get::<Option<f64>, _>(7),
+                market_cap: row.get::<Option<f64>, _>(8),
+            })
+        })
+        .collect();
+
+    Ok(results)
 }
 
 // ── Portfolio snapshots ───────────────────────────────────────────────────────
@@ -1999,6 +2014,47 @@ mod tests {
             row.get::<Option<String>, _>(4),
             Some("Technology".to_string())
         );
+    }
+
+    // ── get_symbol_fundamentals_from_cache_batch ──────────────────────────────
+
+    #[tokio::test]
+    async fn get_symbol_fundamentals_from_cache_batch_returns_only_fresh_hits() {
+        let pool = open_test_db().await;
+
+        // AAPL: fresh (just upserted).
+        upsert_symbol_fundamentals(&pool, &make_symbol_metadata("AAPL"), None, None, None, None)
+            .await
+            .expect("upsert AAPL");
+
+        // MSFT: stale (fundamentals_updated_at far in the past).
+        upsert_symbol_fundamentals(&pool, &make_symbol_metadata("MSFT"), None, None, None, None)
+            .await
+            .expect("upsert MSFT");
+        let stale = (Utc::now() - chrono::Duration::days(2)).to_rfc3339();
+        sqlx::query("UPDATE symbol_cache SET fundamentals_updated_at = $1 WHERE symbol = 'MSFT'")
+            .bind(&stale)
+            .execute(&pool)
+            .await
+            .expect("age MSFT");
+
+        // GOOG: never cached at all.
+        let symbols = ["AAPL", "MSFT", "GOOG"];
+        let results = get_symbol_fundamentals_from_cache_batch(&pool, &symbols, 86_400)
+            .await
+            .expect("batch lookup");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].symbol, "AAPL");
+    }
+
+    #[tokio::test]
+    async fn get_symbol_fundamentals_from_cache_batch_empty_symbols_returns_empty() {
+        let pool = open_test_db().await;
+        let results = get_symbol_fundamentals_from_cache_batch(&pool, &[], 86_400)
+            .await
+            .expect("batch lookup");
+        assert!(results.is_empty());
     }
 
     #[tokio::test]
