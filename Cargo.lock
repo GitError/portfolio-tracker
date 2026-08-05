@@ -3226,7 +3226,7 @@ dependencies = [
 
 [[package]]
 name = "portfolio-tracker"
-version = "0.1.0-8"
+version = "0.2.0"
 dependencies = [
  "calamine",
  "chrono",
@@ -3234,6 +3234,7 @@ dependencies = [
  "futures",
  "mockito",
  "portfolio-core",
+ "quick-xml 0.38.4",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3375,6 +3376,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b66c2058c55a409d601666cffe35f04333cf1013010882cec174a7467cd4e21c"
 dependencies = [
  "memchr",
+ "serde",
 ]
 
 [[package]]
@@ -4819,9 +4821,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-plugin-opener"
-version = "2.5.3"
+version = "2.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc624469b06f59f5a29f874bbc61a2ed737c0f9c23ef09855a292c389c42e83f"
+checksum = "17e1bea14edce6b793a04e2417e3fd924b9bc4faae83cdee7d714156cceeed29"
 dependencies = [
  "dunce",
  "glob",
