@@ -1,5 +1,5 @@
 // ─── Preset scenario selector for stress test ─────────────────────────────────
-import { HelpCircle } from 'lucide-react';
+import { Calendar, HelpCircle } from 'lucide-react';
 import { Select } from './ui/Select';
 import type { StressScenarioInfo } from '../types/portfolio';
 
@@ -13,6 +13,33 @@ const SECTION_TITLE: React.CSSProperties = {
   paddingBottom: 6,
   borderBottom: '1px solid var(--border-subtle)',
 };
+
+// ─── "Historical" badge — marks presets whose shocks are real, not hypothetical ──
+function HistoricalBadge() {
+  return (
+    <span
+      title="Shock values are derived from an actual historical event"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        borderRadius: '2px',
+        fontSize: 9,
+        fontWeight: 600,
+        padding: '1px 5px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.05em',
+        fontFamily: 'var(--font-mono)',
+        background: 'var(--color-warning)18',
+        color: 'var(--color-warning)',
+        border: '1px solid var(--color-warning)55',
+      }}
+    >
+      <Calendar size={9} />
+      Historical
+    </span>
+  );
+}
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 export interface PresetScenarioSelectorProps {
@@ -72,7 +99,14 @@ export function PresetScenarioSelector({
       <Select
         value={presetName}
         onChange={onSelect}
-        options={presetNames.map((n) => ({ value: n, label: n }))}
+        options={presetNames.map((n) => {
+          const info = scenarioInfo.find((s) => s.name === n);
+          return {
+            value: n,
+            label: n,
+            badge: info?.isHistorical ? <HistoricalBadge /> : undefined,
+          };
+        })}
       />
       {/* Scenario description */}
       {activePresetInfo && (
@@ -86,6 +120,27 @@ export function PresetScenarioSelector({
           }}
         >
           {activePresetInfo.description}
+        </div>
+      )}
+      {/* Data source footnote, historical presets only */}
+      {activePresetInfo?.isHistorical && activePresetInfo.dataSource && (
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 10,
+            color: 'var(--text-secondary)',
+            fontFamily: 'var(--font-mono)',
+            lineHeight: 1.5,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 5,
+          }}
+        >
+          <Calendar
+            size={11}
+            style={{ flexShrink: 0, marginTop: 1, color: 'var(--color-warning)' }}
+          />
+          <span>{activePresetInfo.dataSource}</span>
         </div>
       )}
     </div>

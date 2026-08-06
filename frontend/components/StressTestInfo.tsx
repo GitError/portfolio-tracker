@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { Calendar, X } from 'lucide-react';
 import { formatPercent } from '../lib/format';
 import type { StressScenarioInfo } from '../types/portfolio';
 
@@ -72,9 +72,34 @@ export function StressTestInfo({ scenario, isOpen, onClose }: Props) {
                 fontFamily: 'var(--font-sans)',
                 fontSize: 18,
                 color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
               }}
             >
               {scenario.name}
+              {scenario.isHistorical && (
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    borderRadius: '2px',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    padding: '1px 5px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    fontFamily: 'var(--font-mono)',
+                    background: 'var(--color-warning)18',
+                    color: 'var(--color-warning)',
+                    border: '1px solid var(--color-warning)55',
+                  }}
+                >
+                  <Calendar size={9} />
+                  Historical
+                </span>
+              )}
             </h2>
           </div>
           <button
@@ -184,6 +209,33 @@ export function StressTestInfo({ scenario, isOpen, onClose }: Props) {
             {scenario.historicalParallel}
           </div>
         </div>
+
+        {scenario.isHistorical && scenario.dataSource && (
+          <div style={{ marginTop: 18 }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 10,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                marginBottom: 6,
+              }}
+            >
+              Data Source
+            </div>
+            <div
+              style={{
+                color: 'var(--text-secondary)',
+                fontSize: 12,
+                fontFamily: 'var(--font-mono)',
+                lineHeight: 1.6,
+              }}
+            >
+              {scenario.dataSource}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
