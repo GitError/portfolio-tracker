@@ -43,6 +43,23 @@ export function createPresetScenarioInfo(baseCurrency: string): StressScenarioIn
   const commodityRally: Record<string, number> = { stock: 0.03, etf: 0.02 };
   addFxShock(commodityRally, 'USD', -0.04);
 
+  // Historical event replays: shock values are derived from actual peak-to-trough
+  // moves during the named event, not hypothetical estimates. Crypto is omitted
+  // for pre-2009 events since it didn't exist yet.
+  const globalFinancialCrisis: Record<string, number> = { stock: -0.567, etf: -0.567 };
+  addFxShock(globalFinancialCrisis, 'USD', 0.21);
+
+  const covidCrash: Record<string, number> = { stock: -0.339, etf: -0.339, crypto: -0.62 };
+  addFxShock(covidCrash, 'USD', 0.11);
+
+  const rateHike2022: Record<string, number> = { stock: -0.254, etf: -0.24, crypto: -0.78 };
+  addFxShock(rateHike2022, 'USD', 0.1);
+
+  const dotcomCrash: Record<string, number> = { stock: -0.49, etf: -0.45 };
+  addFxShock(dotcomCrash, 'USD', 0.1);
+
+  const blackMonday1987: Record<string, number> = { stock: -0.335, etf: -0.335 };
+
   return [
     {
       name: 'Mild Correction',
@@ -119,6 +136,55 @@ export function createPresetScenarioInfo(baseCurrency: string): StressScenarioIn
       description:
         'Models a commodity-led upswing that helps resource-heavy equities while a stronger CAD offsets some foreign gains.',
       historicalParallel: '2021 energy and materials rally',
+    },
+    {
+      name: '2008 Global Financial Crisis',
+      shocks: globalFinancialCrisis,
+      description:
+        'Replays the 2008 credit crisis using the actual peak-to-trough decline in broad equity markets and CAD depreciation against the US dollar. Crypto is excluded since it did not yet exist.',
+      historicalParallel: 'Global Financial Crisis, Oct 2007 - Mar 2009',
+      isHistorical: true,
+      dataSource:
+        'S&P 500 -56.8% peak-to-trough, Oct 9 2007 - Mar 9 2009; USD/CAD +21% over the same window',
+    },
+    {
+      name: 'COVID-19 Crash',
+      shocks: covidCrash,
+      description:
+        'Replays the fastest bear market on record: a five-week equity collapse alongside a sharp crypto selloff and a weaker CAD as investors rushed into US dollars.',
+      historicalParallel: 'COVID-19 crash, Feb-Mar 2020',
+      isHistorical: true,
+      dataSource:
+        'S&P 500 -33.9% peak-to-trough, Feb 19 2020 - Mar 23 2020; Bitcoin -62% over the same window (incl. Mar 12 2020 "Black Thursday"); USD/CAD +11%',
+    },
+    {
+      name: '2022 Rate-Hike Cycle',
+      shocks: rateHike2022,
+      description:
+        'Replays the 2022 drawdown driven by aggressive Fed tightening: equities fell over the full year while crypto suffered a much deeper collapse amid the Terra/Luna and FTX failures.',
+      historicalParallel: '2022 rate hiking cycle',
+      isHistorical: true,
+      dataSource:
+        'S&P 500 -25.4% peak-to-trough, Jan 3 2022 - Oct 12 2022; Bitcoin -77.6% peak-to-trough, Nov 2021 - Nov 2022; USD/CAD +10%',
+    },
+    {
+      name: 'Dot-Com Crash',
+      shocks: dotcomCrash,
+      description:
+        'Replays the 2000-2002 bear market that followed the internet stock bubble, with a multi-year equity decline and a weaker CAD. Crypto is excluded since it did not yet exist.',
+      historicalParallel: 'Dot-com crash, Mar 2000 - Oct 2002',
+      isHistorical: true,
+      dataSource: 'S&P 500 -49% peak-to-trough, Mar 24 2000 - Oct 9 2002; USD/CAD +10%',
+    },
+    {
+      name: 'Black Monday 1987',
+      shocks: blackMonday1987,
+      description:
+        'Replays the 1987 crash centered on a single catastrophic trading day. FX and crypto shocks are excluded: reliable same-week CAD data is not available and crypto did not yet exist.',
+      historicalParallel: 'Black Monday, Oct 19 1987',
+      isHistorical: true,
+      dataSource:
+        'S&P 500 -33.5% peak-to-trough, Aug 25 1987 - Dec 4 1987 (incl. -20.5% on Oct 19 1987 alone)',
     },
   ];
 }

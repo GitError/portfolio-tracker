@@ -14,6 +14,8 @@ import { ResilienceSummary } from '../ResilienceSummary';
 import { StressResultsTable } from '../StressResultsTable';
 // ─── PresetScenarioSelector ───────────────────────────────────────────────────
 import { PresetScenarioSelector } from '../PresetScenarioSelector';
+// ─── StressTestInfo ───────────────────────────────────────────────────────────
+import { StressTestInfo } from '../StressTestInfo';
 
 import type { PortfolioSnapshot, HoldingWithPrice, StressResult } from '../../types/portfolio';
 
@@ -266,5 +268,127 @@ describe('PresetScenarioSelector', () => {
       />
     );
     expect(screen.getByText(/A severe market downturn/)).toBeTruthy();
+  });
+
+  // ─── Historical preset distinction ───────────────────────────────────────────
+  const historicalPresetNames = ['Bear Market', '2008 Global Financial Crisis', 'Custom'];
+  const historicalScenarioInfo = [
+    ...scenarioInfo,
+    {
+      name: '2008 Global Financial Crisis',
+      description: 'Replays the 2008 credit crisis.',
+      historicalParallel: 'Global Financial Crisis, Oct 2007 - Mar 2009',
+      shocks: { stock: -0.567 },
+      isHistorical: true,
+      dataSource: 'S&P 500 -56.8% peak-to-trough, Oct 9 2007 - Mar 9 2009',
+    },
+  ];
+
+  it('does not show a Historical badge in the trigger for a hypothetical preset', () => {
+    render(
+      <PresetScenarioSelector
+        presetName="Bear Market"
+        presetNames={historicalPresetNames}
+        scenarioInfo={historicalScenarioInfo}
+        onSelect={vi.fn()}
+        onInfoOpen={vi.fn()}
+      />
+    );
+    expect(screen.queryByText(/historical/i)).toBeNull();
+  });
+
+  it('shows a Historical badge in the trigger when a historical preset is selected', () => {
+    render(
+      <PresetScenarioSelector
+        presetName="2008 Global Financial Crisis"
+        presetNames={historicalPresetNames}
+        scenarioInfo={historicalScenarioInfo}
+        onSelect={vi.fn()}
+        onInfoOpen={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/historical/i)).toBeTruthy();
+  });
+
+  it('shows a Historical badge next to the option when the dropdown is opened', () => {
+    render(
+      <PresetScenarioSelector
+        presetName="Bear Market"
+        presetNames={historicalPresetNames}
+        scenarioInfo={historicalScenarioInfo}
+        onSelect={vi.fn()}
+        onInfoOpen={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('option', { name: /2008 global financial crisis/i })).toBeTruthy();
+    expect(screen.getByText(/historical/i)).toBeTruthy();
+  });
+
+  it('shows the data source footnote for a historical preset', () => {
+    render(
+      <PresetScenarioSelector
+        presetName="2008 Global Financial Crisis"
+        presetNames={historicalPresetNames}
+        scenarioInfo={historicalScenarioInfo}
+        onSelect={vi.fn()}
+        onInfoOpen={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/S&P 500 -56.8% peak-to-trough/)).toBeTruthy();
+  });
+
+  it('does not show a data source footnote for a hypothetical preset', () => {
+    render(
+      <PresetScenarioSelector
+        presetName="Bear Market"
+        presetNames={historicalPresetNames}
+        scenarioInfo={historicalScenarioInfo}
+        onSelect={vi.fn()}
+        onInfoOpen={vi.fn()}
+      />
+    );
+    expect(screen.queryByText(/peak-to-trough/)).toBeNull();
+  });
+});
+
+// ─── StressTestInfo tests ─────────────────────────────────────────────────────
+describe('StressTestInfo', () => {
+  const hypotheticalScenario = {
+    name: 'Bear Market',
+    description: 'A severe market downturn.',
+    historicalParallel: '2008',
+    shocks: { stock: -0.2 },
+  };
+
+  const historicalScenario = {
+    name: '2008 Global Financial Crisis',
+    description: 'Replays the 2008 credit crisis.',
+    historicalParallel: 'Global Financial Crisis, Oct 2007 - Mar 2009',
+    shocks: { stock: -0.567 },
+    isHistorical: true,
+    dataSource: 'S&P 500 -56.8% peak-to-trough, Oct 9 2007 - Mar 9 2009',
+  };
+
+  it('renders nothing when closed', () => {
+    const { container } = render(
+      <StressTestInfo scenario={historicalScenario} isOpen={false} onClose={vi.fn()} />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('shows a Historical badge and Data Source section for a historical scenario', () => {
+    render(<StressTestInfo scenario={historicalScenario} isOpen={true} onClose={vi.fn()} />);
+    // "Historical" badge plus the always-present "Historical Parallel" heading
+    expect(screen.getAllByText(/historical/i)).toHaveLength(2);
+    expect(screen.getByText(/data source/i)).toBeTruthy();
+    expect(screen.getByText(/S&P 500 -56.8% peak-to-trough/)).toBeTruthy();
+  });
+
+  it('omits the Historical badge and Data Source section for a hypothetical scenario', () => {
+    render(<StressTestInfo scenario={hypotheticalScenario} isOpen={true} onClose={vi.fn()} />);
+    // Only the always-present "Historical Parallel" heading, no "Historical" badge
+    expect(screen.getAllByText(/historical/i)).toHaveLength(1);
+    expect(screen.queryByText(/data source/i)).toBeNull();
   });
 });

@@ -4,6 +4,8 @@ import { ChevronDown } from 'lucide-react';
 export interface SelectOption {
   value: string;
   label: string;
+  /** Optional decoration (icon, badge) rendered inline after the label, in the trigger and the list. */
+  badge?: React.ReactNode;
 }
 
 interface Props {
@@ -18,7 +20,8 @@ export function Select({ value, onChange, options, style }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const selectedLabel = options.find((o) => o.value === value)?.label ?? value;
+  const selectedOption = options.find((o) => o.value === value);
+  const selectedLabel = selectedOption?.label ?? value;
 
   // Close on outside click
   useEffect(() => {
@@ -123,7 +126,10 @@ export function Select({ value, onChange, options, style }: Props) {
           e.currentTarget.style.borderColor = 'var(--border-primary)';
         }}
       >
-        <span>{selectedLabel}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {selectedLabel}
+          {selectedOption?.badge}
+        </span>
         <ChevronDown
           size={13}
           style={{
@@ -161,9 +167,13 @@ export function Select({ value, onChange, options, style }: Props) {
                   color: isSelected ? 'var(--color-accent)' : 'var(--text-primary)',
                   background: isActive ? 'var(--bg-surface-hover)' : 'transparent',
                   userSelect: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
                 }}
               >
                 {opt.label}
+                {opt.badge}
               </li>
             );
           })}

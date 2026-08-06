@@ -183,6 +183,10 @@ export interface StressScenario {
 export interface StressScenarioInfo extends StressScenario {
   description: string;
   historicalParallel: string;
+  /** True for presets whose shock values are derived from an actual historical event, not a hypothetical. */
+  isHistorical?: boolean;
+  /** Traceable citation for the shock values, e.g. "S&P 500 -56.8% peak-to-trough, Oct 2007-Mar 2009". Present only when isHistorical is true. */
+  dataSource?: string;
 }
 
 export interface StressHoldingResult {
