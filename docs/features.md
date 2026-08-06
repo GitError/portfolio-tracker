@@ -80,21 +80,57 @@ Start typing a symbol or company name in the Symbol field. Results are fetched f
 
 Click any row in the holdings table to open the edit modal. Update any field and save. To delete, use the trash icon in the edit modal or the row action menu.
 
-### CSV Import
+### Import Wizard
 
-> This strict, canonical-header CSV importer is planned to be replaced by a broker-agnostic guided import wizard (CSV/XLSX, column inference, account context, import plan preview, post-import insights). See `docs/roadmap.md` and `docs/superpowers/specs/2026-05-24-import-plus-insights-design.md`. The behavior below is current until that ships.
+Click **Import** to open the guided multi-step import wizard. The wizard accepts CSV, XLSX, and CRA XML files and walks you through column mapping, account selection, and a row-by-row review before anything is committed to the database.
 
-Click **Import** to bulk-load holdings from a CSV file.
+#### Step 1 — Upload
 
-**Required columns:** `symbol`, `type`, `quantity`, `cost_basis`, `currency`
+Drag-and-drop or click to select your file. Supported formats:
 
-**Optional columns:** `name`, `account`, `exchange`, `target_weight`
+| Format | Notes |
+|--------|-------|
+| CSV | Any delimiter; column names are inferred via a broker-alias registry |
+| XLSX | First sheet is used; column names inferred the same way |
+| CRA XML | T5008 (Statement of Securities Transactions) or T5 (Statement of Investment Income) XML returns from CRA |
 
-A preview screen shows each row's validation status (ready, duplicate, invalid symbol, or currency mismatch) before you commit the import. Rows that would be duplicates are skipped automatically.
+#### Step 2 — Account Context
 
-**Symbol notation:** You can use `SYMBOL:COUNTRY` format for automatic exchange suffix resolution (e.g. `BMO:CA` → `BMO.TO`, `BARC:GB` → `BARC.L`).
+Pick which account (TFSA, RRSP, Taxable, etc.) the imported holdings belong to. Applying an account once here saves you from setting it row-by-row.
 
-Click **Export** or press `⌘E` to download your current holdings as a CSV, which can be re-imported later.
+#### Step 3 — Column Mapping
+
+The wizard infers column roles from your header names using a built-in broker-alias registry (e.g. `Ticker`, `Security`, `Symbol` → symbol; `Qty`, `Shares`, `Units` → quantity). Review and adjust any mappings that weren't detected automatically.
+
+#### Step 4 — Import Plan
+
+Each row is classified before anything is written:
+
+| Status | Meaning |
+|--------|---------|
+| `create` | New holding — will be added |
+| `update` | Existing holding with matching symbol — quantity/cost basis will be updated |
+| `skip` | Exact duplicate of an existing holding — no action needed |
+| `needs_fix` | Required field missing or value invalid — must be corrected before committing |
+| `warning` | Non-critical issue (e.g. unrecognised asset type) — review recommended |
+
+Rows with `needs_fix` block the commit until resolved. `warning` rows can be committed as-is or corrected inline.
+
+#### Step 5 — Post-Import Insights
+
+After commit, the wizard shows a summary of what changed: new positions added, existing positions updated, drift from target weights, and any symbols that weren't found in Yahoo Finance.
+
+#### Export
+
+Click **Export** or press `⌘E` to download your current holdings as a CSV, which can be re-imported via the wizard at any time.
+
+#### CRA XML Import
+
+For Canadian users, CRA tax returns include machine-readable XML attachments:
+- **T5008** — Statement of Securities Transactions (dispositions/sales). Each slip maps to a `T5008Disposition` with proceeds, cost/book value, and security type.
+- **T5** — Statement of Investment Income (dividends, interest, foreign income). Each slip maps to a `T5IncomeRecord` with income amounts by category.
+
+To use: select your CRA XML file in the wizard upload step. The wizard parses both T5008 and T5 slips and pre-populates the import plan for review.
 
 ### Sorting and Filtering
 

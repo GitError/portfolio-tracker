@@ -9,27 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - 2026-08-05
 
+### Added
+- **Import Plus Insights wizard** — guided multi-step import replacing the old strict CSV-only importer. Upload CSV or XLSX → pick account context once → deterministic column inference against a broker-alias registry → reviewable import plan (`create`/`update`/`skip`/`needs_fix`/`warning` per row) → commit clean rows → post-import insight panel (new positions, drift from target weights, stale symbols, cash balance changes). PR #745.
+- **XLSX import support** — the Import wizard accepts `.xlsx` files in addition to CSV; the Rust backend parses XLSX using `calamine` and feeds the same row-preview/commit pipeline as CSV. PR #747.
+- **CRA T5 / T5008 XML import** — new `parse_cra_xml_cmd` Tauri command parses CRA-issued T5008 (Statement of Securities Transactions) and T5 (Statement of Investment Income) XML tax returns using `quick-xml` + serde. Returns typed `T5008Disposition` and `T5IncomeRecord` arrays for pre-population of the import wizard. PR #751, closes #734.
+- **i18n wiring completed** — `Analytics.tsx`, `Alerts.tsx`, `Settings.tsx`, and `Dividends.tsx` now call `t()` for all user-facing strings; all 7 locales are fully active across every view.
+
 ### Fixed
+- **`Warning` rows with `asset_type Other` misclassified** — import rows whose asset type resolves to `Other` via the broker alias registry were shown as `Warning` instead of `NeedsFix`; reclassified so users are prompted to review them. PR #744.
+- **`exchange` and `target_weight` not persisted on import commit** — both fields were parsed from the import plan but dropped before the `add_holding` call; now passed through correctly. PR #743.
+- **`ImportHoldingsModal` strings not i18n-wired** — all user-facing strings in the import modal now use `t()`. PR #742.
+- **`portfolio.ts` out of sync with ts-rs bindings** — `ImportRow`, `ImportPlan`, and related types were mismatched between handwritten frontend types and Rust-generated ts-rs bindings after the Import Plus Insights work; reconciled. PR #741.
+- **ts-rs bindings duplicated across two directories** — generated bindings were written to both `frontend/types/` and `src-tauri/bindings/`; consolidated to a single `frontend/bindings/` directory. PR #746.
+- **`rust_xlsxwriter` dev-dependency causing test fragility** — XLSX import tests depended on `rust_xlsxwriter` at test time only; replaced with checked-in `.xlsx` fixture files to remove the build-time dependency. PR #752.
 - **CI broken again** — a later dependency merge reintroduced `actions/checkout@v6` / `actions/setup-node@v6`, which do not exist; re-pinned to `@v4` across all three workflow jobs.
 - **CSP disabled again** — `tauri.conf.json` had regressed to `"csp": null`; restored a restrictive policy (`default-src 'self'`, explicit `script-src`/`style-src`/`connect-src`/`img-src`, Google Fonts allowlisted under `style-src`/`font-src`).
-- **Theme/language flash on launch (regression)** — `useTheme`/`useLanguage` now mirror the persisted preference to `localStorage` synchronously so the inline pre-React script in `index.html` can apply the correct theme/language before first paint in the Tauri webview, not just in the browser dev server.
+- **Theme/language flash on launch (regression)** — `useTheme`/`useLanguage` now mirror the persisted preference to `localStorage` synchronously so the inline pre-React script in `index.html` can apply the correct theme/language before first paint in the Tauri webview.
 - **`Cargo.lock` out of sync with `sqlx` 0.9 requirement** — ran `cargo update -p sqlx` to bring the lockfile in line with `Cargo.toml`.
 - **`Dividend.id` was `i64`** while every other entity ID is a UUID string — added a `0011_dividend_uuid_id` migration, switched the Rust type to a new `DividendId` newtype, and updated the frontend type/mock data to match.
 - **`e2e/` excluded from `tsconfig.json`** — added to `include` so E2E type errors are now caught by `tsc --noEmit`.
 - **Orphaned duplicate component** — deleted `frontend/components/KeyboardShortcutsOverlay.tsx`; only `frontend/components/ui/KeyboardShortcutsOverlay.tsx` was ever imported.
-- **`commands_tests.rs` was dead code** — 22 command-layer validation/CRUD tests (including holding/alert/transaction/dividend round-trips and pagination validation) were never wired into the module tree after the `commands.rs` → `commands/` split and hadn't run in CI since. Added `#[cfg(test)] mod commands_tests;` to `lib.rs`; all 22 pass, including a dividend round-trip that directly exercises the new `DividendId` UUID migration end-to-end.
+- **`commands_tests.rs` was dead code** — 22 command-layer validation/CRUD tests were never wired into the module tree after the `commands.rs` → `commands/` split. Added `#[cfg(test)] mod commands_tests;` to `lib.rs`; all 22 pass.
 
-### Added
-- **i18n wiring completed** — `Analytics.tsx`, `Alerts.tsx`, `Settings.tsx`, and `Dividends.tsx` now call `t()` for all user-facing strings; all 7 locales are fully active across every view.
+### Performance
+- **Analytics N+1 query eliminated** — `useAnalytics` was fetching fundamentals one symbol at a time; replaced with a batched cache-lookup that resolves all symbols in a single query. PR #738.
+
+### Tests
+- **`run_stress_test_cmd` command-level coverage** — Tauri-command-level tests covering scenario validation, shock computation, and error paths. PR #739.
 
 ### Changed
-- Merged 9 pending Dependabot PRs: `chrono` 0.4.44, `serde`, `sqlx` → 0.9 (Cargo.toml requirement), `tauri-build`/`tauri` 2.10.3, `lucide-react` 1.27.0, `recharts` 3.10.1, `i18next` 26.3.6, `uuid` 1.23.0, `@tauri-apps/api` 2.11.1, the frontend dev-dependencies group, and the `tauri-action`/`checkout` GitHub Actions.
-- Raised `vitest.config.ts` coverage thresholds from 25% to actual measured coverage (lines 50 / functions 42 / branches 44 / statements 50), ratcheting toward the project's stated 80% target instead of jumping straight to it. Jumping straight to 80% broke CI (see commit history) since real coverage was only ~50%; ratcheting keeps the gate real and green while still forcing new code to hold the line.
+- Merged 9 pending Dependabot PRs: `chrono` 0.4.44, `serde`, `sqlx` → 0.9, `tauri-build`/`tauri` 2.10.3→2.11.5, `lucide-react` 1.27.0, `recharts` 3.10.1, `i18next` 26.3.6, `uuid` 1.23.0, `@tauri-apps/api` 2.11.1, the frontend dev-dependencies group, and the `tauri-action`/`checkout` GitHub Actions.
+- Raised `vitest.config.ts` coverage thresholds from 25% to actual measured coverage (lines 50 / functions 42 / branches 44 / statements 50), ratcheting toward the project's 80% target.
 
 ### Known Issues
-- **Coverage is well below the stated 80% target** — thresholds are set to current levels (50/42/44/50) so CI passes today; raising them further needs a real test-writing effort, concentrated on the least-covered files: `AccountsModal.tsx` (~3%), `Analytics.tsx` (~1%), `StressTest.tsx` (~5%), `ScenarioComparison.tsx` (~10%), `ShockSliders.tsx` (~15%).
-- **SQLx version split across the workspace** — `src-tauri` requires `^0.9` (resolves to 0.9.0), `portfolio-mcp` still pins `^0.8` (resolves to 0.8.6). Not a bug, but worth aligning in a follow-up.
+- **Coverage is well below the stated 80% target** — thresholds are set to current levels (50/42/44/50) so CI passes today; the least-covered files are `AccountsModal.tsx` (~3%), `Analytics.tsx` (~1%), `StressTest.tsx` (~5%), `ScenarioComparison.tsx` (~10%), `ShockSliders.tsx` (~15%).
+- **SQLx version split across the workspace** — `src-tauri` requires `^0.9` (resolves to 0.9.0), `portfolio-mcp` still pins `^0.8` (resolves to 0.8.6). Not a bug, but worth aligning.
 - Three Dependabot PRs remain open: #542 (TypeScript 6.0), #540 (vite + `@vitejs/plugin-react` 6), #538 (react ecosystem group).
+
+## [0.1.0-9] - 2026-08-02
+
+### Changed
+- 2026-08-02 housekeeping pass (PRs #599–#715): `portfolio-core` shared crate, MCP account/dividend/update-holding tools + validation parity, atomic/concurrency-guarded backup-restore, WAL checkpoint task, config allowlist + per-key value validation, React `ErrorBoundary`, comprehensive locale-aware formatting — see `docs/releases.md`.
 
 ## [0.1.0-8] - 2026-05-24
 
@@ -159,7 +179,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Daily P&L and performance chart panic guards added for empty price history
 - `delete_account` column reference fixed; `init_db` migration guard added; FX rate inversion bug fixed
 
-## [0.2.0] - 2026-03-15
+## [0.1.0-2] - 2026-03-15
 
 ### Added
 - **Rebalancing view** — set target allocation weights per holding; view drift, required trade sizes, and deployable cash guidance

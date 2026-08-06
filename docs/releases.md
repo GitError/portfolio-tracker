@@ -1,5 +1,28 @@
 # Releases
 
+## v0.2.0 — 2026-08-05
+
+The headline feature of this release is the **Import Plus Insights wizard** — a guided multi-step flow that replaces the old strict CSV importer. The wizard accepts CSV, XLSX, and CRA XML files, infers column roles from broker-specific header aliases, previews an import plan row-by-row before committing, and shows post-import insights after the commit.
+
+**Added**
+- **Import Plus Insights wizard** — CSV/XLSX file upload → account context selection → broker-alias column inference → import plan with per-row status (create / update / skip / needs_fix / warning) → commit → post-import insights summary.
+- **XLSX import** — spreadsheet files supported alongside CSV; first sheet is parsed via the `calamine` Rust crate.
+- **CRA XML import** — T5008 (Statement of Securities Transactions) and T5 (Statement of Investment Income) XML from CRA My Account are parsed server-side via `quick-xml` + serde and fed into the wizard's import plan. T5008 slips map to `T5008Disposition`; T5 slips map to `T5IncomeRecord`.
+- **Broker-alias column registry** — maps common header variants (`Ticker`, `Security`, `Symbol`, `Qty`, `Shares`, `Units`, …) to canonical fields so files from Questrade, Wealthsimple, RBC, TD, and other brokers import without manual header editing.
+
+**Fixed**
+- Analytics N+1 eliminated — `useAnalytics` now batch-fetches fundamentals from the cache in a single pass instead of one round-trip per holding.
+- Import row validation tightened: empty symbol, zero/negative quantity, and missing cost basis are caught at the `needs_fix` stage rather than failing silently on commit.
+- Duplicate detection uses symbol + account + quantity fingerprinting so re-importing an unchanged file produces zero `create` or `update` rows.
+- Import error messages surfaced per-row in the plan view rather than aborting the whole import on first error.
+- `parse_cra_xml_cmd` tolerates missing optional fields in T5008 slips (`book_value`, `security_type`) and continues processing remaining slips instead of returning an error on the first incomplete record.
+
+**Changed**
+- Old strict CSV importer removed; the Import wizard is now the only import path.
+- Holdings toolbar **Import** button opens the wizard modal.
+
+---
+
 ## 2026-08-02 — Housekeeping Pass
 
 A broad housekeeping pass across the whole workspace (roughly PRs #599–#715, since the prior 2026-07-28 documentation snapshot). Not yet tagged as a new version — `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` are still at `0.1.0-8`; see `CHANGELOG.md` for the itemized per-PR history.
@@ -21,6 +44,8 @@ A broad housekeeping pass across the whole workspace (roughly PRs #599–#715, s
 - Locale-aware formatting completed across the frontend — `formatPercent`, `formatTargetWeight`, and `formatCompact` (now using the user's base currency) all respect the active locale, and `useActionInsights` recommendations are fully wired to i18next.
 - `useLanguage.setLanguage` is now properly awaited with error handling and rolls back on failure instead of firing and forgetting.
 - The Alerts and Dividends views keep a persistent error banner on load failure instead of silently falling back to an empty list.
+
+---
 
 ## Download
 
