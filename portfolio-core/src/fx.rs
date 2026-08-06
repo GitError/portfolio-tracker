@@ -6,7 +6,12 @@ use crate::types::FxRate;
 /// matching rate exists in the cache. Callers should treat `None` as a signal
 /// that the conversion is unreliable and surface a stale-FX warning to the
 /// user rather than silently falling back to a 1:1 rate.
-pub fn convert_to_base(amount: f64, from_currency: &str, base: &str, rates: &[FxRate]) -> Option<f64> {
+pub fn convert_to_base(
+    amount: f64,
+    from_currency: &str,
+    base: &str,
+    rates: &[FxRate],
+) -> Option<f64> {
     let from_upper = from_currency.to_uppercase();
     let base_upper = base.to_uppercase();
     if from_upper == base_upper {

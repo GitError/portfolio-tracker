@@ -57,6 +57,29 @@ pub async fn get_config(
     })
 }
 
+pub async fn set_config(
+    pool: &SqlitePool,
+    params: SetConfigParams,
+) -> Result<SetConfigResult, McpError> {
+    validation::validate_config_key(&params.key)?;
+    let value = if params.key == "cost_basis_method" {
+        params.value.to_lowercase()
+    } else {
+        params.value
+    };
+    validation::validate_config_value(&params.key, &value)?;
+
+    db::set_config(pool, &params.key, &value)
+        .await
+        .map_err(PortfolioMcpServer::tool_error)?;
+
+    Ok(SetConfigResult {
+        key: params.key,
+        value,
+        ok: true,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,27 +125,4 @@ mod tests {
         .await;
         assert!(result.is_ok());
     }
-}
-
-pub async fn set_config(
-    pool: &SqlitePool,
-    params: SetConfigParams,
-) -> Result<SetConfigResult, McpError> {
-    validation::validate_config_key(&params.key)?;
-    let value = if params.key == "cost_basis_method" {
-        params.value.to_lowercase()
-    } else {
-        params.value
-    };
-    validation::validate_config_value(&params.key, &value)?;
-
-    db::set_config(pool, &params.key, &value)
-        .await
-        .map_err(PortfolioMcpServer::tool_error)?;
-
-    Ok(SetConfigResult {
-        key: params.key,
-        value,
-        ok: true,
-    })
 }

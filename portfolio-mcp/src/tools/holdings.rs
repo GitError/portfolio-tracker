@@ -247,13 +247,7 @@ mod tests {
         // Regression guard for #685: an empty/malformed ID must be rejected
         // before it ever reaches the database, mirroring the Tauri command.
         let pool = test_pool().await;
-        let result = delete_holding(
-            &pool,
-            DeleteHoldingParams {
-                id: "".to_string(),
-            },
-        )
-        .await;
+        let result = delete_holding(&pool, DeleteHoldingParams { id: "".to_string() }).await;
         assert!(result.is_err(), "empty ID must be rejected");
     }
 

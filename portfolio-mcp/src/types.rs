@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 // and #615. Re-exported here so every other module in this crate can keep
 // using `crate::types::X` unchanged.
 pub use portfolio_core::types::{
-    AccountType, AssetType, FxRate, Holding, HoldingId, PortfolioSnapshot, PriceData,
-    StressResult, StressScenario,
+    AccountType, AssetType, FxRate, Holding, HoldingId, PortfolioSnapshot, PriceData, StressResult,
+    StressScenario,
 };
 
 // ── ID newtypes ───────────────────────────────────────────────────────────────
@@ -202,4 +202,3 @@ pub struct DividendInput {
     pub ex_date: String,
     pub pay_date: String,
 }
-

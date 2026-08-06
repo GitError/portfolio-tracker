@@ -102,13 +102,8 @@ mod tests {
     async fn delete_transaction_rejects_empty_id() {
         // Regression guard for #685.
         let pool = test_pool().await;
-        let result = delete_transaction(
-            &pool,
-            DeleteTransactionParams {
-                id: "".to_string(),
-            },
-        )
-        .await;
+        let result =
+            delete_transaction(&pool, DeleteTransactionParams { id: "".to_string() }).await;
         assert!(result.is_err(), "empty ID must be rejected");
     }
 

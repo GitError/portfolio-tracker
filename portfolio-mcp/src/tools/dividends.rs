@@ -158,13 +158,7 @@ mod tests {
     #[tokio::test]
     async fn delete_dividend_rejects_empty_id() {
         let pool = test_pool().await;
-        let result = delete_dividend(
-            &pool,
-            DeleteDividendParams {
-                id: "".to_string(),
-            },
-        )
-        .await;
+        let result = delete_dividend(&pool, DeleteDividendParams { id: "".to_string() }).await;
         assert!(result.is_err(), "empty ID must be rejected");
     }
 
@@ -237,14 +231,9 @@ mod tests {
             .expect("add_dividend should succeed");
         assert_eq!(created.symbol, "AAPL");
 
-        let all = list_dividends(
-            &pool,
-            ListDividendsParams {
-                holding_id: None,
-            },
-        )
-        .await
-        .expect("list_dividends should succeed");
+        let all = list_dividends(&pool, ListDividendsParams { holding_id: None })
+            .await
+            .expect("list_dividends should succeed");
         assert_eq!(all.len(), 1);
 
         let filtered = list_dividends(
