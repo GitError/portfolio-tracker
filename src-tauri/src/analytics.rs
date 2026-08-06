@@ -1,6 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 
-use crate::types::{RealizedGainsSummary, RealizedLot, Transaction, TransactionType};
+use portfolio_core::fx::convert_to_base;
+
+use crate::types::{
+    FxRate, HoldingId, RealizedGainsSummary, RealizedLot, Transaction, TransactionType,
+};
 
 /// Compute realized gains for a slice of transactions using the specified method.
 ///
@@ -185,25 +189,79 @@ pub fn aggregate_summaries(summaries: Vec<RealizedGainsSummary>) -> RealizedGain
 }
 
 /// Group transactions by holding_id, compute realized gains per group,
-/// then aggregate. Uses the given method ("avco" | "fifo").
+/// convert each group's totals into `base_currency`, then aggregate.
+/// Uses the given method ("avco" | "fifo").
+///
+/// `holding_currencies` maps each holding to the currency its transaction
+/// prices are denominated in (see `Transaction::price` doc comment — prices
+/// are always in "the holding's original currency"). Without this conversion
+/// step, gains from holdings in different currencies would be summed as if
+/// they were the same currency (#754).
+///
+/// FX conversion uses the current/cached rate, not the historical rate at
+/// time of sale — acceptable for a live dashboard snapshot figure, but not a
+/// substitute for a proper tax/accounting record. If a holding's currency has
+/// no cached rate (or maps to no known holding, e.g. a deleted holding), the
+/// conversion falls back to a 1:1 rate rather than failing the whole snapshot.
 pub fn compute_realized_gains_grouped(
     transactions: &[Transaction],
     method: &str,
+    holding_currencies: &HashMap<HoldingId, String>,
+    base_currency: &str,
+    fx_rates: &[FxRate],
 ) -> Result<RealizedGainsSummary, String> {
     // Group by holding_id (transactions are already sorted by transacted_at)
-    let mut by_holding: HashMap<&crate::types::HoldingId, Vec<&Transaction>> = HashMap::new();
+    let mut by_holding: HashMap<&HoldingId, Vec<&Transaction>> = HashMap::new();
     for tx in transactions {
         by_holding.entry(&tx.holding_id).or_default().push(tx);
     }
 
     let mut summaries = Vec::new();
-    for txs in by_holding.values() {
+    for (holding_id, txs) in by_holding {
         // Each group is already sorted because get_all_transactions returns ASC order
         let owned: Vec<Transaction> = txs.iter().map(|t| (*t).clone()).collect();
-        summaries.push(compute_realized_gains(&owned, method)?);
+        let summary = compute_realized_gains(&owned, method)?;
+
+        let currency = holding_currencies
+            .get(holding_id)
+            .map(String::as_str)
+            .unwrap_or(base_currency);
+        let fx_rate =
+            convert_to_base(1.0, currency, base_currency, fx_rates).unwrap_or_else(|| {
+                tracing::warn!(
+                    holding_id = %holding_id.0,
+                    currency = %currency,
+                    base = %base_currency,
+                    "FX rate unavailable for realized-gains conversion; using 1:1 rate"
+                );
+                1.0
+            });
+
+        summaries.push(convert_summary_to_base(summary, fx_rate));
     }
 
     Ok(aggregate_summaries(summaries))
+}
+
+/// Scale every monetary field of a `RealizedGainsSummary` (totals and
+/// per-lot amounts) by `fx_rate`. `fx_rate` is 1.0 when already in base
+/// currency, so this is a no-op for the common case.
+fn convert_summary_to_base(summary: RealizedGainsSummary, fx_rate: f64) -> RealizedGainsSummary {
+    RealizedGainsSummary {
+        total_realized_gain: summary.total_realized_gain * fx_rate,
+        total_proceeds: summary.total_proceeds * fx_rate,
+        total_cost_basis: summary.total_cost_basis * fx_rate,
+        lots: summary
+            .lots
+            .into_iter()
+            .map(|lot| RealizedLot {
+                proceeds: lot.proceeds * fx_rate,
+                cost_basis: lot.cost_basis * fx_rate,
+                gain_loss: lot.gain_loss * fx_rate,
+                ..lot
+            })
+            .collect(),
+    }
 }
 
 /// Extract the YYYY-MM-DD portion from an ISO 8601 timestamp.
@@ -246,6 +304,45 @@ mod tests {
             price,
             transacted_at: format!("{}T00:00:00Z", date),
             created_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn buy_for(holding_id: &str, quantity: f64, price: f64, date: &str) -> Transaction {
+        Transaction {
+            id: TransactionId(uuid::Uuid::new_v4().to_string()),
+            holding_id: HoldingId(holding_id.to_string()),
+            transaction_type: TransactionType::Buy,
+            quantity,
+            price,
+            transacted_at: format!("{}T00:00:00Z", date),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn sell_for(holding_id: &str, quantity: f64, price: f64, date: &str) -> Transaction {
+        Transaction {
+            id: TransactionId(uuid::Uuid::new_v4().to_string()),
+            holding_id: HoldingId(holding_id.to_string()),
+            transaction_type: TransactionType::Sell,
+            quantity,
+            price,
+            transacted_at: format!("{}T00:00:00Z", date),
+            created_at: "2024-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn make_holding_currencies(pairs: &[(&str, &str)]) -> HashMap<HoldingId, String> {
+        pairs
+            .iter()
+            .map(|(id, currency)| (HoldingId(id.to_string()), currency.to_string()))
+            .collect()
+    }
+
+    fn make_fx_rate(pair: &str, rate: f64) -> FxRate {
+        FxRate {
+            pair: pair.to_string(),
+            rate,
+            updated_at: "2024-01-01T00:00:00Z".to_string(),
         }
     }
 
@@ -436,6 +533,101 @@ mod tests {
         assert_eq!(result.lots.len(), 2);
         // Lots should be sorted by date
         assert!(result.lots[0].sold_at <= result.lots[1].sold_at);
+    }
+
+    // ── Grouped multi-currency tests (#754) ──────────────────────────────────
+
+    #[test]
+    fn grouped_converts_each_holding_to_base_currency_before_aggregating() {
+        // h1 is CAD: buy 10 @ 100, sell 5 @ 150 → gain 250 CAD
+        // h2 is USD: buy 10 @ 100, sell 5 @ 150 → gain 250 USD → 337.5 CAD @ 1.35
+        // A naive raw-currency sum would give 500; the correct base-currency
+        // total is 250 + 337.5 = 587.5.
+        let txs = vec![
+            buy_for("h1", 10.0, 100.0, "2024-01-01"),
+            sell_for("h1", 5.0, 150.0, "2024-02-01"),
+            buy_for("h2", 10.0, 100.0, "2024-01-01"),
+            sell_for("h2", 5.0, 150.0, "2024-02-01"),
+        ];
+        let currencies = make_holding_currencies(&[("h1", "CAD"), ("h2", "USD")]);
+        let fx_rates = vec![make_fx_rate("USDCAD", 1.35)];
+
+        let summary =
+            compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &fx_rates).unwrap();
+
+        assert!(
+            (summary.total_realized_gain - 587.5).abs() < 1e-6,
+            "expected 587.5 (250 CAD + 250 USD * 1.35), got {}",
+            summary.total_realized_gain
+        );
+    }
+
+    #[test]
+    fn grouped_same_currency_holdings_unaffected() {
+        let txs = vec![
+            buy_for("h1", 10.0, 100.0, "2024-01-01"),
+            sell_for("h1", 5.0, 150.0, "2024-02-01"),
+            buy_for("h2", 20.0, 50.0, "2024-01-01"),
+            sell_for("h2", 5.0, 80.0, "2024-02-01"),
+        ];
+        let currencies = make_holding_currencies(&[("h1", "CAD"), ("h2", "CAD")]);
+
+        let summary =
+            compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &[]).unwrap();
+
+        // h1 gain: 250, h2 gain: 5*(80-50)=150 → total 400
+        assert!((summary.total_realized_gain - 400.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn grouped_missing_fx_rate_falls_back_to_unconverted_rate() {
+        // h2 is EUR but no EUR rate is cached; conversion should fall back to
+        // 1:1 rather than erroring — acceptable for a dashboard snapshot figure.
+        let txs = vec![
+            buy_for("h2", 10.0, 100.0, "2024-01-01"),
+            sell_for("h2", 5.0, 150.0, "2024-02-01"),
+        ];
+        let currencies = make_holding_currencies(&[("h2", "EUR")]);
+
+        let summary =
+            compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &[]).unwrap();
+
+        assert!((summary.total_realized_gain - 250.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn grouped_converts_lot_level_fields_too() {
+        let txs = vec![
+            buy_for("h2", 10.0, 100.0, "2024-01-01"),
+            sell_for("h2", 5.0, 150.0, "2024-02-01"),
+        ];
+        let currencies = make_holding_currencies(&[("h2", "USD")]);
+        let fx_rates = vec![make_fx_rate("USDCAD", 1.35)];
+
+        let summary =
+            compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &fx_rates).unwrap();
+
+        assert_eq!(summary.lots.len(), 1);
+        assert!((summary.lots[0].proceeds - 750.0 * 1.35).abs() < 1e-6);
+        assert!((summary.lots[0].cost_basis - 500.0 * 1.35).abs() < 1e-6);
+        assert!((summary.lots[0].gain_loss - 250.0 * 1.35).abs() < 1e-6);
+    }
+
+    #[test]
+    fn grouped_unknown_holding_id_falls_back_to_base_currency() {
+        // Transactions referencing a holding absent from the currency map
+        // (e.g. the holding was since deleted) should not error — fall back
+        // to treating the amount as already in base currency.
+        let txs = vec![
+            buy_for("ghost", 10.0, 100.0, "2024-01-01"),
+            sell_for("ghost", 5.0, 150.0, "2024-02-01"),
+        ];
+        let currencies = HashMap::new();
+
+        let summary =
+            compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &[]).unwrap();
+
+        assert!((summary.total_realized_gain - 250.0).abs() < 1e-6);
     }
 
     #[test]
