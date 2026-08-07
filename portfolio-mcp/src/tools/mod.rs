@@ -8,22 +8,91 @@ pub mod stress;
 pub mod transactions;
 
 use rmcp::{
+    handler::server::tool::ToolCallContext,
     model::{
-        CallToolResult, Content, Implementation, ProtocolVersion, ServerCapabilities, ServerInfo,
+        CallToolRequestParam, CallToolResult, Content, Implementation, ListToolsResult,
+        PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
     },
+    service::{RequestContext, RoleServer},
     tool, Error as McpError, ServerHandler,
 };
 use sqlx::SqlitePool;
+
+/// Which mutating tool categories are registered on this server instance.
+///
+/// Both flags default to `false` (read-only) unless explicitly opted into via
+/// the `PORTFOLIO_MCP_WRITE_ENABLED` / `PORTFOLIO_MCP_DESTRUCTIVE_WRITE_ENABLED`
+/// environment variables (see `main.rs`).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct McpAccess {
+    pub write_enabled: bool,
+    pub destructive_enabled: bool,
+}
+
+impl McpAccess {
+    fn permits(&self, category: ToolCategory) -> bool {
+        match category {
+            ToolCategory::Read => true,
+            ToolCategory::Write => self.write_enabled,
+            ToolCategory::Destructive => self.destructive_enabled,
+        }
+    }
+
+    pub fn mode_label(&self) -> &'static str {
+        match (self.write_enabled, self.destructive_enabled) {
+            (false, false) => "read-only",
+            (true, false) => "write-enabled (non-destructive)",
+            (false, true) => "destructive-only (unusual: write tools still disabled)",
+            (true, true) => "write-enabled (including destructive operations)",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToolCategory {
+    Read,
+    Write,
+    Destructive,
+}
+
+impl ToolCategory {
+    fn enable_hint(self) -> &'static str {
+        match self {
+            ToolCategory::Read => "",
+            ToolCategory::Write => "set PORTFOLIO_MCP_WRITE_ENABLED=true to enable it",
+            ToolCategory::Destructive => {
+                "set PORTFOLIO_MCP_DESTRUCTIVE_WRITE_ENABLED=true to enable it"
+            }
+        }
+    }
+}
+
+/// Classify a tool by name so it can be gated by [`McpAccess`].
+///
+/// New mutating tools MUST be added here (as `Write` or `Destructive`) —
+/// anything not listed defaults to `Read` and is always registered, which
+/// would silently bypass the opt-in write gate.
+fn tool_category(name: &str) -> ToolCategory {
+    match name {
+        "delete_holding" | "delete_dividend" | "delete_transaction" | "delete_alert" => {
+            ToolCategory::Destructive
+        }
+        "add_holding" | "update_holding" | "create_account" | "add_dividend"
+        | "add_transaction" | "add_alert" | "reset_alert" | "set_config" => ToolCategory::Write,
+        _ => ToolCategory::Read,
+    }
+}
 
 /// The MCP server that exposes portfolio tools.
 #[derive(Clone)]
 pub struct PortfolioMcpServer {
     pool: SqlitePool,
+    access: McpAccess,
 }
 
 impl PortfolioMcpServer {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(pool: SqlitePool, access: McpAccess) -> Self {
+        Self { pool, access }
     }
 
     /// Serialise a value to JSON text content for a `CallToolResult`.
@@ -36,6 +105,31 @@ impl PortfolioMcpServer {
     /// Wrap an anyhow error as an MCP tool error.
     pub(crate) fn tool_error(err: anyhow::Error) -> McpError {
         McpError::internal_error(err.to_string(), None)
+    }
+
+    /// Tools visible given this server's current access mode.
+    fn visible_tools(&self) -> Vec<Tool> {
+        Self::tool_box()
+            .list()
+            .into_iter()
+            .filter(|t| self.access.permits(tool_category(t.name.as_ref())))
+            .collect()
+    }
+
+    /// Reject a tool call whose category isn't enabled for this server instance.
+    fn ensure_tool_permitted(&self, name: &str) -> Result<(), McpError> {
+        let category = tool_category(name);
+        if self.access.permits(category) {
+            return Ok(());
+        }
+        Err(McpError::invalid_request(
+            format!(
+                "Tool '{name}' is disabled in the current mode ({}); {}",
+                self.access.mode_label(),
+                category.enable_hint(),
+            ),
+            None,
+        ))
     }
 }
 
@@ -259,9 +353,16 @@ impl PortfolioMcpServer {
     }
 }
 
-#[tool(tool_box)]
 impl ServerHandler for PortfolioMcpServer {
     fn get_info(&self) -> ServerInfo {
+        let mode_note = match (self.access.write_enabled, self.access.destructive_enabled) {
+            (false, false) => {
+                "Running in read-only mode: write and delete tools are not registered."
+            }
+            (true, false) => "Write tools are enabled; delete tools are not registered.",
+            (false, true) => "Delete tools are enabled; other write tools are not registered.",
+            (true, true) => "Write and delete tools are enabled.",
+        };
         ServerInfo {
             protocol_version: ProtocolVersion::V_2024_11_05,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
@@ -269,12 +370,133 @@ impl ServerHandler for PortfolioMcpServer {
                 name: "portfolio-mcp".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
             },
-            instructions: Some(
+            instructions: Some(format!(
                 "Portfolio Tracker MCP server. Use list_holdings and get_portfolio_snapshot to \
-                 read the current portfolio state. Use add_holding / delete_holding to manage \
-                 positions. Use run_stress_test to simulate market scenarios."
-                    .to_string(),
-            ),
+                 read the current portfolio state. Use run_stress_test to simulate market \
+                 scenarios. {mode_note}"
+            )),
         }
+    }
+
+    async fn list_tools(
+        &self,
+        _request: PaginatedRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        Ok(ListToolsResult {
+            next_cursor: None,
+            tools: self.visible_tools(),
+        })
+    }
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParam,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.ensure_tool_permitted(&request.name)?;
+        let call_context = ToolCallContext::new(self, request, context);
+        Self::tool_box().call(call_context).await
+    }
+}
+
+#[cfg(test)]
+mod access_tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn test_pool() -> SqlitePool {
+        SqlitePoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory sqlite")
+    }
+
+    const READ_ONLY_TOOL: &str = "list_holdings";
+    const WRITE_TOOL: &str = "add_holding";
+    const DESTRUCTIVE_TOOL: &str = "delete_holding";
+
+    #[test]
+    fn tool_category_classifies_known_tools() {
+        assert_eq!(tool_category(READ_ONLY_TOOL), ToolCategory::Read);
+        assert_eq!(tool_category("get_portfolio_snapshot"), ToolCategory::Read);
+        assert_eq!(tool_category("run_stress_test"), ToolCategory::Read);
+
+        assert_eq!(tool_category(WRITE_TOOL), ToolCategory::Write);
+        assert_eq!(tool_category("update_holding"), ToolCategory::Write);
+        assert_eq!(tool_category("create_account"), ToolCategory::Write);
+        assert_eq!(tool_category("add_dividend"), ToolCategory::Write);
+        assert_eq!(tool_category("add_transaction"), ToolCategory::Write);
+        assert_eq!(tool_category("add_alert"), ToolCategory::Write);
+        assert_eq!(tool_category("reset_alert"), ToolCategory::Write);
+        assert_eq!(tool_category("set_config"), ToolCategory::Write);
+
+        assert_eq!(tool_category(DESTRUCTIVE_TOOL), ToolCategory::Destructive);
+        assert_eq!(tool_category("delete_dividend"), ToolCategory::Destructive);
+        assert_eq!(
+            tool_category("delete_transaction"),
+            ToolCategory::Destructive
+        );
+        assert_eq!(tool_category("delete_alert"), ToolCategory::Destructive);
+    }
+
+    #[tokio::test]
+    async fn read_only_mode_hides_write_and_destructive_tools() {
+        let server = PortfolioMcpServer::new(test_pool().await, McpAccess::default());
+
+        let names: Vec<_> = server.visible_tools().into_iter().map(|t| t.name).collect();
+        assert!(names.iter().any(|n| n.as_ref() == READ_ONLY_TOOL));
+        assert!(!names.iter().any(|n| n.as_ref() == WRITE_TOOL));
+        assert!(!names.iter().any(|n| n.as_ref() == DESTRUCTIVE_TOOL));
+
+        assert!(server.ensure_tool_permitted(READ_ONLY_TOOL).is_ok());
+        assert!(server.ensure_tool_permitted(WRITE_TOOL).is_err());
+        assert!(server.ensure_tool_permitted(DESTRUCTIVE_TOOL).is_err());
+    }
+
+    #[tokio::test]
+    async fn write_enabled_mode_exposes_write_but_not_destructive_tools() {
+        let access = McpAccess {
+            write_enabled: true,
+            destructive_enabled: false,
+        };
+        let server = PortfolioMcpServer::new(test_pool().await, access);
+
+        let names: Vec<_> = server.visible_tools().into_iter().map(|t| t.name).collect();
+        assert!(names.iter().any(|n| n.as_ref() == READ_ONLY_TOOL));
+        assert!(names.iter().any(|n| n.as_ref() == WRITE_TOOL));
+        assert!(!names.iter().any(|n| n.as_ref() == DESTRUCTIVE_TOOL));
+
+        assert!(server.ensure_tool_permitted(WRITE_TOOL).is_ok());
+        assert!(server.ensure_tool_permitted(DESTRUCTIVE_TOOL).is_err());
+    }
+
+    #[tokio::test]
+    async fn fully_enabled_mode_exposes_every_tool() {
+        let access = McpAccess {
+            write_enabled: true,
+            destructive_enabled: true,
+        };
+        let server = PortfolioMcpServer::new(test_pool().await, access);
+
+        let names: Vec<_> = server.visible_tools().into_iter().map(|t| t.name).collect();
+        assert!(names.iter().any(|n| n.as_ref() == READ_ONLY_TOOL));
+        assert!(names.iter().any(|n| n.as_ref() == WRITE_TOOL));
+        assert!(names.iter().any(|n| n.as_ref() == DESTRUCTIVE_TOOL));
+
+        assert!(server.ensure_tool_permitted(WRITE_TOOL).is_ok());
+        assert!(server.ensure_tool_permitted(DESTRUCTIVE_TOOL).is_ok());
+    }
+
+    #[tokio::test]
+    async fn destructive_enabled_without_write_still_gates_write_tools() {
+        let access = McpAccess {
+            write_enabled: false,
+            destructive_enabled: true,
+        };
+        let server = PortfolioMcpServer::new(test_pool().await, access);
+
+        assert!(server.ensure_tool_permitted(DESTRUCTIVE_TOOL).is_ok());
+        assert!(server.ensure_tool_permitted(WRITE_TOOL).is_err());
     }
 }
