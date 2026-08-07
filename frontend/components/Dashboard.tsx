@@ -20,6 +20,8 @@ import type { AccountType, HoldingWithPrice, PortfolioSnapshot } from '../types/
 interface DashboardProps {
   portfolio: PortfolioSnapshot | null;
   loading: boolean;
+  /** True when showing a cached offline snapshot — holding details aren't cached, only totals (see docs/privacy.md). */
+  isOffline?: boolean;
   /** Called when the user clicks "Set method" in the realized-gains stat (#488). */
   onOpenCostBasisModal?: () => void;
 }
@@ -68,7 +70,7 @@ function topMoversTitle(lastUpdated: string | undefined): string {
   return isToday ? 'Top Movers \u2014 Today' : 'Top Movers \u2014 Last Close';
 }
 
-export function Dashboard({ portfolio, loading, onOpenCostBasisModal }: DashboardProps) {
+export function Dashboard({ portfolio, loading, isOffline, onOpenCostBasisModal }: DashboardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -250,7 +252,15 @@ export function Dashboard({ portfolio, loading, onOpenCostBasisModal }: Dashboar
   }, [filteredHoldings, portfolio, totals]);
 
   if ((!portfolio || portfolio.holdings.length === 0) && !loading) {
-    return <EmptyState message="Add your first holding to get started." />;
+    return (
+      <EmptyState
+        message={
+          isOffline
+            ? "Offline — holding details aren't cached for privacy. Reconnect to view your portfolio."
+            : 'Add your first holding to get started.'
+        }
+      />
+    );
   }
 
   if (portfolio && accountFilter !== 'all' && filteredHoldings.length === 0 && !loading) {

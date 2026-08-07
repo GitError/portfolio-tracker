@@ -8,6 +8,7 @@ interface LayoutProps {
   loading: boolean;
   isRefreshing?: boolean | undefined;
   isOffline?: boolean | undefined;
+  offlineHoldingCount?: number | null | undefined;
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
@@ -21,6 +22,7 @@ export function Layout({
   loading,
   isRefreshing,
   isOffline,
+  offlineHoldingCount,
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
@@ -44,6 +46,7 @@ export function Layout({
           loading={loading}
           isRefreshing={isRefreshing}
           isOffline={isOffline}
+          offlineHoldingCount={offlineHoldingCount}
           onRefresh={onRefresh}
           baseCurrency={baseCurrency}
           onBaseCurrencyChange={onBaseCurrencyChange}

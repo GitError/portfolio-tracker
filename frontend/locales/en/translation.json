@@ -208,6 +208,10 @@
   "settings.restoreDatabase.restoring": "Restoring…",
   "settings.restoreDatabase.chooseFile": "Choose Backup File",
   "settings.saved": "Saved:",
+  "settings.clearLocalCache": "Clear Local Cache",
+  "settings.clearLocalCacheDescription": "Remove the offline snapshot (total value, holding count, last update time) cached in this browser.",
+  "settings.clearLocalCache.button": "Clear Cache",
+  "settings.clearLocalCache.cleared": "Cache cleared.",
 
   "alerts.title": "Price Alerts",
   "alerts.addAlert": "Add Alert",

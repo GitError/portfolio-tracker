@@ -1,32 +1,37 @@
-import type { Holding, PortfolioSnapshot } from '../types/portfolio';
+import type { PortfolioSnapshot } from '../types/portfolio';
 
 const CACHE_KEY = 'portfolio_snapshot_cache';
 
-interface PortfolioCache {
-  snapshot: PortfolioSnapshot;
-  holdings: Holding[];
+/**
+ * Minimal offline fallback persisted to localStorage — totals only, never the
+ * per-holding array (symbols, quantities, cost basis). See docs/privacy.md.
+ */
+export interface OfflineSnapshotCache {
+  totalValue: number;
+  holdingCount: number;
+  lastUpdated: string;
+  baseCurrency: string;
 }
 
 /** Lightweight schema validation for the localStorage cache to prevent loading corrupt data. */
-function isValidPortfolioCache(value: unknown): value is PortfolioCache {
+function isValidOfflineSnapshotCache(value: unknown): value is OfflineSnapshotCache {
   if (!value || typeof value !== 'object') return false;
   const obj = value as Record<string, unknown>;
-  if (!obj.snapshot || typeof obj.snapshot !== 'object') return false;
-  const snap = obj.snapshot as Record<string, unknown>;
-  if (!Array.isArray(snap.holdings)) return false;
-  if (typeof snap.totalValue !== 'number') return false;
-  if (typeof snap.lastUpdated !== 'string') return false;
-  if (!Array.isArray(obj.holdings)) return false;
-  return true;
+  return (
+    typeof obj.totalValue === 'number' &&
+    typeof obj.holdingCount === 'number' &&
+    typeof obj.lastUpdated === 'string' &&
+    typeof obj.baseCurrency === 'string'
+  );
 }
 
-/** Load the last-known portfolio snapshot and holdings list from localStorage. Returns null on miss or corrupt data. */
-export function loadCachedPortfolio(): PortfolioCache | null {
+/** Load the last-known offline snapshot from localStorage. Returns null on miss or corrupt data. */
+export function loadCachedPortfolio(): OfflineSnapshotCache | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    if (!isValidPortfolioCache(parsed)) {
+    if (!isValidOfflineSnapshotCache(parsed)) {
       localStorage.removeItem(CACHE_KEY);
       return null;
     }
@@ -36,10 +41,16 @@ export function loadCachedPortfolio(): PortfolioCache | null {
   }
 }
 
-/** Persist the current portfolio snapshot and holdings list to localStorage. Best-effort — silently ignores storage quota errors. */
-export function saveCachedPortfolio(snapshot: PortfolioSnapshot, holdings: Holding[]): void {
+/** Persist a minimal offline snapshot (totals only) to localStorage. Best-effort — silently ignores storage quota errors. */
+export function saveCachedPortfolio(snapshot: PortfolioSnapshot): void {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ snapshot, holdings }));
+    const cache: OfflineSnapshotCache = {
+      totalValue: snapshot.totalValue,
+      holdingCount: snapshot.holdings.length,
+      lastUpdated: snapshot.lastUpdated,
+      baseCurrency: snapshot.baseCurrency,
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
   } catch {
     /* storage may be full — best effort */
   }
