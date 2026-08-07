@@ -5,25 +5,12 @@ use chrono::Utc;
 
 use super::{validate_id, DbState};
 
-const VALID_ACCOUNT_TYPES: &[&str] =
-    &["tfsa", "rrsp", "fhsa", "taxable", "crypto", "cash", "other"];
-
 /// Validates an account's name and type, shared by `add_account`/`update_account`.
-/// Returns the trimmed name on success.
+/// Returns the trimmed name on success. Delegates to `portfolio_core::validation`
+/// so the MCP server enforces the same rule — see #758.
 pub(crate) fn validate_account_fields(name: &str, account_type: &str) -> Result<String, AppError> {
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err(AppError::Validation(
-            "Account name cannot be empty".to_string(),
-        ));
-    }
-    if !VALID_ACCOUNT_TYPES.contains(&account_type) {
-        return Err(AppError::Validation(format!(
-            "Invalid account type: {}",
-            account_type
-        )));
-    }
-    Ok(name)
+    portfolio_core::validation::validate_account_fields(name, account_type)
+        .map_err(AppError::Validation)
 }
 
 #[tauri::command]
