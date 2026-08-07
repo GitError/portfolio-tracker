@@ -130,4 +130,27 @@ describe('Settings component smoke tests', () => {
       });
     }
   });
+
+  it('shows the Clear Local Cache button', () => {
+    renderSettings();
+    expect(screen.getByRole('button', { name: /clear cache/i })).toBeTruthy();
+  });
+
+  it('clicking Clear Local Cache removes the cached offline snapshot and shows confirmation', () => {
+    localStorage.setItem(
+      'portfolio_snapshot_cache',
+      JSON.stringify({
+        totalValue: 1000,
+        holdingCount: 3,
+        lastUpdated: '2026-01-01T00:00:00Z',
+        baseCurrency: 'CAD',
+      })
+    );
+
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: /clear cache/i }));
+
+    expect(localStorage.getItem('portfolio_snapshot_cache')).toBeNull();
+    expect(screen.getByText(/cache cleared/i)).toBeTruthy();
+  });
 });

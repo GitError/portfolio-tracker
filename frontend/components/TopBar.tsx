@@ -12,6 +12,8 @@ interface TopBarProps {
   loading: boolean;
   isRefreshing?: boolean | undefined;
   isOffline?: boolean | undefined;
+  /** Holding count from the last cached snapshot; shown in the offline banner (see docs/privacy.md). */
+  offlineHoldingCount?: number | null | undefined;
   onRefresh: () => void;
   baseCurrency: string;
   onBaseCurrencyChange: (currency: string) => void;
@@ -151,6 +153,7 @@ export function TopBar({
   loading,
   isRefreshing = false,
   isOffline = false,
+  offlineHoldingCount = null,
   onRefresh,
   baseCurrency,
   onBaseCurrencyChange,
@@ -287,7 +290,8 @@ export function TopBar({
         >
           <AlertTriangle size={12} />
           <span>
-            Offline — showing last-known portfolio
+            Offline — showing last-known totals
+            {offlineHoldingCount !== null ? ` across ${offlineHoldingCount} holdings` : ''}
             {portfolio?.lastUpdated
               ? ` (${new Date(portfolio.lastUpdated).toLocaleString(i18n.language)})`
               : ''}

@@ -34,6 +34,7 @@ function AppRoutes() {
     loading,
     isRefreshing,
     isOffline,
+    offlineHoldingCount,
     error,
     failedSymbols,
     triggeredAlertIds,
@@ -238,6 +239,7 @@ function AppRoutes() {
               loading={loading || currencyChanging}
               isRefreshing={isRefreshing}
               isOffline={isOffline}
+              offlineHoldingCount={offlineHoldingCount}
               onRefresh={refreshPrices}
               baseCurrency={baseCurrency}
               onBaseCurrencyChange={handleBaseCurrencyChange}
@@ -253,6 +255,7 @@ function AppRoutes() {
               <Dashboard
                 portfolio={portfolio}
                 loading={loading}
+                isOffline={isOffline}
                 onOpenCostBasisModal={() => setShowCostBasisModal(true)}
               />
             }

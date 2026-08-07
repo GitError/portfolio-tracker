@@ -100,6 +100,7 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
   const {
     portfolio,
     holdings,
+    isOffline,
     addHolding,
     updateHolding,
     deleteHolding,
@@ -794,8 +795,14 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
 
       {isEmpty ? (
         <EmptyState
-          message="No positions. Add holdings to begin tracking."
-          action={{ label: '+ Add Holding', onClick: () => setModalOpen(true) }}
+          message={
+            isOffline
+              ? "Offline — holding details aren't cached for privacy. Reconnect to view your holdings."
+              : 'No positions. Add holdings to begin tracking.'
+          }
+          action={
+            isOffline ? undefined : { label: '+ Add Holding', onClick: () => setModalOpen(true) }
+          }
         />
       ) : (
         <>

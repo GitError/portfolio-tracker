@@ -58,6 +58,7 @@ npm run dev         # Frontend only in browser (mock data, no Rust required)
 |----------|-------------|
 | [docs/features.md](docs/features.md) | Full feature guide — every view and how to use it |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Tech stack, directory tree, data flow, Tauri command inventory, MCP tool inventory |
+| [docs/privacy.md](docs/privacy.md) | Local-data threat model — what's stored where, what is and isn't protected |
 | [docs/roadmap.md](docs/roadmap.md) | Planned features and future work |
 | [docs/releases.md](docs/releases.md) | Release process, signing notes, and per-release summaries |
 | [portfolio-mcp/README.md](portfolio-mcp/README.md) | MCP server setup and tool reference for AI assistant integration |

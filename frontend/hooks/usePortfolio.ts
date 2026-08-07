@@ -23,7 +23,11 @@ import type {
 import { MOCK_SNAPSHOT, MOCK_HOLDINGS, buildMockSnapshot } from '../lib/mockData';
 import { isTauri, tauriInvoke } from '../lib/tauri';
 import { PAGINATION_FETCH_ALL_SIZE } from '../lib/config';
-import { loadCachedPortfolio, saveCachedPortfolio } from '../lib/portfolioCache';
+import {
+  loadCachedPortfolio,
+  saveCachedPortfolio,
+  type OfflineSnapshotCache,
+} from '../lib/portfolioCache';
 
 export interface UsePortfolioReturn {
   portfolio: PortfolioSnapshot | null;
@@ -33,6 +37,8 @@ export interface UsePortfolioReturn {
   isRefreshing: boolean;
   /** True when operating from a cached snapshot because the backend is unreachable. */
   isOffline: boolean;
+  /** Holding count from the last cached snapshot; only meaningful while isOffline is true — the live holdings list itself is not cached (see docs/privacy.md). */
+  offlineHoldingCount: number | null;
   error: string | null;
   failedSymbols: string[];
   /** IDs of price alerts triggered during the last price refresh. */
@@ -56,6 +62,24 @@ export interface UsePortfolioReturn {
 }
 
 const PortfolioContext = createContext<UsePortfolioReturn | null>(null);
+
+/** Builds a display-only stub snapshot from the minimal offline cache — holdings are always empty. */
+function buildOfflineSnapshot(cached: OfflineSnapshotCache): PortfolioSnapshot {
+  return {
+    holdings: [],
+    totalValue: cached.totalValue,
+    totalCost: 0,
+    totalGainLoss: 0,
+    totalGainLossPercent: 0,
+    dailyPnl: 0,
+    lastUpdated: cached.lastUpdated,
+    baseCurrency: cached.baseCurrency,
+    totalTargetWeight: 0,
+    targetCashDelta: 0,
+    realizedGains: 0,
+    annualDividendIncome: 0,
+  };
+}
 
 function parseCSVLine(line: string, delimiter: string): string[] {
   const result: string[] = [];
@@ -134,6 +158,7 @@ function usePortfolioState(): UsePortfolioReturn {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [offlineHoldingCount, setOfflineHoldingCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [failedSymbols, setFailedSymbols] = useState<string[]>([]);
   const [triggeredAlertIds, setTriggeredAlertIds] = useState<string[]>([]);
@@ -187,19 +212,21 @@ function usePortfolioState(): UsePortfolioReturn {
         setPortfolio(snap);
         setHoldings(holdingsPage.items);
         setIsOffline(false);
-        saveCachedPortfolio(snap, holdingsPage.items);
+        setOfflineHoldingCount(null);
+        saveCachedPortfolio(snap);
       } else {
         await new Promise((r) => setTimeout(r, 500));
         setPortfolio(MOCK_SNAPSHOT);
         setHoldings(MOCK_HOLDINGS);
       }
     } catch (e) {
-      // Try to serve the last-known snapshot from localStorage
+      // Try to serve the last-known totals from localStorage (no per-holding data is cached — see docs/privacy.md)
       const cached = loadCachedPortfolio();
       if (cached) {
-        setPortfolio(cached.snapshot);
-        setHoldings(cached.holdings);
+        setPortfolio(buildOfflineSnapshot(cached));
+        setHoldings([]);
         setIsOffline(true);
+        setOfflineHoldingCount(cached.holdingCount);
         setError(null);
       } else {
         setError(e instanceof Error ? e.message : String(e));
@@ -224,7 +251,8 @@ function usePortfolioState(): UsePortfolioReturn {
         setPortfolio(snap);
         setHoldings(holdingsPage.items);
         setIsOffline(false);
-        saveCachedPortfolio(snap, holdingsPage.items);
+        setOfflineHoldingCount(null);
+        saveCachedPortfolio(snap);
       } else {
         await new Promise((r) => setTimeout(r, 500));
         setPortfolio(MOCK_SNAPSHOT);
@@ -483,6 +511,7 @@ function usePortfolioState(): UsePortfolioReturn {
     loading,
     isRefreshing,
     isOffline,
+    offlineHoldingCount,
     error,
     failedSymbols,
     triggeredAlertIds,

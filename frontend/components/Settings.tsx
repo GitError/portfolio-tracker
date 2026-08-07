@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { getVersion } from '@tauri-apps/api/app';
 import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
@@ -9,6 +9,7 @@ import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import { AccountsModal } from './AccountsModal';
 import { Select } from './ui/Select';
 import { SUPPORTED_CURRENCIES } from '../lib/constants';
+import { clearSnapshotCache } from '../lib/portfolioCache';
 
 const REFRESH_OPTION_KEYS: { key: string; value: string }[] = [
   { key: 'refresh.disabled', value: '0' },
@@ -193,7 +194,13 @@ function DataManagementSection() {
   const { t } = useTranslation();
   const [backupStatus, setBackupStatus] = useState<BackupStatus>({ kind: 'idle' });
   const [restoreStatus, setRestoreStatus] = useState<RestoreStatus>({ kind: 'idle' });
+  const [cacheCleared, setCacheCleared] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleClearCache = () => {
+    clearSnapshotCache();
+    setCacheCleared(true);
+  };
 
   const handleBackup = async () => {
     setBackupStatus({ kind: 'loading' });
@@ -325,7 +332,7 @@ function DataManagementSection() {
       </div>
 
       {/* Restore row */}
-      <div style={{ padding: '16px 0' }}>
+      <div style={{ padding: '16px 0', borderBottom: '1px solid var(--border-subtle)' }}>
         <div
           style={{
             display: 'flex',
@@ -468,6 +475,47 @@ function DataManagementSection() {
                   ? t('settings.restoreDatabase.restoring')
                   : t('settings.restoreDatabase.chooseFile')
               }
+              variant="warning"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Clear local cache row */}
+      <div style={{ padding: '16px 0' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 24,
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+              {t('settings.clearLocalCache')}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
+              {t('settings.clearLocalCacheDescription')}
+            </div>
+            {cacheCleared && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: 'var(--color-gain)',
+                  marginTop: 6,
+                }}
+              >
+                {t('settings.clearLocalCache.cleared')}
+              </div>
+            )}
+          </div>
+          <div style={{ flexShrink: 0, paddingTop: 2 }}>
+            <ActionButton
+              onClick={handleClearCache}
+              disabled={false}
+              icon={<Trash2 size={13} />}
+              label={t('settings.clearLocalCache.button')}
               variant="warning"
             />
           </div>
