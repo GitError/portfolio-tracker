@@ -206,170 +206,73 @@ pub(crate) async fn validate_symbol(
     Ok(result)
 }
 
+// The functions and constants below are thin adapters over
+// `portfolio_core::validation::*`: they convert the shared `Result<T, String>`
+// into `AppError::Validation`, preserving the exact messages the frontend has
+// always seen. The actual rules live in `portfolio-core` so the MCP server
+// (`portfolio-mcp/src/validation.rs`) enforces them identically — see #758.
+
+pub(crate) use portfolio_core::validation::WEIGHT_EPSILON;
+
 pub(crate) fn validate_holding_fields(
     quantity: f64,
     cost_basis: f64,
     currency: &str,
 ) -> Result<String, AppError> {
-    if quantity <= 0.0 || !quantity.is_finite() {
-        return Err(AppError::Validation(
-            "quantity must be a positive finite number".to_string(),
-        ));
-    }
-    if cost_basis < 0.0 || !cost_basis.is_finite() {
-        return Err(AppError::Validation(
-            "costBasis must be a non-negative finite number".to_string(),
-        ));
-    }
-    let currency = currency.trim().to_uppercase();
-    if currency.len() != 3 || !currency.chars().all(|c| c.is_ascii_alphabetic()) {
-        return Err(AppError::Validation(
-            "currency must be a 3-letter ISO currency code".to_string(),
-        ));
-    }
-    Ok(currency)
+    portfolio_core::validation::validate_holding_fields(quantity, cost_basis, currency)
+        .map_err(AppError::Validation)
 }
 
-pub(crate) const WEIGHT_EPSILON: f64 = 0.001;
-
-/// Validates an optional target weight: when present, must be a finite
-/// percentage in [0, 100]. A negative or out-of-range value would otherwise
-/// silently persist and produce nonsensical rebalance suggestions.
 pub(crate) fn validate_target_weight(target_weight: Option<f64>) -> Result<(), AppError> {
-    if let Some(weight) = target_weight {
-        if !weight.is_finite() || !(0.0..=100.0).contains(&weight) {
-            return Err(AppError::Validation(
-                "targetWeight must be a finite number between 0 and 100".to_string(),
-            ));
-        }
-    }
-    Ok(())
+    portfolio_core::validation::validate_target_weight(target_weight).map_err(AppError::Validation)
 }
 
-/// Validates dividend input fields shared by `add_dividend`.
 pub(crate) fn validate_dividend_fields(
     amount_per_unit: f64,
     ex_date: &str,
     pay_date: &str,
 ) -> Result<(), AppError> {
-    if !amount_per_unit.is_finite() || amount_per_unit <= 0.0 {
-        return Err(AppError::Validation(
-            "amountPerUnit must be a finite number greater than 0".to_string(),
-        ));
-    }
-    if chrono::NaiveDate::parse_from_str(ex_date.trim(), "%Y-%m-%d").is_err() {
-        return Err(AppError::Validation(
-            "exDate must be a valid ISO date (YYYY-MM-DD)".to_string(),
-        ));
-    }
-    if chrono::NaiveDate::parse_from_str(pay_date.trim(), "%Y-%m-%d").is_err() {
-        return Err(AppError::Validation(
-            "payDate must be a valid ISO date (YYYY-MM-DD)".to_string(),
-        ));
-    }
-    if pay_date < ex_date {
-        return Err(AppError::Validation(
-            "payDate must not be before exDate".to_string(),
-        ));
-    }
-    Ok(())
+    portfolio_core::validation::validate_dividend_fields(amount_per_unit, ex_date, pay_date)
+        .map_err(AppError::Validation)
 }
 
-/// Validates transaction quantity/price. Mirrors `validate_transaction_fields`
-/// in `portfolio-mcp/src/validation.rs`.
 pub(crate) fn validate_transaction_fields(quantity: f64, price: f64) -> Result<(), AppError> {
-    if quantity <= 0.0 || !quantity.is_finite() {
-        return Err(AppError::Validation(
-            "Transaction quantity must be a positive finite number".to_string(),
-        ));
-    }
-    if price < 0.0 || !price.is_finite() {
-        return Err(AppError::Validation(
-            "Transaction price must be a non-negative finite number".to_string(),
-        ));
-    }
-    Ok(())
+    portfolio_core::validation::validate_transaction_fields(quantity, price)
+        .map_err(AppError::Validation)
 }
 
-/// Dividend frequencies accepted by the CSV import layer (`src-tauri/src/csv.rs`).
-pub(crate) const VALID_DIVIDEND_FREQUENCIES: &[&str] =
-    &["monthly", "quarterly", "semi-annual", "annual", "irregular"];
-
-/// Validates the optional dividend/maturity fields shared by `add_holding`/`update_holding`.
-/// Mirrors the checks the CSV import layer applies in `src-tauri/src/csv.rs`.
 pub(crate) fn validate_holding_dividend_fields(
     indicated_annual_dividend: Option<f64>,
     dividend_frequency: Option<&str>,
     maturity_date: Option<&str>,
 ) -> Result<(), AppError> {
-    if let Some(amount) = indicated_annual_dividend {
-        if !amount.is_finite() || amount < 0.0 {
-            return Err(AppError::Validation(
-                "indicatedAnnualDividend must be a non-negative finite number".to_string(),
-            ));
-        }
-    }
-    if let Some(freq) = dividend_frequency {
-        let normalized = freq.trim().to_lowercase();
-        if !VALID_DIVIDEND_FREQUENCIES.contains(&normalized.as_str()) {
-            return Err(AppError::Validation(format!(
-                "dividendFrequency must be one of: {}",
-                VALID_DIVIDEND_FREQUENCIES.join(", ")
-            )));
-        }
-    }
-    if let Some(date) = maturity_date {
-        if chrono::NaiveDate::parse_from_str(date.trim(), "%Y-%m-%d").is_err() {
-            return Err(AppError::Validation(
-                "maturityDate must be a valid ISO date (YYYY-MM-DD)".to_string(),
-            ));
-        }
-    }
-    Ok(())
+    portfolio_core::validation::validate_holding_dividend_fields(
+        indicated_annual_dividend,
+        dividend_frequency,
+        maturity_date,
+    )
+    .map_err(AppError::Validation)
 }
 
-/// Max length for a price alert's free-text note, to prevent abuse.
-pub(crate) const MAX_ALERT_NOTE_LEN: usize = 500;
-
 /// Validates a price alert's symbol, threshold, currency, and note. Shared by
-/// `add_alert`. Mirrors the checks in `portfolio-mcp/src/validation.rs`.
+/// `add_alert`.
 pub(crate) fn validate_alert_fields(
     symbol: &str,
     threshold: f64,
     currency: &str,
     note: &str,
 ) -> Result<(), AppError> {
-    if symbol.trim().is_empty() {
-        return Err(AppError::Validation("symbol must not be empty".to_string()));
-    }
-    if !threshold.is_finite() || threshold <= 0.0 {
-        return Err(AppError::Validation(
-            "threshold must be a positive finite number".to_string(),
-        ));
-    }
-    let currency = currency.trim();
-    if !(2..=3).contains(&currency.len()) || !currency.chars().all(|c| c.is_ascii_uppercase()) {
-        return Err(AppError::Validation(
-            "currency must be 2-3 uppercase letters".to_string(),
-        ));
-    }
-    if note.chars().count() > MAX_ALERT_NOTE_LEN {
-        return Err(AppError::Validation(format!(
-            "note must be at most {MAX_ALERT_NOTE_LEN} characters"
-        )));
-    }
+    portfolio_core::validation::validate_non_empty("symbol", symbol)
+        .map_err(AppError::Validation)?;
+    portfolio_core::validation::validate_alert_threshold(threshold)
+        .map_err(AppError::Validation)?;
+    portfolio_core::validation::validate_alert_currency(currency).map_err(AppError::Validation)?;
+    portfolio_core::validation::validate_alert_note(note).map_err(AppError::Validation)?;
     Ok(())
 }
 
-/// Validates that an ID string is non-empty and a syntactically valid UUID.
-/// All IDs in this app are UUID v4 strings generated via `uuid::Uuid::new_v4()`;
-/// a malformed ID would otherwise silently no-op in SQLite (0 rows affected)
-/// instead of surfacing a clear error.
 pub(crate) fn validate_id(field: &str, id: &str) -> Result<(), AppError> {
-    if id.trim().is_empty() || uuid::Uuid::parse_str(id.trim()).is_err() {
-        return Err(AppError::Validation(format!("Invalid {field}")));
-    }
-    Ok(())
+    portfolio_core::validation::validate_id(field, id).map_err(AppError::Validation)
 }
 
 /// Validates 1-indexed pagination parameters. Shared by every `*_paginated` command.

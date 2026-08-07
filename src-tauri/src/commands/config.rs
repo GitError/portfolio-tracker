@@ -5,128 +5,19 @@ use crate::error::AppError;
 
 use super::{DbState, RealizedGainsCacheState};
 
-/// Config keys readable/writable via `get_config_cmd`/`set_config_cmd`. Shared
-/// by both commands so a key can never be read without also being writable
-/// (or vice versa) — add new config keys here before wiring up a new setting.
-const ALLOWED_CONFIG_KEYS: &[&str] = &[
-    "base_currency",
-    "app_language",
-    "app_theme",
-    "auto_refresh_interval_ms",
-    "auto_refresh_market_hours_only",
-    "cost_basis_method",
-    "notifications_enabled",
-    "holdings_hidden_columns",
-];
-
+/// Validates that `key` is on the config allowlist (`get_config_cmd`/`set_config_cmd`).
+/// Delegates to `portfolio_core::validation` so the MCP server enforces the
+/// same allowlist — see #758.
 fn validate_config_key(key: &str) -> Result<(), AppError> {
-    if !ALLOWED_CONFIG_KEYS.contains(&key) {
-        return Err(AppError::Validation(format!("Unknown config key: {key}")));
-    }
-    Ok(())
+    portfolio_core::validation::validate_config_key(key).map_err(AppError::Validation)
 }
 
-/// BCP 47 tags this app ships translations for (`frontend/lib/i18n.ts`'s
-/// `SUPPORTED_LNG_CODES`).
-const SUPPORTED_LANGUAGES: &[&str] = &["en", "de", "es", "fr", "ja", "pl", "pt", "zh"];
-
-/// Holdings table columns a user can hide (`frontend/components/Holdings.tsx`'s
-/// `ALL_COLUMNS`), mirrored here so `holdings_hidden_columns` can't be set to
-/// reference a column that doesn't exist.
-const KNOWN_HOLDINGS_COLUMNS: &[&str] = &[
-    "symbol",
-    "name",
-    "assetType",
-    "account",
-    "exchange",
-    "quantity",
-    "costBasis",
-    "currentPrice",
-    "marketValueCad",
-    "weight",
-    "targetWeight",
-    "targetDeltaPercent",
-    "targetDeltaValue",
-    "gainLoss",
-    "gainLossPercent",
-    "prevClose",
-    "dayOpen",
-    "openDate",
-    "maturityDate",
-];
-
-/// Keys not otherwise recognized below fall through to this generic bound —
-/// long enough for any legitimate config value, short enough to stop the
-/// allowlisted-key check from being paired with an unbounded value.
-const MAX_CONFIG_VALUE_LEN: usize = 500;
-
 /// `validate_config_key` only checks that `key` is allowlisted; it says nothing
-/// about whether `value` is something the app can actually use. A malformed
-/// theme, language, currency code, or hidden-columns list would otherwise be
-/// written to `app_config` and only surface as a confusing failure wherever
-/// it's read back out.
+/// about whether `value` is something the app can actually use. Delegates to
+/// `portfolio_core::validation` so the MCP server enforces the same per-key
+/// value shape — see #758.
 pub(crate) fn validate_config_value(key: &str, value: &str) -> Result<(), AppError> {
-    match key {
-        "app_theme" => {
-            if !["light", "dark", "system"].contains(&value) {
-                return Err(AppError::Validation(format!(
-                    "app_theme must be one of: light, dark, system (got: {value})"
-                )));
-            }
-        }
-        "app_language" => {
-            if !SUPPORTED_LANGUAGES.contains(&value) {
-                return Err(AppError::Validation(format!(
-                    "app_language must be one of: {} (got: {value})",
-                    SUPPORTED_LANGUAGES.join(", ")
-                )));
-            }
-        }
-        "base_currency" => {
-            if value.len() != 3 || !value.bytes().all(|b| b.is_ascii_uppercase()) {
-                return Err(AppError::Validation(format!(
-                    "base_currency must be a 3-letter uppercase currency code (got: {value})"
-                )));
-            }
-        }
-        "holdings_hidden_columns" => {
-            let columns: Vec<String> = serde_json::from_str(value).map_err(|_| {
-                AppError::Validation(
-                    "holdings_hidden_columns must be a JSON array of column names".to_string(),
-                )
-            })?;
-            if let Some(unknown) = columns
-                .iter()
-                .find(|c| !KNOWN_HOLDINGS_COLUMNS.contains(&c.as_str()))
-            {
-                return Err(AppError::Validation(format!(
-                    "holdings_hidden_columns contains unknown column: {unknown}"
-                )));
-            }
-        }
-        "cost_basis_method" => {
-            if !value.eq_ignore_ascii_case("avco") && !value.eq_ignore_ascii_case("fifo") {
-                return Err(AppError::Validation(format!(
-                    "cost_basis_method must be one of: avco, fifo (got: {value})"
-                )));
-            }
-        }
-        "notifications_enabled" | "auto_refresh_market_hours_only" => {
-            if !["true", "false"].contains(&value) {
-                return Err(AppError::Validation(format!(
-                    "{key} must be one of: true, false (got: {value})"
-                )));
-            }
-        }
-        _ => {
-            if value.len() > MAX_CONFIG_VALUE_LEN {
-                return Err(AppError::Validation(format!(
-                    "{key} value exceeds max length of {MAX_CONFIG_VALUE_LEN} characters"
-                )));
-            }
-        }
-    }
-    Ok(())
+    portfolio_core::validation::validate_config_value(key, value).map_err(AppError::Validation)
 }
 
 #[tauri::command]
@@ -241,7 +132,7 @@ mod tests {
 
     #[test]
     fn validate_config_key_accepts_every_allowed_key() {
-        for key in ALLOWED_CONFIG_KEYS {
+        for key in portfolio_core::validation::ALLOWED_CONFIG_KEYS {
             assert!(
                 validate_config_key(key).is_ok(),
                 "{key} should be a valid config key"
@@ -344,7 +235,7 @@ mod tests {
 
     #[test]
     fn validate_config_value_rejects_other_keys_over_max_length() {
-        let too_long = "a".repeat(MAX_CONFIG_VALUE_LEN + 1);
+        let too_long = "a".repeat(portfolio_core::validation::MAX_CONFIG_VALUE_LEN + 1);
         assert!(validate_config_value("auto_refresh_interval_ms", &too_long).is_err());
     }
 

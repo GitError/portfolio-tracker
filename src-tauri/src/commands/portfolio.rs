@@ -12,7 +12,7 @@ use crate::types::{Holding, HoldingId, HoldingInput, PortfolioSnapshot};
 use super::{
     get_base_currency, normalize_cost_basis_method, validate_holding_dividend_fields,
     validate_holding_fields, validate_id, validate_pagination, validate_target_weight, DbState,
-    HttpClient, RealizedGainsCacheState, WEIGHT_EPSILON,
+    HttpClient, RealizedGainsCacheState,
 };
 
 #[tauri::command]
@@ -141,8 +141,8 @@ async fn add_holding_impl(
     if let Some(target_weight) = holding.target_weight {
         if target_weight > 0.0 {
             let current_sum = db::sum_target_weights(pool, None).await?;
-            let new_total = current_sum + target_weight;
-            if new_total > 100.0 + WEIGHT_EPSILON {
+            if portfolio_core::validation::exceeds_target_weight_budget(target_weight, current_sum)
+            {
                 return Err(AppError::Validation(format!(
                     "Total target weight would exceed 100% (currently {:.1}%). Adjust existing allocations before adding this holding.",
                     current_sum
@@ -179,8 +179,8 @@ async fn update_holding_impl(
     if let Some(target_weight) = holding.target_weight {
         if target_weight > 0.0 {
             let current_sum = db::sum_target_weights(pool, Some(holding.id.0.as_str())).await?;
-            let new_total = current_sum + target_weight;
-            if new_total > 100.0 + WEIGHT_EPSILON {
+            if portfolio_core::validation::exceeds_target_weight_budget(target_weight, current_sum)
+            {
                 return Err(AppError::Validation(format!(
                     "Total target weight would exceed 100% (currently {:.1}% across other holdings). Adjust existing allocations before saving.",
                     current_sum
