@@ -55,6 +55,10 @@ jobs:
               - 'index.html'
             backend:
               - 'src-tauri/**'
+              - 'portfolio-core/**'
+              - 'portfolio-mcp/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
 
   # ── Frontend: Lint + Type Check + Format + Test + Build ────
   frontend:
@@ -98,9 +102,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: src-tauri
 
     steps:
       - uses: actions/checkout@v7
@@ -110,8 +111,6 @@ jobs:
           components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       # Tauri system dependencies
       - name: Install system deps
@@ -126,16 +125,16 @@ jobs:
             libgtk-3-dev
 
       - name: Format check
-        run: cargo fmt --check
+        run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test --locked
+        run: cargo test --workspace --locked
 
       - name: Build
-        run: cargo build --locked
+        run: cargo build --workspace --locked
 
   # ── E2E: Playwright against Vite dev server (browser/mock mode) ──
   e2e:
