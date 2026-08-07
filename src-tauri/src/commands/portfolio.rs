@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::Utc;
 use tauri::State;
 
@@ -45,7 +47,17 @@ async fn get_portfolio_impl(
             cached
         } else {
             let transactions = db::get_all_transactions(pool).await?;
-            match compute_realized_gains_grouped(&transactions, &cost_basis_method) {
+            let holding_currencies: HashMap<HoldingId, String> = holdings
+                .iter()
+                .map(|h| (h.id.clone(), h.currency.clone()))
+                .collect();
+            match compute_realized_gains_grouped(
+                &transactions,
+                &cost_basis_method,
+                &holding_currencies,
+                &base_currency,
+                &cached_fx,
+            ) {
                 Ok(s) => {
                     gains_cache.set(s.clone());
                     s

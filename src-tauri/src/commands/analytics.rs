@@ -473,8 +473,22 @@ pub async fn get_realized_gains(
         None => db::get_all_transactions(pool).await?,
     };
 
-    let summary = compute_realized_gains_grouped(&transactions, &cost_basis_method)
-        .map_err(AppError::from)?;
+    let base_currency = get_base_currency(pool).await;
+    let holdings = db::get_all_holdings(pool).await?;
+    let cached_fx = db::get_fx_rates(pool).await?;
+    let holding_currencies: HashMap<HoldingId, String> = holdings
+        .iter()
+        .map(|h| (h.id.clone(), h.currency.clone()))
+        .collect();
+
+    let summary = compute_realized_gains_grouped(
+        &transactions,
+        &cost_basis_method,
+        &holding_currencies,
+        &base_currency,
+        &cached_fx,
+    )
+    .map_err(AppError::from)?;
 
     // Populate the cache only for the full-portfolio case.
     if holding_id.is_none() {

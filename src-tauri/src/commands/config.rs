@@ -146,8 +146,16 @@ pub async fn set_config_cmd(
     key: String,
     value: String,
 ) -> Result<(), AppError> {
+    set_config_cmd_impl(&db.0, &gains_cache, key, value).await
+}
+
+async fn set_config_cmd_impl(
+    pool: &sqlx::SqlitePool,
+    gains_cache: &RealizedGainsCacheState,
+    key: String,
+    value: String,
+) -> Result<(), AppError> {
     validate_config_key(&key)?;
-    let pool = &db.0;
     let value = if key == "cost_basis_method" {
         value.to_lowercase()
     } else {
@@ -159,7 +167,10 @@ pub async fn set_config_cmd(
         .map_err(AppError::from)?;
     // Changing the cost-basis method invalidates any previously cached realized gains
     // because the same transaction history produces a different result under AVCO vs FIFO.
-    if key == "cost_basis_method" {
+    // Changing the base currency invalidates it too (#754): the cached summary's totals
+    // are now converted into base currency at compute time, so a currency change makes
+    // the cached figures wrong until recomputed.
+    if key == "cost_basis_method" || key == "base_currency" {
         gains_cache.invalidate();
     }
     Ok(())
@@ -168,6 +179,65 @@ pub async fn set_config_cmd(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::RealizedGainsSummary;
+
+    #[tokio::test]
+    async fn set_config_cmd_invalidates_gains_cache_on_base_currency_change() {
+        // Regression guard for #754: realized-gains totals are now converted
+        // into base currency at compute time (see analytics::compute_realized_gains_grouped),
+        // so a stale cache entry from before a base-currency change would report
+        // figures in the old currency. Changing base_currency must invalidate
+        // the cache just like cost_basis_method already does.
+        let pool = db::open_test_db().await;
+        let gains_cache = RealizedGainsCacheState::new();
+        gains_cache.set(RealizedGainsSummary {
+            total_realized_gain: 100.0,
+            total_proceeds: 100.0,
+            total_cost_basis: 0.0,
+            lots: vec![],
+        });
+        assert!(gains_cache.get().is_some(), "sanity check: cache is warm");
+
+        set_config_cmd_impl(
+            &pool,
+            &gains_cache,
+            "base_currency".to_string(),
+            "USD".to_string(),
+        )
+        .await
+        .expect("set_config_cmd_impl should succeed");
+
+        assert!(
+            gains_cache.get().is_none(),
+            "changing base_currency must invalidate the cached realized-gains summary"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_config_cmd_does_not_invalidate_gains_cache_for_unrelated_keys() {
+        let pool = db::open_test_db().await;
+        let gains_cache = RealizedGainsCacheState::new();
+        gains_cache.set(RealizedGainsSummary {
+            total_realized_gain: 100.0,
+            total_proceeds: 100.0,
+            total_cost_basis: 0.0,
+            lots: vec![],
+        });
+
+        set_config_cmd_impl(
+            &pool,
+            &gains_cache,
+            "app_theme".to_string(),
+            "dark".to_string(),
+        )
+        .await
+        .expect("set_config_cmd_impl should succeed");
+
+        assert!(
+            gains_cache.get().is_some(),
+            "unrelated config keys must not invalidate the realized-gains cache"
+        );
+    }
 
     #[test]
     fn validate_config_key_accepts_every_allowed_key() {
