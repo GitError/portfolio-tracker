@@ -8,19 +8,31 @@ mod validation;
 use anyhow::Result;
 use rmcp::{transport::stdio, ServiceExt};
 
+/// Bundle identifier used by the Tauri app (see `src-tauri/tauri.conf.json`'s
+/// `identifier` field), which determines the app data directory the database
+/// lives in on macOS.
+const APP_IDENTIFIER: &str = "com.giterror.portfolio-tracker";
+
 /// Resolve the path to the portfolio SQLite database.
 ///
 /// Priority order:
 /// 1. `PORTFOLIO_DB_PATH` environment variable.
-/// 2. macOS default: `~/Library/Application Support/com.portfolio-tracker.app/portfolio.db`
+/// 2. macOS default: `~/Library/Application Support/<APP_IDENTIFIER>/portfolio.db`
 fn db_path() -> String {
     if let Ok(p) = std::env::var("PORTFOLIO_DB_PATH") {
         return p;
     }
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    default_db_path(&home)
+}
+
+/// Build the default macOS database path for a given home directory.
+/// Pure and independently testable — `db_path()` wraps this with the
+/// `PORTFOLIO_DB_PATH` override and `$HOME` lookup.
+fn default_db_path(home: &str) -> String {
     format!(
-        "{}/Library/Application Support/com.portfolio-tracker.app/portfolio.db",
-        home
+        "{}/Library/Application Support/{}/portfolio.db",
+        home, APP_IDENTIFIER
     )
 }
 
@@ -83,4 +95,22 @@ async fn main() -> Result<()> {
     service.waiting().await?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_db_path_uses_tauri_app_identifier() {
+        let path = default_db_path("/Users/testuser");
+        assert!(
+            path.contains("com.giterror.portfolio-tracker"),
+            "expected default path to contain the Tauri app identifier, got: {path}"
+        );
+        assert_eq!(
+            path,
+            "/Users/testuser/Library/Application Support/com.giterror.portfolio-tracker/portfolio.db"
+        );
+    }
 }

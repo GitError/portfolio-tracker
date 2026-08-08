@@ -180,7 +180,7 @@ Add to `~/.claude/settings.json`:
     "portfolio": {
       "command": "/absolute/path/to/target/release/portfolio-mcp",
       "env": {
-        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.portfolio-tracker.app/portfolio.db"
+        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.giterror.portfolio-tracker/portfolio.db"
       }
     }
   }
@@ -191,7 +191,7 @@ Add to `~/.claude/settings.json`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORTFOLIO_DB_PATH` | `~/Library/Application Support/com.portfolio-tracker.app/portfolio.db` | Path to the SQLite database |
+| `PORTFOLIO_DB_PATH` | `~/Library/Application Support/com.giterror.portfolio-tracker/portfolio.db` | Path to the SQLite database |
 | `RUST_LOG` | `portfolio_mcp=info` | Log level filter (logs to stderr) |
 
 ### Implementation Notes
