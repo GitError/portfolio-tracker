@@ -268,6 +268,43 @@ export interface PriceAlertInput {
   note: string;
 }
 
+export interface Watchlist {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A watchlist item joined with its most recently fetched market-data snapshot (if any).
+ * `retrievedAt` is `null` when the item has never been refreshed; `isStale` is `true`
+ * when the snapshot is older than 15 minutes. `snapshotError` carries the last fetch
+ * failure, if any, without hiding the rest of the item's research fields. */
+export interface WatchlistItemWithSnapshot {
+  id: string;
+  watchlistId: string;
+  symbol: string;
+  name: string | null;
+  currency: string;
+  thesis: string | null;
+  catalysts: string | null;
+  risks: string | null;
+  entryPriceLow: number | null;
+  entryPriceHigh: number | null;
+  createdAt: string;
+  updatedAt: string;
+  price: number | null;
+  marketCap: number | null;
+  fiftyTwoWeekLow: number | null;
+  fiftyTwoWeekHigh: number | null;
+  ytdReturn: number | null;
+  oneYearReturn: number | null;
+  dividendYield: number | null;
+  peRatio: number | null;
+  retrievedAt: string | null;
+  isStale: boolean;
+  snapshotError: string | null;
+}
+
 export interface PreviewRow {
   row: number;
   originalSymbol: string;

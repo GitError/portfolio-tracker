@@ -7,7 +7,7 @@ use crate::types::{
     Account, AccountType, AlertDirection, AlertId, AssetType, Dividend, DividendId, DividendInput,
     FxRate, Holding, HoldingId, HoldingInput, PerformancePoint, PriceAlert, PriceAlertInput,
     PriceData, SymbolMetadata, SymbolResult, Transaction, TransactionId, TransactionInput,
-    TransactionType,
+    TransactionType, Watchlist, WatchlistId, WatchlistItemId, WatchlistItemWithSnapshot,
 };
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -1550,6 +1550,849 @@ pub async fn get_dividends_paginated(
         page_size,
         total_pages: total_pages(total, page_size),
     })
+}
+
+// ── Research watchlists (#769) ──────────────────────────────────────────────
+
+/// A cached market-data snapshot is considered stale once it's older than this.
+const WATCHLIST_SNAPSHOT_STALE_SECS: i64 = 15 * 60; // 15 minutes
+
+/// Minimum time between `refresh_watchlist_item` calls for the same item,
+/// to avoid hammering Yahoo Finance.
+pub const WATCHLIST_REFRESH_COOLDOWN_SECS: i64 = 5 * 60; // 5 minutes
+
+/// Pure staleness check, split out so it can be unit tested without a DB or
+/// real wall-clock waits: a malformed timestamp is treated as stale (fail safe).
+pub(crate) fn is_watchlist_snapshot_stale(retrieved_at: &str, now: chrono::DateTime<Utc>) -> bool {
+    match chrono::DateTime::parse_from_rfc3339(retrieved_at) {
+        Ok(dt) => (now - dt.with_timezone(&Utc)).num_seconds() > WATCHLIST_SNAPSHOT_STALE_SECS,
+        Err(_) => true,
+    }
+}
+
+/// Seconds remaining in the refresh cooldown, or `None` if the item has never
+/// been refreshed or the cooldown has already elapsed. Pure function, unit
+/// tested independently of any DB or real wall-clock wait.
+pub(crate) fn watchlist_refresh_cooldown_remaining(
+    retrieved_at: Option<&str>,
+    now: chrono::DateTime<Utc>,
+) -> Option<i64> {
+    let dt = chrono::DateTime::parse_from_rfc3339(retrieved_at?)
+        .ok()?
+        .with_timezone(&Utc);
+    let elapsed = (now - dt).num_seconds();
+    if elapsed < WATCHLIST_REFRESH_COOLDOWN_SECS {
+        Some(WATCHLIST_REFRESH_COOLDOWN_SECS - elapsed)
+    } else {
+        None
+    }
+}
+
+pub async fn insert_watchlist(pool: &SqlitePool, name: &str) -> Result<Watchlist, String> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO watchlists (id, name, created_at, updated_at) VALUES ($1, $2, $3, $3)",
+    )
+    .bind(&id)
+    .bind(name)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(Watchlist {
+        id: WatchlistId(id),
+        name: name.to_string(),
+        created_at: now.clone(),
+        updated_at: now,
+    })
+}
+
+pub async fn get_watchlists(pool: &SqlitePool) -> Result<Vec<Watchlist>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query(
+        "SELECT id, name, created_at, updated_at FROM watchlists ORDER BY created_at ASC",
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| Watchlist {
+            id: WatchlistId(r.get(0)),
+            name: r.get(1),
+            created_at: r.get(2),
+            updated_at: r.get(3),
+        })
+        .collect())
+}
+
+/// Hard-deletes a watchlist and its items/snapshots. Children are deleted
+/// explicitly inside a transaction rather than relying solely on the schema's
+/// `ON DELETE CASCADE` — that FK only fires when SQLite's `foreign_keys`
+/// pragma is enabled on the connection (true for the production pool, not
+/// guaranteed for every test pool), so explicit deletes keep behavior
+/// deterministic everywhere.
+pub async fn delete_watchlist(pool: &SqlitePool, id: &WatchlistId) -> Result<bool, String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query(
+        "DELETE FROM watchlist_item_snapshots
+         WHERE watchlist_item_id IN (SELECT id FROM watchlist_items WHERE watchlist_id = $1)",
+    )
+    .bind(&id.0)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM watchlist_items WHERE watchlist_id = $1")
+        .bind(&id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = sqlx::query("DELETE FROM watchlists WHERE id = $1")
+        .bind(&id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(result.rows_affected() > 0)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_watchlist_item(
+    pool: &SqlitePool,
+    watchlist_id: &WatchlistId,
+    symbol: &str,
+    currency: &str,
+    thesis: Option<&str>,
+    catalysts: Option<&str>,
+    risks: Option<&str>,
+    entry_price_low: Option<f64>,
+    entry_price_high: Option<f64>,
+) -> Result<WatchlistItemId, String> {
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    let symbol_upper = symbol.to_uppercase();
+
+    sqlx::query(
+        "INSERT INTO watchlist_items
+            (id, watchlist_id, symbol, currency, thesis, catalysts, risks,
+             entry_price_low, entry_price_high, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)",
+    )
+    .bind(&id)
+    .bind(&watchlist_id.0)
+    .bind(&symbol_upper)
+    .bind(currency)
+    .bind(thesis)
+    .bind(catalysts)
+    .bind(risks)
+    .bind(entry_price_low)
+    .bind(entry_price_high)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(WatchlistItemId(id))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn update_watchlist_item(
+    pool: &SqlitePool,
+    id: &WatchlistItemId,
+    thesis: Option<&str>,
+    catalysts: Option<&str>,
+    risks: Option<&str>,
+    entry_price_low: Option<f64>,
+    entry_price_high: Option<f64>,
+) -> Result<bool, String> {
+    let now = Utc::now().to_rfc3339();
+    let result = sqlx::query(
+        "UPDATE watchlist_items
+         SET thesis = $1, catalysts = $2, risks = $3,
+             entry_price_low = $4, entry_price_high = $5, updated_at = $6
+         WHERE id = $7",
+    )
+    .bind(thesis)
+    .bind(catalysts)
+    .bind(risks)
+    .bind(entry_price_low)
+    .bind(entry_price_high)
+    .bind(&now)
+    .bind(&id.0)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(result.rows_affected() > 0)
+}
+
+/// Hard-deletes a single watchlist item and its cached snapshot (see
+/// `delete_watchlist` for why the child row is deleted explicitly).
+pub async fn delete_watchlist_item(
+    pool: &SqlitePool,
+    id: &WatchlistItemId,
+) -> Result<bool, String> {
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query("DELETE FROM watchlist_item_snapshots WHERE watchlist_item_id = $1")
+        .bind(&id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let result = sqlx::query("DELETE FROM watchlist_items WHERE id = $1")
+        .bind(&id.0)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(result.rows_affected() > 0)
+}
+
+fn row_to_watchlist_item_with_snapshot(row: &sqlx::sqlite::SqliteRow) -> WatchlistItemWithSnapshot {
+    use sqlx::Row;
+    let retrieved_at: Option<String> = row.get(20);
+    // A `None` retrieved_at means "never fetched", which is distinct from
+    // "stale" — the UI surfaces that state separately instead of warning.
+    let is_stale = retrieved_at
+        .as_deref()
+        .is_some_and(|ts| is_watchlist_snapshot_stale(ts, Utc::now()));
+
+    WatchlistItemWithSnapshot {
+        id: WatchlistItemId(row.get(0)),
+        watchlist_id: WatchlistId(row.get(1)),
+        symbol: row.get(2),
+        name: row.get::<Option<String>, _>(3),
+        currency: row.get(4),
+        thesis: row.get::<Option<String>, _>(5),
+        catalysts: row.get::<Option<String>, _>(6),
+        risks: row.get::<Option<String>, _>(7),
+        entry_price_low: row.get::<Option<f64>, _>(8),
+        entry_price_high: row.get::<Option<f64>, _>(9),
+        created_at: row.get(10),
+        updated_at: row.get(11),
+        price: row.get::<Option<f64>, _>(12),
+        market_cap: row.get::<Option<f64>, _>(13),
+        fifty_two_week_low: row.get::<Option<f64>, _>(14),
+        fifty_two_week_high: row.get::<Option<f64>, _>(15),
+        ytd_return: row.get::<Option<f64>, _>(16),
+        one_year_return: row.get::<Option<f64>, _>(17),
+        dividend_yield: row.get::<Option<f64>, _>(18),
+        pe_ratio: row.get::<Option<f64>, _>(19),
+        retrieved_at,
+        is_stale,
+        snapshot_error: row.get::<Option<String>, _>(21),
+    }
+}
+
+pub async fn get_watchlist_item_with_snapshot(
+    pool: &SqlitePool,
+    id: &WatchlistItemId,
+) -> Result<Option<WatchlistItemWithSnapshot>, String> {
+    let row = sqlx::query(
+        "SELECT
+            i.id, i.watchlist_id, i.symbol, s.name, i.currency, i.thesis, i.catalysts, i.risks,
+            i.entry_price_low, i.entry_price_high, i.created_at, i.updated_at,
+            s.price, s.market_cap, s.fifty_two_week_low, s.fifty_two_week_high,
+            s.ytd_return, s.one_year_return, s.dividend_yield, s.pe_ratio,
+            s.retrieved_at, s.error
+         FROM watchlist_items i
+         LEFT JOIN watchlist_item_snapshots s ON s.watchlist_item_id = i.id
+         WHERE i.id = $1",
+    )
+    .bind(&id.0)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(row.as_ref().map(row_to_watchlist_item_with_snapshot))
+}
+
+pub async fn list_watchlist_items_with_snapshots(
+    pool: &SqlitePool,
+    watchlist_id: &WatchlistId,
+) -> Result<Vec<WatchlistItemWithSnapshot>, String> {
+    let rows = sqlx::query(
+        "SELECT
+            i.id, i.watchlist_id, i.symbol, s.name, i.currency, i.thesis, i.catalysts, i.risks,
+            i.entry_price_low, i.entry_price_high, i.created_at, i.updated_at,
+            s.price, s.market_cap, s.fifty_two_week_low, s.fifty_two_week_high,
+            s.ytd_return, s.one_year_return, s.dividend_yield, s.pe_ratio,
+            s.retrieved_at, s.error
+         FROM watchlist_items i
+         LEFT JOIN watchlist_item_snapshots s ON s.watchlist_item_id = i.id
+         WHERE i.watchlist_id = $1
+         ORDER BY i.created_at ASC",
+    )
+    .bind(&watchlist_id.0)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows
+        .iter()
+        .map(row_to_watchlist_item_with_snapshot)
+        .collect())
+}
+
+/// Upserts a symbol's market-data snapshot. `snapshot` is `None` when the
+/// fetch failed entirely — in that case `error` is stored and every numeric
+/// field is cleared, but `retrieved_at` is still updated so the refresh
+/// cooldown applies (a failing symbol shouldn't be retried on every render).
+pub async fn upsert_watchlist_item_snapshot(
+    pool: &SqlitePool,
+    item_id: &WatchlistItemId,
+    snapshot: Option<&crate::price::WatchlistSnapshotData>,
+    error: Option<&str>,
+) -> Result<(), String> {
+    let retrieved_at = Utc::now().to_rfc3339();
+    sqlx::query(
+        "INSERT INTO watchlist_item_snapshots
+            (watchlist_item_id, name, price, currency, market_cap, fifty_two_week_low,
+             fifty_two_week_high, ytd_return, one_year_return, dividend_yield,
+             pe_ratio, retrieved_at, error)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         ON CONFLICT(watchlist_item_id) DO UPDATE SET
+            name = excluded.name,
+            price = excluded.price,
+            currency = excluded.currency,
+            market_cap = excluded.market_cap,
+            fifty_two_week_low = excluded.fifty_two_week_low,
+            fifty_two_week_high = excluded.fifty_two_week_high,
+            ytd_return = excluded.ytd_return,
+            one_year_return = excluded.one_year_return,
+            dividend_yield = excluded.dividend_yield,
+            pe_ratio = excluded.pe_ratio,
+            retrieved_at = excluded.retrieved_at,
+            error = excluded.error",
+    )
+    .bind(&item_id.0)
+    .bind(snapshot.and_then(|s| s.name.clone()))
+    .bind(snapshot.and_then(|s| s.price))
+    .bind(snapshot.and_then(|s| s.currency.clone()))
+    .bind(snapshot.and_then(|s| s.market_cap))
+    .bind(snapshot.and_then(|s| s.fifty_two_week_low))
+    .bind(snapshot.and_then(|s| s.fifty_two_week_high))
+    .bind(snapshot.and_then(|s| s.ytd_return))
+    .bind(snapshot.and_then(|s| s.one_year_return))
+    .bind(snapshot.and_then(|s| s.dividend_yield))
+    .bind(snapshot.and_then(|s| s.pe_ratio))
+    .bind(&retrieved_at)
+    .bind(error)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod watchlist_tests {
+    use super::*;
+    use crate::price::WatchlistSnapshotData;
+
+    fn sample_snapshot() -> WatchlistSnapshotData {
+        WatchlistSnapshotData {
+            name: Some("Apple Inc.".to_string()),
+            price: Some(195.89),
+            currency: Some("USD".to_string()),
+            market_cap: Some(3_000_000_000_000.0),
+            fifty_two_week_low: Some(150.0),
+            fifty_two_week_high: Some(200.0),
+            ytd_return: Some(12.5),
+            one_year_return: Some(18.3),
+            dividend_yield: Some(0.005),
+            pe_ratio: Some(32.1),
+        }
+    }
+
+    // ── Pure staleness / cooldown logic ────────────────────────────────────
+
+    #[test]
+    fn is_watchlist_snapshot_stale_false_when_recent() {
+        let now = Utc::now();
+        let retrieved_at = (now - chrono::Duration::minutes(5)).to_rfc3339();
+        assert!(!is_watchlist_snapshot_stale(&retrieved_at, now));
+    }
+
+    #[test]
+    fn is_watchlist_snapshot_stale_true_when_older_than_15_minutes() {
+        let now = Utc::now();
+        let retrieved_at = (now - chrono::Duration::minutes(16)).to_rfc3339();
+        assert!(is_watchlist_snapshot_stale(&retrieved_at, now));
+    }
+
+    #[test]
+    fn is_watchlist_snapshot_stale_boundary_at_exactly_15_minutes_is_not_stale() {
+        let now = Utc::now();
+        let retrieved_at = (now - chrono::Duration::minutes(15)).to_rfc3339();
+        assert!(!is_watchlist_snapshot_stale(&retrieved_at, now));
+    }
+
+    #[test]
+    fn is_watchlist_snapshot_stale_treats_malformed_timestamp_as_stale() {
+        let now = Utc::now();
+        assert!(is_watchlist_snapshot_stale("not-a-timestamp", now));
+    }
+
+    #[test]
+    fn watchlist_refresh_cooldown_remaining_none_when_never_refreshed() {
+        assert_eq!(watchlist_refresh_cooldown_remaining(None, Utc::now()), None);
+    }
+
+    #[test]
+    fn watchlist_refresh_cooldown_remaining_active_just_after_refresh() {
+        let now = Utc::now();
+        let retrieved_at = (now - chrono::Duration::seconds(30)).to_rfc3339();
+        let remaining = watchlist_refresh_cooldown_remaining(Some(&retrieved_at), now);
+        assert!(remaining.is_some());
+        // 300s cooldown - 30s elapsed = 270s remaining
+        assert!((remaining.unwrap() - 270).abs() <= 1);
+    }
+
+    #[test]
+    fn watchlist_refresh_cooldown_remaining_elapsed_after_5_minutes() {
+        let now = Utc::now();
+        let retrieved_at =
+            (now - chrono::Duration::minutes(5) - chrono::Duration::seconds(1)).to_rfc3339();
+        assert_eq!(
+            watchlist_refresh_cooldown_remaining(Some(&retrieved_at), now),
+            None
+        );
+    }
+
+    #[test]
+    fn watchlist_refresh_cooldown_remaining_boundary_at_exactly_5_minutes_is_elapsed() {
+        let now = Utc::now();
+        let retrieved_at = (now - chrono::Duration::minutes(5)).to_rfc3339();
+        assert_eq!(
+            watchlist_refresh_cooldown_remaining(Some(&retrieved_at), now),
+            None
+        );
+    }
+
+    // ── Watchlist CRUD ───────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn insert_and_list_watchlists_roundtrip() {
+        let pool = open_test_db().await;
+        let created = insert_watchlist(&pool, "Growth Ideas")
+            .await
+            .expect("insert");
+        assert_eq!(created.name, "Growth Ideas");
+
+        let all = get_watchlists(&pool).await.expect("list");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].id, created.id);
+    }
+
+    #[tokio::test]
+    async fn delete_watchlist_removes_items_and_snapshots() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Growth Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+        upsert_watchlist_item_snapshot(&pool, &item_id, Some(&sample_snapshot()), None)
+            .await
+            .expect("upsert snapshot");
+
+        let deleted = delete_watchlist(&pool, &watchlist.id)
+            .await
+            .expect("delete");
+        assert!(deleted);
+
+        let items = list_watchlist_items_with_snapshots(&pool, &watchlist.id)
+            .await
+            .expect("list items after delete");
+        assert!(items.is_empty());
+
+        let remaining_item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("query item after delete");
+        assert!(remaining_item.is_none());
+    }
+
+    #[tokio::test]
+    async fn delete_watchlist_nonexistent_id_returns_false() {
+        let pool = open_test_db().await;
+        let fake_id = WatchlistId(uuid::Uuid::new_v4().to_string());
+        let deleted = delete_watchlist(&pool, &fake_id).await.expect("delete");
+        assert!(!deleted);
+    }
+
+    // ── Watchlist item CRUD ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn insert_watchlist_item_uppercases_symbol() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "aapl",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item")
+            .expect("item exists");
+        assert_eq!(item.symbol, "AAPL");
+        assert_eq!(item.retrieved_at, None);
+        assert!(!item.is_stale);
+    }
+
+    #[tokio::test]
+    async fn insert_watchlist_item_stores_research_fields() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "MSFT",
+            "USD",
+            Some("Cloud growth"),
+            Some("Earnings call Q3"),
+            Some("Regulatory risk"),
+            Some(300.0),
+            Some(350.0),
+        )
+        .await
+        .expect("insert item");
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item")
+            .expect("item exists");
+        assert_eq!(item.thesis.as_deref(), Some("Cloud growth"));
+        assert_eq!(item.catalysts.as_deref(), Some("Earnings call Q3"));
+        assert_eq!(item.risks.as_deref(), Some("Regulatory risk"));
+        assert_eq!(item.entry_price_low, Some(300.0));
+        assert_eq!(item.entry_price_high, Some(350.0));
+    }
+
+    #[tokio::test]
+    async fn update_watchlist_item_overwrites_research_fields_only() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "MSFT",
+            "USD",
+            Some("old thesis"),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+
+        let updated = update_watchlist_item(
+            &pool,
+            &item_id,
+            Some("new thesis"),
+            Some("new catalyst"),
+            None,
+            Some(100.0),
+            Some(120.0),
+        )
+        .await
+        .expect("update");
+        assert!(updated);
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item")
+            .expect("item exists");
+        assert_eq!(item.symbol, "MSFT"); // symbol untouched
+        assert_eq!(item.thesis.as_deref(), Some("new thesis"));
+        assert_eq!(item.catalysts.as_deref(), Some("new catalyst"));
+        assert_eq!(item.risks, None);
+        assert_eq!(item.entry_price_low, Some(100.0));
+        assert_eq!(item.entry_price_high, Some(120.0));
+    }
+
+    #[tokio::test]
+    async fn update_watchlist_item_nonexistent_id_returns_false() {
+        let pool = open_test_db().await;
+        let fake_id = WatchlistItemId(uuid::Uuid::new_v4().to_string());
+        let updated = update_watchlist_item(&pool, &fake_id, None, None, None, None, None)
+            .await
+            .expect("update");
+        assert!(!updated);
+    }
+
+    #[tokio::test]
+    async fn delete_watchlist_item_removes_item_and_snapshot() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+        upsert_watchlist_item_snapshot(&pool, &item_id, Some(&sample_snapshot()), None)
+            .await
+            .expect("upsert snapshot");
+
+        let deleted = delete_watchlist_item(&pool, &item_id)
+            .await
+            .expect("delete");
+        assert!(deleted);
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item");
+        assert!(item.is_none());
+    }
+
+    #[tokio::test]
+    async fn insert_watchlist_item_unique_symbol_per_watchlist_rejects_duplicate() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("first insert");
+
+        let result = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    // ── Snapshot upsert + staleness through the DB layer ─────────────────────
+
+    #[tokio::test]
+    async fn upsert_watchlist_item_snapshot_populates_market_data() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+
+        upsert_watchlist_item_snapshot(&pool, &item_id, Some(&sample_snapshot()), None)
+            .await
+            .expect("upsert snapshot");
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item")
+            .expect("item exists");
+        assert_eq!(item.name, Some("Apple Inc.".to_string()));
+        assert_eq!(item.price, Some(195.89));
+        assert_eq!(item.market_cap, Some(3_000_000_000_000.0));
+        assert_eq!(item.pe_ratio, Some(32.1));
+        assert!(item.retrieved_at.is_some());
+        assert!(
+            !item.is_stale,
+            "freshly-inserted snapshot must not be stale"
+        );
+        assert_eq!(item.snapshot_error, None);
+    }
+
+    #[tokio::test]
+    async fn upsert_watchlist_item_snapshot_second_call_overwrites_first() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+
+        upsert_watchlist_item_snapshot(&pool, &item_id, Some(&sample_snapshot()), None)
+            .await
+            .expect("first upsert");
+
+        let mut updated_snapshot = sample_snapshot();
+        updated_snapshot.price = Some(210.0);
+        upsert_watchlist_item_snapshot(&pool, &item_id, Some(&updated_snapshot), None)
+            .await
+            .expect("second upsert");
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item")
+            .expect("item exists");
+        assert_eq!(item.price, Some(210.0));
+    }
+
+    #[tokio::test]
+    async fn upsert_watchlist_item_snapshot_records_error_and_clears_fields() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "BADSYM",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+
+        upsert_watchlist_item_snapshot(&pool, &item_id, None, Some("HTTP 404 for symbol BADSYM"))
+            .await
+            .expect("upsert error snapshot");
+
+        let item = get_watchlist_item_with_snapshot(&pool, &item_id)
+            .await
+            .expect("get item")
+            .expect("item exists");
+        assert_eq!(item.price, None);
+        assert_eq!(
+            item.snapshot_error.as_deref(),
+            Some("HTTP 404 for symbol BADSYM")
+        );
+        // retrieved_at is still set on failure so the refresh cooldown applies.
+        assert!(item.retrieved_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn list_watchlist_items_with_snapshots_marks_old_snapshot_stale() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Ideas")
+            .await
+            .expect("insert watchlist");
+        let item_id = insert_watchlist_item(
+            &pool,
+            &watchlist.id,
+            "AAPL",
+            "USD",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("insert item");
+
+        // Manually insert an old snapshot (bypassing upsert's Utc::now()) to
+        // simulate one fetched 20 minutes ago.
+        let old_retrieved_at = (Utc::now() - chrono::Duration::minutes(20)).to_rfc3339();
+        sqlx::query(
+            "INSERT INTO watchlist_item_snapshots (watchlist_item_id, price, retrieved_at)
+             VALUES ($1, $2, $3)",
+        )
+        .bind(&item_id.0)
+        .bind(195.89_f64)
+        .bind(&old_retrieved_at)
+        .execute(&pool)
+        .await
+        .expect("insert stale snapshot");
+
+        let items = list_watchlist_items_with_snapshots(&pool, &watchlist.id)
+            .await
+            .expect("list items");
+        assert_eq!(items.len(), 1);
+        assert!(items[0].is_stale);
+    }
+
+    #[tokio::test]
+    async fn list_watchlist_items_with_snapshots_empty_watchlist_returns_empty() {
+        let pool = open_test_db().await;
+        let watchlist = insert_watchlist(&pool, "Empty")
+            .await
+            .expect("insert watchlist");
+        let items = list_watchlist_items_with_snapshots(&pool, &watchlist.id)
+            .await
+            .expect("list items");
+        assert!(items.is_empty());
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

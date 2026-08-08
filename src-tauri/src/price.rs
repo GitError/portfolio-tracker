@@ -1,7 +1,7 @@
 use chrono::Utc;
 use reqwest::Client;
 
-use crate::config::{USER_AGENT, YAHOO_CHART_URL};
+use crate::config::{USER_AGENT, YAHOO_CHART_URL, YAHOO_QUOTE_URL};
 use crate::types::PriceData;
 
 /// Validate a ticker symbol before it is interpolated into a Yahoo Finance URL.
@@ -163,6 +163,88 @@ pub async fn fetch_all_prices(
     }
 
     FetchAllPricesResult { prices, failed }
+}
+
+/// Research-watchlist market data snapshot, parsed from Yahoo Finance's v7
+/// bulk quote endpoint (the same endpoint `analytics::get_symbol_metadata_with_cache`
+/// uses for market cap / P/E / dividend yield). Every field is optional because
+/// Yahoo omits fields per quote type (e.g. ETFs and cash-like symbols lack a P/E).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WatchlistSnapshotData {
+    pub name: Option<String>,
+    pub price: Option<f64>,
+    pub currency: Option<String>,
+    pub market_cap: Option<f64>,
+    pub fifty_two_week_low: Option<f64>,
+    pub fifty_two_week_high: Option<f64>,
+    pub ytd_return: Option<f64>,
+    pub one_year_return: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub pe_ratio: Option<f64>,
+}
+
+/// Fetch a single symbol's research-watchlist market data snapshot.
+pub async fn fetch_watchlist_snapshot(
+    client: &Client,
+    symbol: &str,
+) -> Result<WatchlistSnapshotData, String> {
+    fetch_watchlist_snapshot_internal(client, symbol, YAHOO_QUOTE_URL).await
+}
+
+/// Internal implementation accepting a configurable URL template so tests can
+/// point it at a mock server, mirroring `fetch_price_internal`.
+async fn fetch_watchlist_snapshot_internal(
+    client: &Client,
+    symbol: &str,
+    url_template: &str,
+) -> Result<WatchlistSnapshotData, String> {
+    validate_symbol(symbol)?;
+    let encoded_symbol = urlencoding::encode(symbol);
+    let url = url_template.replace("{}", &encoded_symbol);
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", USER_AGENT)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed for {}: {}", symbol, e))?;
+
+    if !response.status().is_success() {
+        return Err(format!("HTTP {} for symbol {}", response.status(), symbol));
+    }
+
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse JSON for {}: {}", symbol, e))?;
+
+    let item = json
+        .pointer("/quoteResponse/result/0")
+        .ok_or_else(|| format!("No quote data returned for {}", symbol))?;
+
+    Ok(WatchlistSnapshotData {
+        name: item
+            .get("longName")
+            .or_else(|| item.get("shortName"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        price: item.get("regularMarketPrice").and_then(|v| v.as_f64()),
+        currency: item
+            .get("currency")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
+        market_cap: item.get("marketCap").and_then(|v| v.as_f64()),
+        fifty_two_week_low: item.get("fiftyTwoWeekLow").and_then(|v| v.as_f64()),
+        fifty_two_week_high: item.get("fiftyTwoWeekHigh").and_then(|v| v.as_f64()),
+        ytd_return: item.get("ytdReturn").and_then(|v| v.as_f64()),
+        one_year_return: item
+            .get("fiftyTwoWeekChangePercent")
+            .and_then(|v| v.as_f64()),
+        dividend_yield: item
+            .get("trailingAnnualDividendYield")
+            .and_then(|v| v.as_f64()),
+        pe_ratio: item.get("trailingPE").and_then(|v| v.as_f64()),
+    })
 }
 
 #[cfg(test)]
@@ -458,5 +540,150 @@ mod tests {
             pd.currency, "CAD",
             "fallback currency should be used when Yahoo omits it"
         );
+    }
+
+    // ── fetch_watchlist_snapshot ────────────────────────────────────────────
+
+    fn mock_quote_url_template(server: &mockito::Server) -> String {
+        format!("{}/v7/finance/quote?symbols={{}}", server.url())
+    }
+
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_parses_all_fields() {
+        let mut server = mockito::Server::new_async().await;
+        let body = serde_json::json!({
+            "quoteResponse": {
+                "result": [{
+                    "symbol": "AAPL",
+                    "longName": "Apple Inc.",
+                    "regularMarketPrice": 195.89_f64,
+                    "currency": "USD",
+                    "marketCap": 3_000_000_000_000_i64,
+                    "fiftyTwoWeekLow": 150.0_f64,
+                    "fiftyTwoWeekHigh": 200.0_f64,
+                    "ytdReturn": 12.5_f64,
+                    "fiftyTwoWeekChangePercent": 18.3_f64,
+                    "trailingAnnualDividendYield": 0.005_f64,
+                    "trailingPE": 32.1_f64
+                }],
+                "error": null
+            }
+        })
+        .to_string();
+
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=AAPL")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result = fetch_watchlist_snapshot_internal(&client, "AAPL", &url_template).await;
+
+        assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        let snap = result.unwrap();
+        assert_eq!(snap.name, Some("Apple Inc.".to_string()));
+        assert_eq!(snap.price, Some(195.89));
+        assert_eq!(snap.currency, Some("USD".to_string()));
+        assert_eq!(snap.market_cap, Some(3_000_000_000_000.0));
+        assert_eq!(snap.fifty_two_week_low, Some(150.0));
+        assert_eq!(snap.fifty_two_week_high, Some(200.0));
+        assert_eq!(snap.ytd_return, Some(12.5));
+        assert_eq!(snap.one_year_return, Some(18.3));
+        assert_eq!(snap.dividend_yield, Some(0.005));
+        assert_eq!(snap.pe_ratio, Some(32.1));
+    }
+
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_missing_fields_are_none() {
+        let mut server = mockito::Server::new_async().await;
+        // An ETF-like quote that omits P/E and dividend yield.
+        let body = serde_json::json!({
+            "quoteResponse": {
+                "result": [{
+                    "symbol": "VOO",
+                    "regularMarketPrice": 490.1_f64,
+                    "currency": "USD"
+                }],
+                "error": null
+            }
+        })
+        .to_string();
+
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=VOO")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result = fetch_watchlist_snapshot_internal(&client, "VOO", &url_template).await;
+
+        assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        let snap = result.unwrap();
+        assert_eq!(snap.price, Some(490.1));
+        assert_eq!(snap.pe_ratio, None);
+        assert_eq!(snap.dividend_yield, None);
+        assert_eq!(snap.market_cap, None);
+    }
+
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_empty_result_array_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        let body = serde_json::json!({
+            "quoteResponse": { "result": [], "error": null }
+        })
+        .to_string();
+
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=INVALID")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result = fetch_watchlist_snapshot_internal(&client, "INVALID", &url_template).await;
+
+        assert!(result.is_err(), "expected Err on empty result array");
+    }
+
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_rejects_invalid_symbol_before_any_request() {
+        let client = make_client();
+        let result = fetch_watchlist_snapshot_internal(
+            &client,
+            "../../etc/passwd",
+            "https://example.invalid/{}",
+        )
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid symbol"));
+    }
+
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_http_error_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=TSLA")
+            .with_status(403)
+            .with_body("Forbidden")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result = fetch_watchlist_snapshot_internal(&client, "TSLA", &url_template).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("403"));
     }
 }

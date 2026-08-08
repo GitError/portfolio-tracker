@@ -1,4 +1,11 @@
-import type { Dividend, Holding, HoldingWithPrice, PortfolioSnapshot } from '../types/portfolio';
+import type {
+  Dividend,
+  Holding,
+  HoldingWithPrice,
+  PortfolioSnapshot,
+  Watchlist,
+  WatchlistItemWithSnapshot,
+} from '../types/portfolio';
 
 const USD_CAD = 1.36;
 const EUR_CAD = 1.47;
@@ -448,3 +455,94 @@ export const MOCK_HOLDINGS: Holding[] = RAW_HOLDINGS.map(
     ...h
   }) => h
 );
+
+const MOCK_WATCHLIST_ID = 'b2000000-0000-4000-8000-000000000001';
+
+export const MOCK_WATCHLISTS: Watchlist[] = [
+  {
+    id: MOCK_WATCHLIST_ID,
+    name: 'Growth Ideas',
+    createdAt: '2026-06-01T00:00:00Z',
+    updatedAt: '2026-06-01T00:00:00Z',
+  },
+];
+
+export const MOCK_WATCHLIST_ITEMS: Record<string, WatchlistItemWithSnapshot[]> = {
+  [MOCK_WATCHLIST_ID]: [
+    {
+      id: 'b3000000-0000-4000-8000-000000000001',
+      watchlistId: MOCK_WATCHLIST_ID,
+      symbol: 'NVDA',
+      name: 'NVIDIA Corporation',
+      currency: 'USD',
+      thesis: 'AI datacenter demand continues to outstrip supply through 2027.',
+      catalysts: 'Q earnings, new GPU architecture launch',
+      risks: 'Export restrictions, valuation compression',
+      entryPriceLow: 110,
+      entryPriceHigh: 130,
+      createdAt: '2026-06-01T00:00:00Z',
+      updatedAt: '2026-06-01T00:00:00Z',
+      price: 135.2,
+      marketCap: 3_300_000_000_000,
+      fiftyTwoWeekLow: 86.5,
+      fiftyTwoWeekHigh: 152.9,
+      ytdReturn: 34.2,
+      oneYearReturn: 58.1,
+      dividendYield: 0.0003,
+      peRatio: 54.3,
+      retrievedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+      isStale: false,
+      snapshotError: null,
+    },
+    {
+      id: 'b3000000-0000-4000-8000-000000000002',
+      watchlistId: MOCK_WATCHLIST_ID,
+      symbol: 'SHOP.TO',
+      name: 'Shopify Inc.',
+      currency: 'CAD',
+      thesis: null,
+      catalysts: null,
+      risks: null,
+      entryPriceLow: null,
+      entryPriceHigh: null,
+      createdAt: '2026-06-02T00:00:00Z',
+      updatedAt: '2026-06-02T00:00:00Z',
+      price: 128.4,
+      marketCap: 165_000_000_000,
+      fiftyTwoWeekLow: 78.2,
+      fiftyTwoWeekHigh: 145.6,
+      ytdReturn: 12.8,
+      oneYearReturn: 41.5,
+      dividendYield: null,
+      peRatio: 82.1,
+      retrievedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+      isStale: true,
+      snapshotError: null,
+    },
+    {
+      id: 'b3000000-0000-4000-8000-000000000003',
+      watchlistId: MOCK_WATCHLIST_ID,
+      symbol: 'BADSYM',
+      name: null,
+      currency: 'USD',
+      thesis: null,
+      catalysts: null,
+      risks: null,
+      entryPriceLow: null,
+      entryPriceHigh: null,
+      createdAt: '2026-06-03T00:00:00Z',
+      updatedAt: '2026-06-03T00:00:00Z',
+      price: null,
+      marketCap: null,
+      fiftyTwoWeekLow: null,
+      fiftyTwoWeekHigh: null,
+      ytdReturn: null,
+      oneYearReturn: null,
+      dividendYield: null,
+      peRatio: null,
+      retrievedAt: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+      isStale: false,
+      snapshotError: 'No quote data returned for BADSYM',
+    },
+  ],
+};

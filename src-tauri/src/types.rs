@@ -648,3 +648,115 @@ pub enum CraXmlResult {
     T5008 { dispositions: Vec<T5008Disposition> },
     T5 { income: Vec<T5IncomeRecord> },
 }
+
+// ── Research watchlists (#769) ──────────────────────────────────────────────
+
+/// Typed wrapper for a watchlist's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct WatchlistId(pub String);
+
+impl std::fmt::Display for WatchlistId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl TS for WatchlistId {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String {
+        "WatchlistId".to_string()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_string()
+    }
+    fn decl(_: &ts_rs::Config) -> String {
+        "type WatchlistId = string;".to_string()
+    }
+    fn decl_concrete(_: &ts_rs::Config) -> String {
+        "type WatchlistId = string;".to_string()
+    }
+    fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
+    fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("WatchlistId.ts"))
+    }
+}
+
+/// Typed wrapper for a watchlist item's UUID string.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(transparent)]
+pub struct WatchlistItemId(pub String);
+
+impl std::fmt::Display for WatchlistItemId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl TS for WatchlistItemId {
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
+    fn name(_: &ts_rs::Config) -> String {
+        "WatchlistItemId".to_string()
+    }
+    fn inline(_: &ts_rs::Config) -> String {
+        "string".to_string()
+    }
+    fn decl(_: &ts_rs::Config) -> String {
+        "type WatchlistItemId = string;".to_string()
+    }
+    fn decl_concrete(_: &ts_rs::Config) -> String {
+        "type WatchlistItemId = string;".to_string()
+    }
+    fn visit_dependencies(_: &mut impl ts_rs::TypeVisitor) {}
+    fn visit_generics(_: &mut impl ts_rs::TypeVisitor) {}
+    fn output_path() -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from("WatchlistItemId.ts"))
+    }
+}
+
+/// A named research watchlist.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct Watchlist {
+    pub id: WatchlistId,
+    pub name: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A watchlist item joined with its most recently fetched market-data
+/// snapshot (if any). `retrieved_at` is `None` when the item has never been
+/// refreshed; `is_stale` is `true` when the snapshot is older than 15
+/// minutes. `snapshot_error` carries the last fetch failure, if any, so the
+/// UI can show a per-row error state without hiding the rest of the item's
+/// research fields.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchlistItemWithSnapshot {
+    pub id: WatchlistItemId,
+    pub watchlist_id: WatchlistId,
+    pub symbol: String,
+    pub name: Option<String>,
+    pub currency: String,
+    pub thesis: Option<String>,
+    pub catalysts: Option<String>,
+    pub risks: Option<String>,
+    pub entry_price_low: Option<f64>,
+    pub entry_price_high: Option<f64>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub price: Option<f64>,
+    pub market_cap: Option<f64>,
+    pub fifty_two_week_low: Option<f64>,
+    pub fifty_two_week_high: Option<f64>,
+    pub ytd_return: Option<f64>,
+    pub one_year_return: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub pe_ratio: Option<f64>,
+    pub retrieved_at: Option<String>,
+    pub is_stale: bool,
+    pub snapshot_error: Option<String>,
+}
