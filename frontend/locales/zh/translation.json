@@ -55,6 +55,7 @@
   "holdings.empty": "暂无持仓。请添加您的第一个持仓以开始。",
   "holdings.importCsv": "导入CSV",
   "holdings.exportCsv": "导出CSV",
+  "holdings.exportPdf": "导出PDF",
   "holdings.allAccounts": "所有账户",
   "holdings.allTypes": "所有类型",
   "holdings.filter": "筛选",

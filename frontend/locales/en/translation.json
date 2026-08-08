@@ -54,6 +54,7 @@
   "holdings.empty": "No holdings yet. Add your first holding to get started.",
   "holdings.importCsv": "Import CSV",
   "holdings.exportCsv": "Export CSV",
+  "holdings.exportPdf": "Export PDF",
   "holdings.allAccounts": "All Accounts",
   "holdings.allTypes": "All Types",
   "holdings.filter": "Filter",

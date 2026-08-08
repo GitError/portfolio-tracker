@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Upload,
   Download,
+  FileText,
   Clock,
   Layers,
   AlertTriangle,
@@ -105,9 +106,11 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
     updateHolding,
     deleteHolding,
     exportHoldingsCsv,
+    exportPortfolioPdf,
     refreshPrices,
   } = usePortfolio();
   const { showToast } = useToast();
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   const search = searchParams.get('search') ?? '';
@@ -387,6 +390,21 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
       showToast(getErrorMessage(e), 'error');
     }
   }, [exportHoldingsCsv, showToast]);
+
+  const handleExportPdf = useCallback(async () => {
+    // Guards against a second export firing while one is already in flight —
+    // clicking again while isExportingPdf is true is a no-op.
+    if (isExportingPdf) return;
+    setIsExportingPdf(true);
+    try {
+      const path = await exportPortfolioPdf();
+      showToast(`Exported to ${path}`, 'success');
+    } catch (e) {
+      showToast(getErrorMessage(e), 'error');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [exportPortfolioPdf, isExportingPdf, showToast]);
 
   const totals = useMemo(
     () => ({
@@ -747,6 +765,27 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
           >
             <Download size={12} />
             {t('holdings.exportCsv')}
+          </button>
+          <button
+            onClick={() => void handleExportPdf()}
+            disabled={isExportingPdf}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-primary)',
+              color: 'var(--text-primary)',
+              borderRadius: '2px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              cursor: isExportingPdf ? 'not-allowed' : 'pointer',
+              opacity: isExportingPdf ? 0.6 : 1,
+            }}
+          >
+            <FileText size={12} />
+            {t('holdings.exportPdf')}
           </button>
           <button
             onClick={() => setImportOpen(true)}

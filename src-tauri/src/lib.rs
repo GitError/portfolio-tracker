@@ -9,6 +9,7 @@ pub mod error;
 mod fx;
 pub mod import_pipeline;
 mod maintenance;
+mod pdf;
 mod portfolio;
 mod price;
 mod search;
@@ -199,6 +200,7 @@ pub fn run() {
             commands::get_alerts_paginated,
             commands::get_dividends_paginated,
             commands::parse_cra_xml_cmd,
+            commands::export_portfolio_pdf,
         ])
         .run(tauri::generate_context!());
 

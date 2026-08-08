@@ -55,6 +55,7 @@
   "holdings.empty": "保有銘柄がありません。最初の銘柄を追加してください。",
   "holdings.importCsv": "CSVインポート",
   "holdings.exportCsv": "CSVエクスポート",
+  "holdings.exportPdf": "PDFエクスポート",
   "holdings.allAccounts": "すべての口座",
   "holdings.allTypes": "すべての種類",
   "holdings.filter": "フィルター",

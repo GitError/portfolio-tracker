@@ -59,6 +59,7 @@ export interface UsePortfolioReturn {
   importHoldingsCsv: (csvContent: string) => Promise<ImportResult>;
   previewImportCsv: (csvContent: string) => Promise<PreviewImportResult>;
   exportHoldingsCsv: () => Promise<string>;
+  exportPortfolioPdf: () => Promise<string>;
 }
 
 const PortfolioContext = createContext<UsePortfolioReturn | null>(null);
@@ -505,6 +506,13 @@ function usePortfolioState(): UsePortfolioReturn {
     return rows.map((row) => row.join(',')).join('\n');
   }, [holdings]);
 
+  const exportPortfolioPdf = useCallback(async (): Promise<string> => {
+    if (!isTauri()) {
+      throw new Error('PDF export is only available in the desktop app.');
+    }
+    return tauriInvoke<string>('export_portfolio_pdf');
+  }, []);
+
   return {
     portfolio,
     holdings,
@@ -526,6 +534,7 @@ function usePortfolioState(): UsePortfolioReturn {
     importHoldingsCsv,
     previewImportCsv,
     exportHoldingsCsv,
+    exportPortfolioPdf,
   };
 }
 

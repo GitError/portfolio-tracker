@@ -32,6 +32,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"]
 tracing-appender = "0.2"
 ts-rs = { version = "12", features = ["serde-compat"] }
 urlencoding = "2"
+genpdf = "0.2"
+dirs = "5"
 
 [dev-dependencies]
 mockito = "1"

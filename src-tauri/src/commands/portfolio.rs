@@ -24,7 +24,7 @@ pub async fn get_portfolio(
     get_portfolio_impl(&db.0, &gains_cache).await
 }
 
-async fn get_portfolio_impl(
+pub(crate) async fn get_portfolio_impl(
     pool: &sqlx::SqlitePool,
     gains_cache: &RealizedGainsCacheState,
 ) -> Result<PortfolioSnapshot, AppError> {

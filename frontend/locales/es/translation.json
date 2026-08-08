@@ -55,6 +55,7 @@
   "holdings.empty": "Sin posiciones. Agregue su primera posición para comenzar.",
   "holdings.importCsv": "Importar CSV",
   "holdings.exportCsv": "Exportar CSV",
+  "holdings.exportPdf": "Exportar PDF",
   "holdings.allAccounts": "Todas las cuentas",
   "holdings.allTypes": "Todos los tipos",
   "holdings.filter": "Filtrar",
