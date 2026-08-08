@@ -474,12 +474,8 @@ pub async fn get_realized_gains(
     };
 
     let base_currency = get_base_currency(pool).await;
-    let holdings = db::get_all_holdings(pool).await?;
     let cached_fx = db::get_fx_rates(pool).await?;
-    let holding_currencies: HashMap<HoldingId, String> = holdings
-        .iter()
-        .map(|h| (h.id.clone(), h.currency.clone()))
-        .collect();
+    let holding_currencies = db::get_all_holding_currencies(pool).await?;
 
     let summary = compute_realized_gains_grouped(
         &transactions,

@@ -200,12 +200,14 @@ pub fn aggregate_summaries(summaries: Vec<RealizedGainsSummary>) -> RealizedGain
 ///
 /// FX conversion uses the current/cached rate, not the historical rate at
 /// time of sale — acceptable for a live dashboard snapshot figure, but not a
-/// substitute for a proper tax/accounting record. A holding that maps to no
-/// known holding (e.g. a deleted holding) is treated as already being in
-/// base currency. But if a *non-base* holding currency has no cached FX
-/// rate, conversion is unreliable — silently returning a 1:1 rate would
-/// display the raw foreign-currency figure as if it were base currency, so
-/// this returns an error instead of guessing (#766).
+/// substitute for a proper tax/accounting record. `holding_currencies` is
+/// expected to include soft-deleted holdings (see `db::get_all_holding_currencies`)
+/// so a holding sold and later deleted still resolves to its real currency
+/// here; a holding genuinely absent from the map (e.g. hard-deleted test data)
+/// is treated as already being in base currency. But if a *non-base* holding
+/// currency has no cached FX rate, conversion is unreliable — silently
+/// returning a 1:1 rate would display the raw foreign-currency figure as if
+/// it were base currency, so this returns an error instead of guessing (#766).
 pub fn compute_realized_gains_grouped(
     transactions: &[Transaction],
     method: &str,
