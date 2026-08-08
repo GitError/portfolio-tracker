@@ -29,6 +29,7 @@ vi.mock('../../hooks/usePortfolio', () => ({
     importHoldingsCsv: vi.fn().mockResolvedValue({ imported: [], skipped: [], totalRows: 0 }),
     previewImportCsv: vi.fn().mockResolvedValue({ rows: [], readyCount: 0, skipCount: 0 }),
     exportHoldingsCsv: vi.fn().mockResolvedValue(''),
+    exportPortfolioPdf: vi.fn().mockResolvedValue('~/Downloads/portfolio-test.pdf'),
   }),
 }));
 

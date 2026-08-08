@@ -34,7 +34,11 @@ test.describe('Holdings', () => {
   });
 
   test('shows Export CSV button', async ({ page }) => {
-    await expect(page.getByRole('button', { name: /export/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export CSV' })).toBeVisible();
+  });
+
+  test('shows Export PDF button', async ({ page }) => {
+    await expect(page.getByRole('button', { name: 'Export PDF' })).toBeVisible();
   });
 
   test('shows table column headers', async ({ page }) => {
