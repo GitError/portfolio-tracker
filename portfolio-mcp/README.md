@@ -21,7 +21,7 @@ If a client calls a tool that isn't enabled, the server returns an error explain
     "portfolio": {
       "command": "/path/to/target/release/portfolio-mcp",
       "env": {
-        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.portfolio-tracker.app/portfolio.db",
+        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.giterror.portfolio-tracker/portfolio.db",
         "PORTFOLIO_MCP_WRITE_ENABLED": "true",
         "PORTFOLIO_MCP_DESTRUCTIVE_WRITE_ENABLED": "false"
       }
@@ -76,7 +76,7 @@ Add to `~/.claude/settings.json`. This example runs in read-only mode — omit `
     "portfolio": {
       "command": "/path/to/target/release/portfolio-mcp",
       "env": {
-        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.portfolio-tracker.app/portfolio.db"
+        "PORTFOLIO_DB_PATH": "/Users/YOU/Library/Application Support/com.giterror.portfolio-tracker/portfolio.db"
       }
     }
   }
@@ -89,7 +89,7 @@ Replace `/path/to/target/release/portfolio-mcp` with the actual binary path (e.g
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORTFOLIO_DB_PATH` | `~/Library/Application Support/com.portfolio-tracker.app/portfolio.db` | Path to the SQLite DB created by the Tauri app |
+| `PORTFOLIO_DB_PATH` | `~/Library/Application Support/com.giterror.portfolio-tracker/portfolio.db` | Path to the SQLite DB created by the Tauri app |
 | `PORTFOLIO_MCP_WRITE_ENABLED` | `false` | Set to `true` to register non-destructive write tools — see [Access modes](#access-modes) |
 | `PORTFOLIO_MCP_DESTRUCTIVE_WRITE_ENABLED` | `false` | Set to `true` to register `delete_*` tools — see [Access modes](#access-modes) |
 | `RUST_LOG` | `portfolio_mcp=info` | Log level filter (logs go to stderr, never stdout) |
