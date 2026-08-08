@@ -1,5 +1,28 @@
 # Releases
 
+## post-v0.2.0 — 2026-08-08
+
+A batch of correctness fixes, security improvements, and feature completions shipped after v0.2.0.
+
+**Added**
+- **Export to PDF** — "Export PDF" button in the Holdings toolbar. Generates a portfolio summary PDF (header with export timestamp and base currency, per-holding table with alternating row shading, allocation breakdown by asset class) and auto-saves to `~/Downloads/portfolio-YYYY-MM-DD.pdf`. Built with the `genpdf` Rust crate and IBM Plex Sans embedded fonts. No dialog plugin required — the path is fully computed server-side. PR #765.
+- **Historical Scenario Replay** — Stress Test presets for real historical shocks: 2008 financial crisis, COVID crash (Mar 2020), 2022 rate-hike cycle, 1987 Black Monday, dot-com collapse, and 2015 oil shock. Each preset applies per-asset-class and FX impacts derived from actual peak-to-trough data. PR #753.
+- **MCP write access opt-in** — `portfolio-mcp` is now read-only by default. Set `PORTFOLIO_MCP_WRITE_ENABLED=true` to register write and delete tools. Startup log shows which mode is active. PR #762.
+- **localStorage privacy** — Reduced localStorage footprint: only the last portfolio snapshot (market values and metadata, no sensitive personal data) is persisted for offline fallback. Documented in `docs/privacy.md`. PR #763.
+
+**Fixed**
+- **Multi-currency realized gains** (`compute_realized_gains_grouped`) — gains and proceeds are now converted to base currency per holding before aggregation. Mixed CAD/USD portfolios were previously showing incorrect totals. PR #760.
+- **CI workspace coverage** — CI now runs `cargo test --workspace`, `cargo clippy --workspace`, and `cargo fmt --all` from the workspace root. Path filters include `portfolio-core/**`, `portfolio-mcp/**`, `Cargo.toml`, and `Cargo.lock`. Previously only `src-tauri/**` triggered Rust CI, leaving the two library crates uncovered. PR #761.
+
+**Refactored**
+- **Centralized validation** — Shared domain validation (UUID format, currency codes, account types, config keys/values, field bounds) moved from duplicated implementations in `src-tauri` and `portfolio-mcp` into a single `portfolio-core::validation` module. Both layers now delegate to the same source of truth. PR #764.
+
+**Docs**
+- Roadmap rewritten: near-term reordered around financial correctness, speculative features moved to ❄️ icebox, Recently Shipped updated. Commit `b88ed4b`.
+- README updated to reflect cross-platform support (macOS Apple Silicon + Intel, Windows, Linux). Keyboard shortcuts include `Ctrl` equivalents for Windows/Linux. Commit `7300dda`.
+
+---
+
 ## v0.2.0 — 2026-08-05
 
 The headline feature of this release is the **Import Plus Insights wizard** — a guided multi-step flow that replaces the old strict CSV importer. The wizard accepts CSV, XLSX, and CRA XML files, infers column roles from broker-specific header aliases, previews an import plan row-by-row before committing, and shows post-import insights after the commit.

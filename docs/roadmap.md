@@ -5,75 +5,46 @@ Planned improvements to Portfolio Tracker, organized by horizon. Status markers:
 - ✅ Done
 - 🚧 In Progress
 - 🔲 Planned
+- ❄️ Icebox (deferred, revisit later)
 
 ---
 
-## Near-term (v1.x)
+## Near-term (next up)
 
-Incremental improvements to the existing feature set.
+Financial correctness and data-trust features — making the numbers you see worth acting on.
 
 | Status | Feature | Description |
 |--------|---------|-------------|
-| ✅ | CSV Import / Export | Bulk-import holdings from a CSV file with symbol validation and preview. Export back to CSV at any time. |
-| ✅ | Historical Snapshots | Portfolio value recorded to SQLite on every price refresh. Performance view shows real data. |
-| ✅ | Benchmark Overlay | Overlay S&P 500, NASDAQ 100, TSX, or Bitcoin on the Performance chart as a reference line. |
-| ✅ | Price Alerts | Set above/below price threshold alerts per symbol; triggered automatically on each refresh. |
-| ✅ | Account Types | Tag holdings as TFSA, RRSP, Taxable, or Cash; filter the Holdings table by account. |
-| ✅ | Rebalancing | Set target allocation weights per holding; view drift, required trades, and deployable cash guidance. |
-| ✅ | Dividend Tracking | Record dividend payments with ex-date and pay date; view payout history and totals by symbol. |
-| ✅ | Settings Panel | Configurable base currency, auto-refresh interval, and cost basis method. |
-| ✅ | Configurable Base Currency | Display all values in CAD, USD, EUR, GBP, AUD, CHF, or JPY. |
-| ✅ | Auto-refresh | Background price refresh on a configurable interval (1m–1hr) with TopBar countdown. |
-| ✅ | Symbol Search | Live symbol autocomplete via Yahoo Finance with local caching. |
-| ✅ | Keyboard Shortcuts | Full keyboard navigation; `?` to see all shortcuts. |
-| ✅ | JSON Backup / Restore | Export and import all data — holdings, alerts, transactions, dividends, and config. |
-| ✅ | In-app Alert Notifications | Toast notifications when price alerts fire during auto-refresh. |
-| ✅ | Transaction History | Per-holding buy/sell log; drives AVCO and FIFO cost basis calculations. |
-| ✅ | Analytics | Sector breakdown, country exposure, weighted beta, P/E, dividend yield, realized gains, and HHI concentration. |
-| ✅ | Accounts Modal | Named account management (TFSA, RRSP, FHSA, Taxable, Crypto, Other). |
-| ✅ | Action Center | Quick-access side panel for alert triggers and fast transaction entry. |
-| ✅ | Annual Dividend Income | Dashboard card shows trailing 12-month dividend income from recorded payment events. |
-| ✅ | SQLx Migration | Database layer migrated from rusqlite to SQLx with async connection pool and WAL mode. |
-| ✅ | Dark / Light Theme Toggle | Light theme variant selectable in Settings. |
-| ✅ | i18n / Multi-language | Language picker in Settings with i18next-based translations; all views fully wired to `t()`. |
-| ✅ | Dependency Maintenance Refresh | Multiple rounds of Dependabot updates merged across the lifecycle. |
-| ✅ | CI/Security Regression Fixes | CI workflow pinning, CSP policy, and theme-flash regression fixed across multiple releases. |
-| ✅ | Shared `portfolio-core` Crate | Snapshot, FX, and stress-test math extracted into a shared workspace crate for `portfolio-mcp` parity. |
-| ✅ | MCP Server Expansion | `portfolio-mcp` covers holdings, transactions, alerts, dividends, accounts, config, snapshots, and stress tests (20+ tools). |
-| ✅ | Backend Hardening | Atomic backup/restore, WAL checkpoint task, bounded pool shutdown, `AppError::NotFound`/`Conflict`, per-key config validation. |
-| ✅ | Comprehensive Locale-Aware Formatting | Percent, compact-currency, and target-weight formatting respect the active locale everywhere. |
-| ✅ | Error Boundary | React error boundary wraps the app root; Alerts and Dividends keep a persistent error banner on load failure. |
-| ✅ | Guided Import + Insights wizard | CSV/XLSX → column inference → reviewable import plan → commit → post-import insights. Replaces the old strict CSV importer. PR #745. |
-| ✅ | XLSX import | Upload `.xlsx` files to the import wizard; parsed by the Rust backend using `calamine`. PR #747. |
-| ✅ | CRA T5 / T5008 XML import | Parse CRA-issued tax return XML (T5008 dispositions, T5 income) for pre-population of the import wizard. PR #751. |
-| ✅ | Analytics N+1 fix | Batched fundamentals cache lookup eliminates per-symbol queries in `useAnalytics`. PR #738. |
+| ✅ | Multi-currency realized gains | Realized gain/loss and proceeds converted to base currency per holding before aggregation. Mixed CAD/USD portfolios now show correct totals. PR #760. |
+| 🔲 | Canadian tax-lot / ACB tracking | Record individual buy lots; apply Adjusted Cost Base methodology with a documented FX convention for Canadian capital gains calculations. |
+| 🔲 | Corporate actions & DRIP support | Handle splits, mergers/spinoffs, and dividend reinvestments as first-class events — prerequisite for durable historic cost basis. |
+| 🔲 | Performance methodology | Define and implement Time-Weighted Return (TWR) and/or Money-Weighted Return (XIRR) so the Performance view shows a methodology-correct return, not just a snapshot delta. |
+| 🔲 | Reconciliation-friendly broker imports | Extend the Import wizard to match imported rows against existing lots, flag discrepancies, and suggest reconciliations. File-first before any live API integration. |
 
 ---
 
-## Medium-term (v2.0)
+## Medium-term
 
 Larger features that extend the core model.
 
 | Status | Feature | Description |
 |--------|---------|-------------|
-| 🔲 | Brokerage API Integration | Pull holdings and transactions directly from Questrade or Interactive Brokers via their APIs. Eliminates manual entry. |
-| 🔲 | Options Tracking | Track basic options positions: symbol, strike, expiry, premium paid. P&L calculated at expiry or mark-to-market via Yahoo. |
-| 🔲 | Monte Carlo Simulation | Run thousands of randomized future-price paths based on historical volatility. Displays a probability cone over a chosen time horizon. |
-| 🔲 | Historical Scenario Replay | Apply shocks derived from real historical events — 2008 financial crisis, COVID crash (Mar 2020), 2022 rate-hike cycle — to your current portfolio. |
+| ✅ | Historical Scenario Replay | Apply shocks derived from real historical events — 2008 financial crisis, COVID crash (Mar 2020), 2022 rate-hike cycle — to your current portfolio. PR #753. |
+| ✅ | Export to PDF | Generate a portfolio summary PDF (holdings table, allocation breakdown) auto-saved to `~/Downloads/portfolio-YYYY-MM-DD.pdf`. PR #765. |
 | 🔲 | Tax Lot Tracking | Record individual buy lots, apply ACB (adjusted cost base) methodology for Canadian capital gains calculations. |
-| 🔲 | Export to PDF | Generate a portfolio summary PDF for tax or record-keeping purposes. |
+| 🔲 | Multi-portfolio support | Separate portfolios by person or goal with independent performance tracking — distinct from the existing account-type model. |
+| ❄️ | Brokerage API Integration | Pull holdings and transactions directly from Questrade or Interactive Brokers. Deferred: solve credentials, refresh, reconciliation, and sync deliberately before going live. |
+| ❄️ | Options Tracking | Track basic options positions: symbol, strike, expiry, premium paid. Deferred: not a small extension to equities/ETFs — warrants a separate module. |
+| ❄️ | Monte Carlo Simulation | Randomized future-price paths based on historical volatility. Deferred until correctness work is solid — stress testing is more immediately actionable. |
 
 ---
 
 ## Long-term / Exploratory
 
-Features that require significant architectural work or are still being evaluated.
-
 | Status | Feature | Description |
 |--------|---------|-------------|
-| 🔲 | Mobile Companion | A read-only mobile app (Tauri mobile or React Native) that syncs with the desktop database via iCloud or a local network connection. |
-| 🔲 | Multi-Portfolio Support | Separate portfolios per account type (RRSP, TFSA, taxable) with independent performance tracking. |
-| 🔲 | AI-Powered Insights | Natural-language analysis of concentration risk, sector exposure, and rebalancing suggestions. |
+| ❄️ | Mobile Companion | A read-only mobile view that syncs with the desktop database. Blocked on a secure sync/key-management model. |
+| ❄️ | AI-Powered Insights | Natural-language analysis of concentration risk, sector exposure, and rebalancing suggestions. MCP already enables intentional external-assistant analysis; avoid embedding a generic chatbot. |
 
 ---
 
@@ -81,10 +52,9 @@ Features that require significant architectural work or are still being evaluate
 
 | Version | Feature |
 |---------|---------|
+| post-v0.2.0 | Export to PDF (#765), MCP write opt-in (#762), localStorage privacy + threat model (#763), centralize shared validation in portfolio-core (#764), multi-currency realized gains (#760), CI workspace coverage for portfolio-core/portfolio-mcp (#761), Historical Scenario Replay presets (#753) |
 | v0.2.0 | Import Plus Insights wizard (CSV/XLSX → broker-alias inference → import plan → post-import insights), XLSX import (`calamine`), CRA T5/T5008 XML import (`quick-xml`), analytics N+1 fix, i18n completion, CI/CSP/theme-flash regression fixes, 9 Dependabot PRs |
-| v0.1.0-9 | 2026-08-02 housekeeping pass (PRs #599–#715): `portfolio-core` shared crate, MCP account/dividend/update-holding tools + validation parity, atomic/concurrency-guarded backup-restore, WAL checkpoint task, config allowlist + per-key value validation, React `ErrorBoundary`, comprehensive locale-aware formatting — see `docs/releases.md` |
-| v0.1.0-8 | Dependency maintenance refresh; all open dependency PRs merged and frontend lint config aligned with updated React Hooks plugin |
-| v0.1.0-4 | SQLx migration (async pool + WAL mode), `src/` → `frontend/` rename, export/import extended to include transactions and dividends |
-| v0.1.0-3 | Annual dividend income in Dashboard, backend hardening, analytics and performance fixes |
-| v0.1.0-2 | Transaction History, Analytics, Accounts modal, Action Center, in-app alert toast notifications, full backup/restore |
-| v0.1.0 | Initial release: Dashboard, Holdings, Performance, Stress Test, multi-currency FX, local SQLite persistence |
+| v0.1.0-9 | 2026-08-02 housekeeping pass: `portfolio-core` shared crate, MCP expansion, atomic backup/restore, WAL checkpoint, config validation, React ErrorBoundary, locale-aware formatting |
+| v0.1.0-4 | SQLx migration, `src/` → `frontend/` rename, export/import extended to transactions and dividends |
+| v0.1.0-3 | Annual dividend income, Analytics, Transaction History, Accounts modal, Action Center |
+| v0.1.0 | Initial release: Dashboard, Holdings, Performance, Stress Test, multi-currency FX, local SQLite |
