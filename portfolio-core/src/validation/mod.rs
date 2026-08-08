@@ -15,6 +15,7 @@ mod config;
 mod dividends;
 mod holdings;
 mod transactions;
+mod watchlists;
 
 pub use accounts::*;
 pub use alerts::*;
@@ -23,3 +24,4 @@ pub use config::*;
 pub use dividends::*;
 pub use holdings::*;
 pub use transactions::*;
+pub use watchlists::*;

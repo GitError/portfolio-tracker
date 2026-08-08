@@ -6,6 +6,7 @@ import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Holdings } from './components/Holdings';
 import { Performance } from './components/Performance';
+import { Research } from './components/Research';
 import { StressTest } from './components/StressTest';
 import { Rebalance } from './components/Rebalance';
 import { Alerts } from './components/Alerts';
@@ -273,6 +274,7 @@ function AppRoutes() {
             path="/performance"
             element={<Performance portfolio={portfolio} onRefresh={refreshPrices} />}
           />
+          <Route path="/research" element={<Research />} />
           <Route path="/stress" element={<StressTest />} />
           <Route path="/rebalance" element={<Rebalance />} />
           <Route path="/alerts" element={<Alerts />} />

@@ -201,6 +201,15 @@ pub fn run() {
             commands::get_dividends_paginated,
             commands::parse_cra_xml_cmd,
             commands::export_portfolio_pdf,
+            commands::list_watchlists,
+            commands::create_watchlist,
+            commands::delete_watchlist,
+            commands::list_watchlist_items,
+            commands::add_watchlist_item,
+            commands::update_watchlist_item,
+            commands::remove_watchlist_item,
+            commands::refresh_watchlist_item,
+            commands::refresh_watchlist,
         ])
         .run(tauri::generate_context!());
 
@@ -223,7 +232,8 @@ mod ts_binding_tests {
         PreviewImportResult, PreviewRow, PriceAlert, PriceAlertInput, PriceData,
         RealizedGainsSummary, RealizedLot, RebalanceSuggestion, RefreshResult, RowAction,
         SectorWeight, StressResult, StressScenario, SymbolMetadata, SymbolResult, T5008Disposition,
-        T5IncomeRecord, Transaction, TransactionInput, TransactionType,
+        T5IncomeRecord, Transaction, TransactionInput, TransactionType, Watchlist, WatchlistId,
+        WatchlistItemId, WatchlistItemWithSnapshot,
     };
     // StressHoldingResult is only reachable via portfolio-core in this crate (it's
     // nested inside StressResult, not referenced standalone) — import it directly
@@ -283,5 +293,9 @@ mod ts_binding_tests {
         Transaction::export_all(&cfg).expect("Transaction");
         TransactionInput::export_all(&cfg).expect("TransactionInput");
         TransactionType::export_all(&cfg).expect("TransactionType");
+        Watchlist::export_all(&cfg).expect("Watchlist");
+        WatchlistId::export_all(&cfg).expect("WatchlistId");
+        WatchlistItemId::export_all(&cfg).expect("WatchlistItemId");
+        WatchlistItemWithSnapshot::export_all(&cfg).expect("WatchlistItemWithSnapshot");
     }
 }

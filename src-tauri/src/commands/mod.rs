@@ -22,6 +22,7 @@ pub mod portfolio;
 pub mod prices;
 pub mod stress;
 pub mod transactions;
+pub mod watchlists;
 
 pub use accounts::*;
 pub use alerts::*;
@@ -35,6 +36,7 @@ pub use portfolio::*;
 pub use prices::*;
 pub use stress::*;
 pub use transactions::*;
+pub use watchlists::*;
 
 pub struct DbState(pub SqlitePool);
 pub struct HttpClient(pub reqwest::Client);

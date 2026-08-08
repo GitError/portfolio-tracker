@@ -34,11 +34,20 @@ const MOCK_PRICES: Record<string, number> = {
   'VFV.TO': 117.6,
 };
 
+/** Pre-fills a new holding's symbol/name/currency (e.g. from a watchlist row).
+ * Ignored when `editingHolding` is set — editing an existing holding always wins. */
+export interface HoldingPrefill {
+  symbol: string;
+  name: string;
+  currency: string;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onSave: (holding: HoldingInput) => void;
   editingHolding?: Holding | undefined;
+  prefill?: HoldingPrefill | undefined;
 }
 
 interface FormState {
@@ -131,7 +140,7 @@ function Field({
   );
 }
 
-export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Props) {
+export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding, prefill }: Props) {
   const formatNumber = useFormatNumber();
   const { holdings } = usePortfolio();
   const { showToast } = useToast();
@@ -212,6 +221,14 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
           maturityDate: editingHolding.maturityDate ?? '',
         });
         selectedSymbolRef.current = editingHolding.symbol;
+      } else if (prefill) {
+        setForm({
+          ...EMPTY_FORM,
+          symbol: prefill.symbol,
+          name: prefill.name,
+          currency: prefill.currency,
+        });
+        selectedSymbolRef.current = prefill.symbol;
       } else {
         setForm(EMPTY_FORM);
         selectedSymbolRef.current = '';
@@ -227,7 +244,7 @@ export function AddHoldingModal({ isOpen, onClose, onSave, editingHolding }: Pro
       setSubmitError(null);
       setPriceFetchError(null);
     }
-  }, [isOpen, editingHolding]);
+  }, [isOpen, editingHolding, prefill]);
 
   const isCash = form.assetType === 'cash';
 
