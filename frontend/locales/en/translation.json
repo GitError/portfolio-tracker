@@ -419,7 +419,6 @@
   "importWizard.file.dropzone": "Drag and drop a .csv file, or click to browse",
   "importWizard.file.hint": "Max {{maxRows}} rows · .csv only",
   "importWizard.file.onlyCsv": "Only .csv files are supported right now.",
-  "importWizard.file.noPath": "Could not resolve a filesystem path for this file.",
   "importWizard.file.parsing": "Reading file…",
 
   "importWizard.mapping.description": "Some columns in this file couldn't be recognized automatically. Map them to a field below, or leave them ignored.",

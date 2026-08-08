@@ -26,6 +26,20 @@ vi.mock('../../../lib/tauri', () => ({
   },
 }));
 
+// Real Tauri v2 File objects never expose a filesystem path, so file selection
+// goes through the native dialog plugin (click) and the webview's own drag-drop
+// event (drop) instead of the browser File/DataTransfer APIs — see FilePickerStep.
+const mockDialogOpen = vi.fn();
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: (...args: unknown[]) => mockDialogOpen(...args),
+}));
+
+vi.mock('@tauri-apps/api/webview', () => ({
+  getCurrentWebview: () => ({
+    onDragDropEvent: vi.fn().mockResolvedValue(() => {}),
+  }),
+}));
+
 const ACCOUNT: Account = {
   id: 'acct-1',
   name: 'TD Taxable',
@@ -81,10 +95,11 @@ function makePlan(overrides: Partial<ImportPlan> = {}): ImportPlan {
   };
 }
 
-function csvFileWithPath(path: string, name = 'holdings.csv'): File {
-  const file = new File(['symbol\nAAPL'], name, { type: 'text/csv' });
-  Object.defineProperty(file, 'path', { value: path, configurable: true });
-  return file;
+/** Clicks the dropzone, which opens the (mocked) native file dialog resolving to `path`. */
+async function selectFile(path: string) {
+  mockDialogOpen.mockResolvedValueOnce(path);
+  fireEvent.click(screen.getByTestId('file-dropzone'));
+  await waitFor(() => expect(mockDialogOpen).toHaveBeenCalled());
 }
 
 const mockOnClose = vi.fn();
@@ -138,8 +153,7 @@ describe('ImportWizardModal', () => {
     await selectAccount();
 
     mockParseImportFile.mockResolvedValue(makePlan());
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [csvFileWithPath('/tmp/holdings.csv')] } });
+    await selectFile('/tmp/holdings.csv');
 
     await waitFor(() =>
       expect(mockParseImportFile).toHaveBeenCalledWith({
@@ -170,8 +184,7 @@ describe('ImportWizardModal', () => {
       ],
     });
     mockParseImportFile.mockResolvedValueOnce(planWithUnmapped);
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [csvFileWithPath('/tmp/holdings.csv')] } });
+    await selectFile('/tmp/holdings.csv');
 
     expect(await screen.findByText('Weird Column')).toBeTruthy();
 
@@ -188,8 +201,7 @@ describe('ImportWizardModal', () => {
     await selectAccount();
 
     mockParseImportFile.mockResolvedValue(makePlan());
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [csvFileWithPath('/tmp/holdings.csv')] } });
+    await selectFile('/tmp/holdings.csv');
     await screen.findByText('AAPL');
 
     const commitResult: ImportCommitResult = {
@@ -225,8 +237,7 @@ describe('ImportWizardModal', () => {
     await selectAccount();
 
     mockParseImportFile.mockResolvedValue(makePlan());
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [csvFileWithPath('/tmp/holdings.csv')] } });
+    await selectFile('/tmp/holdings.csv');
     await screen.findByText('AAPL');
 
     mockCommitImport.mockRejectedValue(new Error('Database is locked'));
@@ -241,10 +252,7 @@ describe('ImportWizardModal', () => {
     await waitFor(() => expect(mockGetAccounts).toHaveBeenCalled());
     await selectAccount();
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    const badFile = new File(['x'], 'holdings.xlsx', { type: 'application/vnd.ms-excel' });
-    Object.defineProperty(badFile, 'path', { value: '/tmp/holdings.xlsx', configurable: true });
-    fireEvent.change(input, { target: { files: [badFile] } });
+    await selectFile('/tmp/holdings.xlsx');
 
     expect(await screen.findByText(/only \.csv files are supported/i)).toBeTruthy();
     expect(mockParseImportFile).not.toHaveBeenCalled();
