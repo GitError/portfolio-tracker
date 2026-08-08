@@ -6,7 +6,13 @@
  * MOCK_SNAPSHOT must be a valid object (not null) because non-Tauri code paths spread it:
  * `{ ...MOCK_SNAPSHOT, lastUpdated: ... }`. A null value would throw at runtime.
  */
-import type { Dividend, Holding, PortfolioSnapshot } from '../types/portfolio';
+import type {
+  Dividend,
+  Holding,
+  PortfolioSnapshot,
+  Watchlist,
+  WatchlistItemWithSnapshot,
+} from '../types/portfolio';
 
 export const MOCK_SNAPSHOT: PortfolioSnapshot = {
   holdings: [],
@@ -24,6 +30,8 @@ export const MOCK_SNAPSHOT: PortfolioSnapshot = {
 };
 export const MOCK_DIVIDENDS: Dividend[] = [];
 export const MOCK_HOLDINGS: Holding[] = [];
+export const MOCK_WATCHLISTS: Watchlist[] = [];
+export const MOCK_WATCHLIST_ITEMS: Record<string, WatchlistItemWithSnapshot[]> = {};
 // No-op stub — never called in production (isTauri() is always true in Tauri builds).
 export function buildMockSnapshot(_holdings: Holding[]): PortfolioSnapshot {
   return MOCK_SNAPSHOT;
