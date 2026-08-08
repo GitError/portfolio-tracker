@@ -200,9 +200,12 @@ pub fn aggregate_summaries(summaries: Vec<RealizedGainsSummary>) -> RealizedGain
 ///
 /// FX conversion uses the current/cached rate, not the historical rate at
 /// time of sale — acceptable for a live dashboard snapshot figure, but not a
-/// substitute for a proper tax/accounting record. If a holding's currency has
-/// no cached rate (or maps to no known holding, e.g. a deleted holding), the
-/// conversion falls back to a 1:1 rate rather than failing the whole snapshot.
+/// substitute for a proper tax/accounting record. A holding that maps to no
+/// known holding (e.g. a deleted holding) is treated as already being in
+/// base currency. But if a *non-base* holding currency has no cached FX
+/// rate, conversion is unreliable — silently returning a 1:1 rate would
+/// display the raw foreign-currency figure as if it were base currency, so
+/// this returns an error instead of guessing (#766).
 pub fn compute_realized_gains_grouped(
     transactions: &[Transaction],
     method: &str,
@@ -226,16 +229,18 @@ pub fn compute_realized_gains_grouped(
             .get(holding_id)
             .map(String::as_str)
             .unwrap_or(base_currency);
-        let fx_rate =
-            convert_to_base(1.0, currency, base_currency, fx_rates).unwrap_or_else(|| {
-                tracing::warn!(
-                    holding_id = %holding_id.0,
-                    currency = %currency,
-                    base = %base_currency,
-                    "FX rate unavailable for realized-gains conversion; using 1:1 rate"
-                );
-                1.0
-            });
+        let fx_rate = convert_to_base(1.0, currency, base_currency, fx_rates).ok_or_else(|| {
+            tracing::error!(
+                holding_id = %holding_id.0,
+                currency = %currency,
+                base = %base_currency,
+                "FX rate unavailable for realized-gains conversion; refusing to fall back to 1:1"
+            );
+            format!(
+                "No cached FX rate for {} → {} (holding {}); cannot compute realized gains in base currency",
+                currency, base_currency, holding_id.0
+            )
+        })?;
 
         summaries.push(convert_summary_to_base(summary, fx_rate));
     }
@@ -580,19 +585,44 @@ mod tests {
     }
 
     #[test]
-    fn grouped_missing_fx_rate_falls_back_to_unconverted_rate() {
-        // h2 is EUR but no EUR rate is cached; conversion should fall back to
-        // 1:1 rather than erroring — acceptable for a dashboard snapshot figure.
+    fn grouped_missing_fx_rate_errors_instead_of_silently_using_1_to_1() {
+        // Regression guard for #766: h2 is EUR but no EUR rate is cached.
+        // Previously this silently fell back to a 1:1 rate, showing the raw
+        // EUR amount as if it were CAD. It must now surface an error instead.
         let txs = vec![
             buy_for("h2", 10.0, 100.0, "2024-01-01"),
             sell_for("h2", 5.0, 150.0, "2024-02-01"),
         ];
         let currencies = make_holding_currencies(&[("h2", "EUR")]);
 
-        let summary =
-            compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &[]).unwrap();
+        let result = compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &[]);
 
-        assert!((summary.total_realized_gain - 250.0).abs() < 1e-6);
+        assert!(
+            result.is_err(),
+            "missing FX rate must be surfaced as an error, not silently defaulted to 1:1"
+        );
+    }
+
+    #[test]
+    fn grouped_missing_fx_rate_does_not_report_raw_foreign_amount_as_base_total() {
+        // Regression guard for #766: USD -> CAD realized gains with no FX rate
+        // cached must NOT report the raw USD figure (250) as the CAD total.
+        let txs = vec![
+            buy_for("h1", 10.0, 100.0, "2024-01-01"),
+            sell_for("h1", 5.0, 150.0, "2024-02-01"),
+        ];
+        let currencies = make_holding_currencies(&[("h1", "USD")]);
+
+        let result = compute_realized_gains_grouped(&txs, "avco", &currencies, "CAD", &[]);
+
+        match result {
+            Err(_) => {}
+            Ok(summary) => panic!(
+                "expected missing-FX error, but got an Ok result reporting {} as the CAD total \
+                 (the unconverted USD figure)",
+                summary.total_realized_gain
+            ),
+        }
     }
 
     #[test]
