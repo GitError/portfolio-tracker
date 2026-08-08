@@ -342,6 +342,28 @@ pub async fn get_all_holdings(pool: &SqlitePool) -> Result<Vec<Holding>, String>
     Ok(holdings)
 }
 
+/// Maps every holding id to its currency, *including soft-deleted holdings*.
+///
+/// Realized-gains transactions are never deleted alongside their holding, so
+/// a holding that was soft-deleted after being sold must still resolve to its
+/// original currency here — otherwise `compute_realized_gains_grouped` can't
+/// find it in the map and silently treats its transactions as already being
+/// in base currency (#767).
+pub async fn get_all_holding_currencies(
+    pool: &SqlitePool,
+) -> Result<std::collections::HashMap<HoldingId, String>, String> {
+    use sqlx::Row;
+    let rows = sqlx::query("SELECT id, currency FROM holdings")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(rows
+        .into_iter()
+        .map(|r| (HoldingId(r.get::<String, _>(0)), r.get::<String, _>(1)))
+        .collect())
+}
+
 /// Look up a holding's symbol and currency by id (single-row lookup, avoids
 /// scanning the full holdings collection just to read one field).
 pub async fn get_holding_symbol_and_currency(
