@@ -5,21 +5,26 @@
 A batch of correctness fixes, security improvements, and feature completions shipped after v0.2.0.
 
 **Added**
+- **Research Watchlist** — new "Research" tab for tracking investment ideas before adding them to the portfolio. Named watchlists hold per-symbol research notes (thesis, catalysts, risks, entry-price range) alongside a cached Yahoo Finance market-data snapshot (price, market cap, 52-week range, YTD/1Y return, dividend yield, P/E). Every snapshot shows its retrieval time; stale data (>15 min) is flagged visually and never hidden. Refresh All / per-row refresh with a 5-minute per-symbol cooldown. "Add to Holdings" pre-fills the existing modal without auto-importing. 3 new DB tables (`watchlists`, `watchlist_items`, `watchlist_item_snapshots`), 9 Tauri commands, translated into all 8 supported locales. PR #773.
 - **Export to PDF** — "Export PDF" button in the Holdings toolbar. Generates a portfolio summary PDF (header with export timestamp and base currency, per-holding table with alternating row shading, allocation breakdown by asset class) and auto-saves to `~/Downloads/portfolio-YYYY-MM-DD.pdf`. Built with the `genpdf` Rust crate and IBM Plex Sans embedded fonts. No dialog plugin required — the path is fully computed server-side. PR #765.
 - **Historical Scenario Replay** — Stress Test presets for real historical shocks: 2008 financial crisis, COVID crash (Mar 2020), 2022 rate-hike cycle, 1987 Black Monday, dot-com collapse, and 2015 oil shock. Each preset applies per-asset-class and FX impacts derived from actual peak-to-trough data. PR #753.
 - **MCP write access opt-in** — `portfolio-mcp` is now read-only by default. Set `PORTFOLIO_MCP_WRITE_ENABLED=true` to register write and delete tools. Startup log shows which mode is active. PR #762.
 - **localStorage privacy** — Reduced localStorage footprint: only the last portfolio snapshot (market values and metadata, no sensitive personal data) is persisted for offline fallback. Documented in `docs/privacy.md`. PR #763.
 
 **Fixed**
+- **Missing-FX realized gains fallback** — `compute_realized_gains_grouped` now surfaces an explicit error/unavailable state when no FX rate is cached for a non-base holding, instead of silently using a 1:1 rate and displaying a USD amount as CAD. PR #771.
+- **Realized-gains cache invalidation** — `RealizedGainsCacheState` is now invalidated when a holding's currency is updated or a holding is soft-deleted. Historical transactions for soft-deleted holdings are correctly converted using the holding's original currency rather than defaulting to the base currency. PR #772.
+- **MCP default database path** — `portfolio-mcp` default DB path corrected from `com.portfolio-tracker.app` to `com.giterror.portfolio-tracker` to match the Tauri app identifier. Launching without `PORTFOLIO_DB_PATH` now opens the correct database. PR #770.
 - **Multi-currency realized gains** (`compute_realized_gains_grouped`) — gains and proceeds are now converted to base currency per holding before aggregation. Mixed CAD/USD portfolios were previously showing incorrect totals. PR #760.
 - **CI workspace coverage** — CI now runs `cargo test --workspace`, `cargo clippy --workspace`, and `cargo fmt --all` from the workspace root. Path filters include `portfolio-core/**`, `portfolio-mcp/**`, `Cargo.toml`, and `Cargo.lock`. Previously only `src-tauri/**` triggered Rust CI, leaving the two library crates uncovered. PR #761.
 
 **Refactored**
 - **Centralized validation** — Shared domain validation (UUID format, currency codes, account types, config keys/values, field bounds) moved from duplicated implementations in `src-tauri` and `portfolio-mcp` into a single `portfolio-core::validation` module. Both layers now delegate to the same source of truth. PR #764.
 
-**Docs**
-- Roadmap rewritten: near-term reordered around financial correctness, speculative features moved to ❄️ icebox, Recently Shipped updated. Commit `b88ed4b`.
-- README updated to reflect cross-platform support (macOS Apple Silicon + Intel, Windows, Linux). Keyboard shortcuts include `Ctrl` equivalents for Windows/Linux. Commit `7300dda`.
+**Docs / housekeeping**
+- Roadmap rewritten: near-term reordered around financial correctness, speculative features moved to ❄️ icebox, Recently Shipped updated.
+- README updated to reflect cross-platform support (macOS Apple Silicon + Intel, Windows, Linux). Keyboard shortcuts include `Ctrl` equivalents for Windows/Linux.
+- CRA XML ts-rs bindings (`CraXmlResult`, `T5008Disposition`, `T5IncomeRecord`) committed.
 
 ---
 

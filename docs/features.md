@@ -192,6 +192,64 @@ Use the benchmark selector to overlay a reference index (S&P 500, NASDAQ 100, TS
 
 ---
 
+## Research Watchlist
+
+The Research tab lets you track symbols you are watching but have not yet added to your portfolio. It is designed for pre-trade research: collect market data snapshots, write structured notes, and compare candidates side-by-side before committing to a position.
+
+### Watchlists
+
+Create as many named watchlists as you need (e.g. "Tech Ideas", "Dividend Candidates", "Crypto Watch"). Use the watchlist selector at the top of the Research tab to switch between them or to create and delete lists. Deleting a watchlist removes all its items and snapshots.
+
+### Comparison Table
+
+Each item in the active watchlist appears as a row in the comparison table. Columns shown per symbol:
+
+| Column | Description |
+|--------|-------------|
+| Symbol | The ticker as entered |
+| Name | Company or asset name from Yahoo Finance |
+| Price | Last fetched price in the symbol's native currency |
+| Currency | Native currency of the symbol |
+| Mkt Cap | Market capitalisation |
+| 52W Low | 52-week low price |
+| 52W High | 52-week high price |
+| YTD | Year-to-date return |
+| 1Y | 1-year return |
+| Div Yield | Trailing dividend yield |
+| P/E | Price-to-earnings ratio |
+| Last Updated | Timestamp of the most recent snapshot |
+| Actions | Per-row Refresh and Remove controls |
+
+#### Stale Data Indicator
+
+Rows whose snapshot is older than 15 minutes display a **stale** badge next to the Last Updated timestamp. Stale data is always shown rather than hidden, so you always have a value to work with — the badge tells you to refresh if precision matters.
+
+#### Refreshing Snapshots
+
+- **Refresh All** — fetches fresh market data for every symbol in the active watchlist in one operation. Per-symbol results appear as they complete.
+- **Per-row Refresh** — the refresh icon in the Actions column refreshes a single symbol. Each symbol has a **5-minute cooldown** between refreshes to avoid hammering Yahoo Finance. The icon is disabled and shows remaining cooldown time when the limit is active.
+
+Snapshots are stored locally in the database. They persist across app restarts and are shared across sessions.
+
+### Research Panel
+
+Click any row to expand the Research Panel below it. The panel provides a structured note-taking form for pre-trade analysis:
+
+| Field | Description |
+|-------|-------------|
+| Thesis | Why you are interested in this symbol — investment thesis in your own words |
+| Catalysts | Near-term events or conditions that could drive the position |
+| Risks | Key risks and reasons you might be wrong |
+| Entry Range | Price range you would be comfortable entering at (low – high) |
+
+All fields auto-save when you move focus away (on blur). No manual save step is required. Notes are stored per-item and persist across restarts.
+
+### Add to Holdings
+
+Each watchlist row has an **Add to Holdings** button. Clicking it opens the Add Holding modal with the symbol, name, asset type, and currency pre-filled from the latest snapshot. You complete the remaining fields (quantity, cost basis, account) and save normally. The watchlist item is not removed automatically — you can keep tracking a symbol you have partially added or decide to remove it manually.
+
+---
+
 ## Stress Test
 
 The Stress Test view simulates how your portfolio would perform under adverse market conditions.
