@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Performance } from '../Performance';
 import type { PortfolioSnapshot } from '../../types/portfolio';
@@ -99,6 +99,26 @@ describe('Performance component', () => {
     await screen.findByText(/only one snapshot recorded/i);
     // The misleading single-point chart (and its now-meaningless stats row) must not render.
     expect(screen.queryByText('Total Return')).toBeNull();
+  });
+
+  it('limits the account filter to account types actually present in the portfolio (#787)', () => {
+    renderPerformance({ portfolio: MOCK_SNAPSHOT as PortfolioSnapshot });
+
+    // MOCK_SNAPSHOT only has tfsa/rrsp/taxable/cash holdings — fhsa/crypto/other
+    // must not appear as selectable options.
+    const accountCombobox = screen.getAllByRole('combobox')[0]!;
+    fireEvent.click(accountCombobox);
+    const listbox = screen.getByRole('listbox');
+    const optionLabels = within(listbox)
+      .getAllByRole('option')
+      .map((el) => el.textContent);
+
+    expect(optionLabels).toEqual(
+      expect.arrayContaining(['All Accounts', 'TFSA', 'RRSP', 'Taxable', 'Cash'])
+    );
+    expect(optionLabels).not.toEqual(expect.arrayContaining(['FHSA']));
+    expect(optionLabels).not.toEqual(expect.arrayContaining(['Crypto']));
+    expect(optionLabels).not.toEqual(expect.arrayContaining(['Other']));
   });
 
   it('renders Max Drawdown and Annualized Volatility with German locale separators', async () => {

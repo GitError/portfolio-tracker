@@ -323,9 +323,34 @@ pub async fn get_performance(
     };
 
     let pool = &db.0;
-    let snapshots = db::get_snapshots_in_range(pool, &start, &end).await?;
+    let holdings = db::get_all_holdings(pool).await?;
 
-    // Deduplicate by calendar date, keeping only the latest snapshot per day.
+    // A snapshot recorded before the oldest currently-held position existed
+    // describes a holdings composition that has since been fully replaced —
+    // e.g. leftover snapshots from earlier dev/test holdings, recorded
+    // before a from-scratch CSV import — and would otherwise splice a
+    // misleading cliff into what should read as "this portfolio's" history
+    // immediately after that import. See #787.
+    let earliest_holding_date: Option<String> = holdings
+        .iter()
+        .map(|h| h.created_at.clone())
+        .min()
+        .and_then(|s| s.get(..10).map(str::to_string));
+
+    let snapshots = db::get_snapshots_in_range(pool, &start, &end).await?;
+    Ok(dedupe_and_filter_snapshots(
+        snapshots,
+        earliest_holding_date.as_deref(),
+    ))
+}
+
+/// Deduplicates snapshot points by calendar date (keeping the latest
+/// snapshot per day) and drops any that predate `earliest_holding_date`
+/// (`YYYY-MM-DD`), when given — see the doc comment on `get_performance`.
+fn dedupe_and_filter_snapshots(
+    snapshots: Vec<PerformancePoint>,
+    earliest_holding_date: Option<&str>,
+) -> Vec<PerformancePoint> {
     let mut by_date: std::collections::BTreeMap<String, PerformancePoint> =
         std::collections::BTreeMap::new();
     for point in snapshots {
@@ -340,7 +365,76 @@ pub async fn get_performance(
                 continue;
             }
         };
+        if let Some(cutoff) = earliest_holding_date {
+            if date_key.as_str() < cutoff {
+                continue;
+            }
+        }
         by_date.insert(date_key, point);
     }
-    Ok(by_date.into_values().collect())
+    by_date.into_values().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn point(date: &str, value: f64) -> PerformancePoint {
+        PerformancePoint {
+            date: date.to_string(),
+            value,
+        }
+    }
+
+    #[test]
+    fn keeps_only_latest_snapshot_per_calendar_day() {
+        let snapshots = vec![
+            point("2026-08-01T09:00:00", 100.0),
+            point("2026-08-01T15:00:00", 110.0),
+            point("2026-08-02T09:00:00", 120.0),
+        ];
+        let result = dedupe_and_filter_snapshots(snapshots, None);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].value, 110.0);
+        assert_eq!(result[1].value, 120.0);
+    }
+
+    #[test]
+    fn drops_snapshots_recorded_before_the_oldest_holding() {
+        // Stale snapshots from before a from-scratch import (e.g. leftover
+        // dev/test data worth millions) must not be spliced onto the
+        // current portfolio's history. See #787.
+        let snapshots = vec![
+            point("2026-01-01T09:00:00", 4_000_000.0),
+            point("2026-08-09T09:00:00", 420_000.0),
+        ];
+        let result = dedupe_and_filter_snapshots(snapshots, Some("2026-08-09"));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].value, 420_000.0);
+    }
+
+    #[test]
+    fn keeps_snapshot_recorded_on_the_same_day_the_holding_was_created() {
+        let snapshots = vec![point("2026-08-09T09:00:00", 420_000.0)];
+        let result = dedupe_and_filter_snapshots(snapshots, Some("2026-08-09"));
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn no_cutoff_keeps_full_history() {
+        let snapshots = vec![
+            point("2020-01-01T09:00:00", 50_000.0),
+            point("2026-08-09T09:00:00", 420_000.0),
+        ];
+        let result = dedupe_and_filter_snapshots(snapshots, None);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn skips_malformed_date_without_panicking() {
+        let snapshots = vec![point("bad", 1.0), point("2026-08-09T09:00:00", 420_000.0)];
+        let result = dedupe_and_filter_snapshots(snapshots, None);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].value, 420_000.0);
+    }
 }
