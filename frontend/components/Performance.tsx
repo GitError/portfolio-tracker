@@ -167,6 +167,14 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
     });
   }, [portfolio, accountFilter, assetFilter]);
 
+  // Account filter options limited to account types actually present in the
+  // portfolio, matching the same fix already applied to the Dashboard (#784).
+  const availableAccountOptions = useMemo(() => {
+    if (!portfolio) return [];
+    const present = new Set(portfolio.holdings.map((h) => h.account));
+    return ACCOUNT_OPTIONS.filter((opt) => present.has(opt.value));
+  }, [portfolio]);
+
   const filteredValue = useMemo(
     () => filteredHoldings.reduce((sum, holding) => sum + holding.marketValueCad, 0),
     [filteredHoldings]
@@ -274,7 +282,10 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
               onChange={(value) => updateParam('account', value)}
               options={[
                 { value: 'all', label: 'All Accounts' },
-                ...ACCOUNT_OPTIONS.map((option) => ({ value: option.value, label: option.label })),
+                ...availableAccountOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                })),
               ]}
             />
           </div>
@@ -319,7 +330,7 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
                 onChange={(value) => updateParam('account', value)}
                 options={[
                   { value: 'all', label: 'All Accounts' },
-                  ...ACCOUNT_OPTIONS.map((option) => ({
+                  ...availableAccountOptions.map((option) => ({
                     value: option.value,
                     label: option.label,
                   })),
