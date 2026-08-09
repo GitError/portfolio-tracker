@@ -21,7 +21,10 @@ export function Select({ value, onChange, options, style }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedOption = options.find((o) => o.value === value);
-  const selectedLabel = selectedOption?.label ?? value;
+  // Falls back to a non-breaking space (never a bare empty string) so the trigger's
+  // line box height stays constant whether or not a value is selected — an empty
+  // inline child collapses to zero height inside the flex trigger, shrinking the button.
+  const selectedLabel = selectedOption?.label || value || ' ';
 
   // Close on outside click
   useEffect(() => {
