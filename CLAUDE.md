@@ -215,7 +215,7 @@ Add to `~/.claude/settings.json`:
 - Use `serde(rename_all = "camelCase")` on all structs exposed to frontend
 - reqwest calls must include header `User-Agent: Mozilla/5.0` (Yahoo Finance blocks bare requests)
 - Use `tracing::error!/warn!/info!` for logging — never `eprintln!`
-- `set_config_cmd` only accepts keys on a fixed allowlist (`base_currency`, `app_language`, `app_theme`, `auto_refresh_interval_ms`, `auto_refresh_market_hours_only`, `cost_basis_method`, `notifications_enabled`) — add new config keys there before wiring up a new setting
+- `set_config_cmd` only accepts keys on a fixed allowlist (`base_currency`, `app_language`, `app_theme`, `app_color_scheme`, `auto_refresh_interval_ms`, `auto_refresh_market_hours_only`, `cost_basis_method`, `notifications_enabled`, `holdings_hidden_columns`) — add new config keys there before wiring up a new setting
 - `backup_database`/`restore_database` canonicalize paths and verify SQLite magic bytes + `PRAGMA integrity_check` before touching the live DB file — don't bypass this when adding new import/export paths
 
 ### TypeScript

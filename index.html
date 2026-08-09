@@ -17,6 +17,11 @@
             theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
           }
           document.documentElement.setAttribute('data-theme', theme);
+
+          var scheme = localStorage.getItem('app_color_scheme');
+          if (scheme && scheme !== 'default') {
+            document.documentElement.setAttribute('data-scheme', scheme);
+          }
         } catch (e) {}
       })();
     </script>
