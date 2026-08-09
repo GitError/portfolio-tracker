@@ -50,6 +50,7 @@ beforeEach(async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
   localStorage.clear();
+  document.documentElement.removeAttribute('data-scheme');
   vi.clearAllMocks();
   mockIsTauri = false;
   // Pin language so English-text assertions don't break if the default locale changes.
@@ -134,6 +135,25 @@ describe('Settings component smoke tests', () => {
   it('shows the Clear Local Cache button', () => {
     renderSettings();
     expect(screen.getByRole('button', { name: /clear cache/i })).toBeTruthy();
+  });
+
+  it('shows the color scheme selector with all scheme options', () => {
+    renderSettings();
+    expect(screen.getByText(/color scheme/i)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /dracula/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /synthwave/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^nord$/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /warm light/i })).toBeTruthy();
+  });
+
+  it('selecting a color scheme persists it and applies the data-scheme attribute', async () => {
+    renderSettings();
+    fireEvent.click(screen.getByRole('button', { name: /dracula/i }));
+
+    await waitFor(() => {
+      expect(document.documentElement.getAttribute('data-scheme')).toBe('dracula');
+    });
+    expect(localStorage.getItem('app_color_scheme')).toBe('dracula');
   });
 
   it('clicking Clear Local Cache removes the cached offline snapshot and shows confirmation', () => {

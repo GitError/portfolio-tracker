@@ -8,12 +8,18 @@ pub const ALLOWED_CONFIG_KEYS: &[&str] = &[
     "base_currency",
     "app_language",
     "app_theme",
+    "app_color_scheme",
     "auto_refresh_interval_ms",
     "auto_refresh_market_hours_only",
     "cost_basis_method",
     "notifications_enabled",
     "holdings_hidden_columns",
 ];
+
+/// Color scheme keys the frontend can render (`frontend/lib/themes.ts`'s
+/// `COLOR_SCHEME_KEYS`), mirrored here so `app_color_scheme` can't be set to
+/// a scheme the UI doesn't know how to draw.
+const SUPPORTED_COLOR_SCHEMES: &[&str] = &["default", "dracula", "synthwave", "nord", "warmLight"];
 
 /// BCP 47 tags this app ships translations for (`frontend/lib/i18n.ts`'s
 /// `SUPPORTED_LNG_CODES`).
@@ -76,6 +82,14 @@ pub fn validate_config_value(key: &str, value: &str) -> Result<(), String> {
                 return Err(format!(
                     "app_language must be one of: {} (got: {value})",
                     SUPPORTED_LANGUAGES.join(", ")
+                ));
+            }
+        }
+        "app_color_scheme" => {
+            if !SUPPORTED_COLOR_SCHEMES.contains(&value) {
+                return Err(format!(
+                    "app_color_scheme must be one of: {} (got: {value})",
+                    SUPPORTED_COLOR_SCHEMES.join(", ")
                 ));
             }
         }
@@ -185,6 +199,19 @@ mod tests {
     fn validate_config_value_rejects_unsupported_language() {
         assert!(validate_config_value("app_language", "xx").is_err());
         assert!(validate_config_value("app_language", "EN").is_err());
+    }
+
+    #[test]
+    fn validate_config_value_accepts_known_color_schemes() {
+        for value in ["default", "dracula", "synthwave", "nord", "warmLight"] {
+            assert!(validate_config_value("app_color_scheme", value).is_ok());
+        }
+    }
+
+    #[test]
+    fn validate_config_value_rejects_unknown_color_scheme() {
+        assert!(validate_config_value("app_color_scheme", "solarized").is_err());
+        assert!(validate_config_value("app_color_scheme", "").is_err());
     }
 
     #[test]

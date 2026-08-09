@@ -5,6 +5,8 @@ import { getVersion } from '@tauri-apps/api/app';
 import { isTauri, tauriInvoke, getErrorMessage } from '../lib/tauri';
 import { useConfig } from '../hooks/useConfig';
 import { useTheme, type ThemeMode } from '../hooks/useTheme';
+import { useColorScheme } from '../hooks/useColorScheme';
+import { COLOR_SCHEMES, DEFAULT_COLOR_SCHEME, type ColorSchemeKey } from '../lib/themes';
 import { useLanguage, SUPPORTED_LANGUAGES } from '../hooks/useLanguage';
 import { AccountsModal } from './AccountsModal';
 import { Select } from './ui/Select';
@@ -37,23 +39,28 @@ function SettingRow({
   label,
   description,
   children,
+  stacked,
 }: {
   label: string;
   description?: string;
   children: React.ReactNode;
+  /** Renders children full-width below the label instead of beside it — for
+   * controls too wide to share a row (e.g. a multi-option swatch picker). */
+  stacked?: boolean;
 }) {
   return (
     <div
       style={{
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 24,
+        flexDirection: stacked ? 'column' : 'row',
+        alignItems: stacked ? 'stretch' : 'center',
+        justifyContent: stacked ? 'flex-start' : 'space-between',
+        gap: stacked ? 10 : 24,
         padding: '16px 0',
         borderBottom: '1px solid var(--border-subtle)',
       }}
     >
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: stacked ? undefined : 1 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{label}</div>
         {description && (
           <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 3 }}>
@@ -61,7 +68,7 @@ function SettingRow({
           </div>
         )}
       </div>
-      <div style={{ flexShrink: 0 }}>{children}</div>
+      <div style={{ flexShrink: stacked ? undefined : 0 }}>{children}</div>
     </div>
   );
 }
@@ -183,6 +190,63 @@ function ThemePicker({
             }}
           >
             {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ColorSchemePicker({
+  scheme,
+  onSelect,
+}: {
+  scheme: ColorSchemeKey;
+  onSelect: (scheme: ColorSchemeKey) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {COLOR_SCHEMES.map((opt) => {
+        const isActive = scheme === opt.key;
+        return (
+          <button
+            key={opt.key}
+            onClick={() => onSelect(opt.key)}
+            aria-pressed={isActive}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              fontSize: 12,
+              fontWeight: 500,
+              fontFamily: 'var(--font-sans)',
+              cursor: 'pointer',
+              background: isActive ? 'var(--bg-surface-hover)' : 'var(--bg-surface-alt)',
+              color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+              border: `1px solid ${isActive ? 'var(--color-accent)' : 'var(--border-primary)'}`,
+              borderRadius: 2,
+              transition: 'background 150ms, border-color 150ms, color 150ms',
+            }}
+          >
+            <span
+              style={{
+                display: 'flex',
+                width: 20,
+                height: 14,
+                borderRadius: 1,
+                overflow: 'hidden',
+                border: '1px solid rgba(128,128,128,0.35)',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ flex: 1, background: opt.swatch.bgPrimary }} />
+              <span style={{ flex: 1, background: opt.swatch.bgSurface }} />
+              <span style={{ flex: 1, background: opt.swatch.colorAccent }} />
+              <span style={{ flex: 1, background: opt.swatch.colorGain }} />
+            </span>
+            {t(opt.nameKey)}
           </button>
         );
       })}
@@ -534,6 +598,7 @@ export function Settings() {
     'AVCO'
   );
   const { theme, setTheme } = useTheme();
+  const { colorScheme, setColorScheme } = useColorScheme();
   const [accountsOpen, setAccountsOpen] = useState(false);
   const { language, setLanguage } = useLanguage();
   const [appVersion, setAppVersion] = useState('...');
@@ -673,8 +738,29 @@ export function Settings() {
           padding: '0 16px',
         }}
       >
-        <SettingRow label={t('settings.theme')} description={t('settings.themeDescription')}>
-          <ThemePicker theme={theme} onSelect={setTheme} />
+        <SettingRow
+          label={t('settings.theme')}
+          description={
+            colorScheme === DEFAULT_COLOR_SCHEME
+              ? t('settings.themeDescription')
+              : t('settings.colorSchemeThemeToggleNote')
+          }
+        >
+          <div
+            style={{
+              opacity: colorScheme === DEFAULT_COLOR_SCHEME ? 1 : 0.45,
+              pointerEvents: colorScheme === DEFAULT_COLOR_SCHEME ? 'auto' : 'none',
+            }}
+          >
+            <ThemePicker theme={theme} onSelect={setTheme} />
+          </div>
+        </SettingRow>
+        <SettingRow
+          label={t('settings.colorScheme')}
+          description={t('settings.colorSchemeDescription')}
+          stacked
+        >
+          <ColorSchemePicker scheme={colorScheme} onSelect={(s) => void setColorScheme(s)} />
         </SettingRow>
       </div>
 

@@ -22,6 +22,7 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { PortfolioProvider, usePortfolio } from './hooks/usePortfolio';
 import { useConfig } from './hooks/useConfig';
 import { useTheme } from './hooks/useTheme';
+import { useColorScheme } from './hooks/useColorScheme';
 import { useAutoRefresh } from './hooks/useAutoRefresh';
 import { CurrencyContext } from './lib/currencyContext';
 import { formatCompact } from './lib/format';
@@ -29,6 +30,8 @@ import { formatCompact } from './lib/format';
 function AppRoutes() {
   // Initialize theme on mount — applies data-theme to <html> and reacts to OS changes
   useTheme();
+  // Initialize color scheme on mount — applies data-scheme to <html>
+  useColorScheme();
 
   const {
     portfolio,
