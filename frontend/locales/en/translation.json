@@ -405,7 +405,7 @@
   "import.status.currencyMismatch": "Currency mismatch",
   "import.status.currencyMismatchDetail": "Currency mismatch — file: {{actual}}, holding: {{expected}}",
 
-  "importWizard.title": "Import Plus Insights",
+  "importWizard.title": "Import Summary",
   "importWizard.back": "Back",
   "importWizard.continue": "Continue",
   "importWizard.desktopOnly": "Import is only available in the desktop app.",

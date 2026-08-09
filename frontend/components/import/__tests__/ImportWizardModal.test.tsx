@@ -131,7 +131,7 @@ beforeEach(async () => {
 describe('ImportWizardModal', () => {
   it('renders nothing when isOpen=false', () => {
     renderModal({ isOpen: false });
-    expect(screen.queryByText('Import Plus Insights')).toBeNull();
+    expect(screen.queryByText('Import Summary')).toBeNull();
   });
 
   it('shows the desktop-only notice in browser mode', () => {
@@ -145,6 +145,14 @@ describe('ImportWizardModal', () => {
     await waitFor(() => expect(mockGetAccounts).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('combobox'));
     expect(await screen.findByText('TD Taxable (Taxable)')).toBeTruthy();
+  });
+
+  it('keeps the account picker trigger non-empty before an account is selected', async () => {
+    renderModal();
+    const combobox = await screen.findByRole('combobox');
+    // Regression test for #774: an empty trigger label collapses the button's
+    // line box, making it shorter than once an account is picked.
+    expect(combobox.textContent).toBe(' ');
   });
 
   it('parses the file and auto-advances to preview when every column is mapped', async () => {
