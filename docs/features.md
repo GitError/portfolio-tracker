@@ -541,7 +541,9 @@ Press `?` at any time to open the shortcuts overlay. Full list:
 
 ## Export to PDF
 
-Click **Export PDF** in the Holdings toolbar to generate a portfolio summary PDF. The file is auto-saved to `~/Downloads/portfolio-YYYY-MM-DD.pdf` and a toast confirms the saved path on success.
+> **Development builds only.** The "Export PDF" button is gated behind `import.meta.env.DEV` and is hidden in production builds until table formatting is production-ready (#785). It is fully dead-code-eliminated from production bundles.
+
+Click **Export PDF** in the Holdings toolbar to generate a portfolio summary PDF. The file is auto-saved to `~/Downloads/portfolio-YYYY-MM-DD.pdf` (re-exporting the same day appends `_1`, `_2`, ... instead of overwriting) and a toast confirms the saved path on success.
 
 ### PDF Contents
 

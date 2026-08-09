@@ -30,7 +30,7 @@ Larger features that extend the core model.
 | Status | Feature | Description |
 |--------|---------|-------------|
 | ✅ | Historical Scenario Replay | Apply shocks derived from real historical events — 2008 financial crisis, COVID crash (Mar 2020), 2022 rate-hike cycle — to your current portfolio. PR #753. |
-| ✅ | Export to PDF | Generate a portfolio summary PDF (holdings table, allocation breakdown) auto-saved to `~/Downloads/portfolio-YYYY-MM-DD.pdf`. PR #765. |
+| ✅* | Export to PDF | Generate a portfolio summary PDF (holdings table, allocation breakdown) auto-saved to `~/Downloads/portfolio-YYYY-MM-DD.pdf`. PR #765. *Dev builds only — hidden in production until table formatting is production-ready (#785, PR #792).* |
 | ✅ | Research Watchlist | Track candidate securities with named watchlists, per-symbol research notes (thesis/catalysts/risks/entry range), and cached market-data snapshots. PR #773. |
 | ✅ | Color Schemes | Dracula, SynthWave '84, Nord, and Warm Light palettes selectable in Settings → Display, applied instantly and persisted. PR #797. |
 | 🔲 | Tax Lot Tracking | Record individual buy lots, apply ACB (adjusted cost base) methodology for Canadian capital gains calculations. |
