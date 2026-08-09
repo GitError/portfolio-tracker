@@ -55,6 +55,76 @@ fn parse_f64(value: Option<&str>) -> Option<f64> {
         .filter(|n| n.is_finite())
 }
 
+/// Name phrases (case-insensitive substring match) that unambiguously
+/// identify a row as an aggregate/summary cash line rather than an
+/// individual holding — these don't plausibly appear in a real security
+/// name, so a match alone is enough to skip the row.
+const AGGREGATE_CASH_NAME_PHRASES: &[&str] = &[
+    "total cash",
+    "cash balance",
+    "cash & cash equivalent",
+    "cash and cash equivalent",
+    "aggregate cash",
+    "cash equivalents",
+];
+
+/// Weaker name words that only count as a signal when paired with a generic
+/// symbol or a "Cash" asset class — alone they're too common in real
+/// security names (e.g. "TotalEnergies") to act on.
+const AGGREGATE_CASH_NAME_WORDS: &[&str] = &["total", "aggregate", "balance"];
+
+/// Symbols that are placeholders (currency codes, dashes) rather than real
+/// tickers when found on a row that also looks like a cash summary line.
+const GENERIC_CASH_SYMBOLS: &[&str] = &[
+    "CASH", "USD", "CAD", "EUR", "GBP", "AUD", "JPY", "-", "N/A", "TOTAL", "NONE",
+];
+
+/// Result of scanning a normalized row for aggregate-cash-summary signals.
+#[derive(Debug, PartialEq, Eq)]
+enum AggregateCashSignal {
+    /// No signal — treat as a normal row.
+    None,
+    /// Ambiguous signal (generic symbol/cash asset class without a clear
+    /// aggregate name) — flag for manual review rather than guessing.
+    Suspected,
+    /// Unambiguous aggregate/summary line (e.g. name is "Total Cash") —
+    /// safe to skip outright.
+    Confirmed,
+}
+
+/// Detects rows like "Total Cash", "Cash & Cash Equivalents", or a bare
+/// "CASH"/"USD" line — brokerage export summary rows that duplicate cash
+/// already reflected in the account's individual positions. See #781.
+fn detect_aggregate_cash_signal(
+    name: Option<&str>,
+    symbol_raw: Option<&str>,
+    asset_type: Option<&str>,
+) -> AggregateCashSignal {
+    let name_lower = name.map(str::to_lowercase);
+    let strong_name_match = name_lower
+        .as_deref()
+        .is_some_and(|n| AGGREGATE_CASH_NAME_PHRASES.iter().any(|p| n.contains(p)));
+    let weak_name_match = name_lower
+        .as_deref()
+        .is_some_and(|n| AGGREGATE_CASH_NAME_WORDS.iter().any(|w| n.contains(w)));
+
+    let symbol_norm = symbol_raw.map(|s| s.trim().to_uppercase());
+    let generic_symbol = match symbol_norm.as_deref() {
+        None | Some("") => true,
+        Some(s) => GENERIC_CASH_SYMBOLS.contains(&s),
+    };
+    let cash_asset = asset_type == Some("Cash");
+
+    if strong_name_match {
+        AggregateCashSignal::Confirmed
+    } else if (weak_name_match && (generic_symbol || cash_asset)) || (generic_symbol && cash_asset)
+    {
+        AggregateCashSignal::Suspected
+    } else {
+        AggregateCashSignal::None
+    }
+}
+
 /// Derives `(cost_basis, cost_basis_source)`:
 /// 1. Directly from `average_cost` (already per-unit).
 /// 2. Otherwise from `book_value / quantity` when quantity is positive.
@@ -179,13 +249,37 @@ pub fn normalize_row(
     let annualized_income = parse_f64(canonical.get("annualized_income").map(|s| s.as_str()));
     let ex_dividend_date = canonical.get("ex_dividend_date").cloned();
 
-    let action = if !errors.is_empty() {
+    let mut action = if !errors.is_empty() {
         RowAction::NeedsFix
     } else if !warnings.is_empty() {
         RowAction::Warning
     } else {
         RowAction::Create
     };
+
+    match detect_aggregate_cash_signal(
+        name.as_deref(),
+        symbol_raw.as_deref(),
+        asset_type.as_deref(),
+    ) {
+        AggregateCashSignal::Confirmed => {
+            action = RowAction::Skip;
+            warnings.push(format!(
+                "Skipped: looks like an aggregate cash summary row ('{}'), not an individual holding — already reflected in your other positions",
+                name.as_deref().unwrap_or("cash")
+            ));
+        }
+        AggregateCashSignal::Suspected => {
+            action = RowAction::NeedsFix;
+            errors.push(
+                "This row may be an aggregate cash summary (e.g. 'Total Cash') rather than an \
+                 individual holding — review it and remove it if so, or fix the symbol/name if \
+                 it's a real position"
+                    .to_string(),
+            );
+        }
+        AggregateCashSignal::None => {}
+    }
 
     NormalizedImportRow {
         row_number: raw.row_number,
@@ -577,6 +671,105 @@ mod tests {
         );
         assert_eq!(normalized.exchange, None);
         assert_eq!(normalized.target_weight, None);
+    }
+
+    #[test]
+    fn aggregate_cash_row_with_total_cash_name_is_skipped() {
+        let normalized = normalize(
+            &[
+                ("Symbol", "CASH"),
+                ("Security Description", "Total Cash"),
+                ("Asset Class", "Cash"),
+                ("Quantity", "5230.11"),
+                ("Average Cost", "1"),
+                ("Currency", "CAD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::Skip);
+        assert!(normalized
+            .warnings
+            .iter()
+            .any(|w| w.contains("aggregate cash summary")));
+    }
+
+    #[test]
+    fn aggregate_cash_row_with_cash_and_cash_equivalents_name_is_skipped() {
+        let normalized = normalize(
+            &[
+                ("Symbol", ""),
+                ("Security Description", "Cash & Cash Equivalents"),
+                ("Asset Class", "Cash"),
+                ("Quantity", "1200"),
+                ("Average Cost", "1"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::Skip);
+    }
+
+    #[test]
+    fn generic_cash_symbol_without_aggregate_name_is_needs_fix_not_dropped() {
+        // Ambiguous: could be a real individual USD cash position, or an
+        // unlabeled total line. Conservative: flag for review, don't guess.
+        let normalized = normalize(
+            &[
+                ("Symbol", "USD"),
+                ("Asset Class", "Cash"),
+                ("Quantity", "500"),
+                ("Average Cost", "1"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::NeedsFix);
+        assert!(normalized
+            .errors
+            .iter()
+            .any(|e| e.contains("aggregate cash summary")));
+    }
+
+    #[test]
+    fn real_holding_whose_name_contains_total_is_not_flagged() {
+        // "Total" appears in the company name (e.g. TotalEnergies), but this
+        // is a normal equity row with a real ticker — must not be treated as
+        // an aggregate cash summary line.
+        let normalized = normalize(
+            &[
+                ("Symbol", "TTE"),
+                ("Security Description", "TotalEnergies SE"),
+                ("Asset Class", "Equity"),
+                ("Quantity", "10"),
+                ("Average Cost", "55.0"),
+                ("Currency", "USD"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::Create);
+    }
+
+    #[test]
+    fn real_currency_symbol_holding_with_ordinary_name_is_not_flagged() {
+        // A normal equity/ETF row that happens to use a currency-like ticker
+        // should not be swept up just because the ticker looks generic.
+        let normalized = normalize(
+            &[
+                ("Symbol", "GBP"),
+                ("Security Description", "WisdomTree GBP ETF"),
+                ("Asset Class", "ETF"),
+                ("Quantity", "10"),
+                ("Average Cost", "25.0"),
+                ("Currency", "GBP"),
+            ],
+            8,
+            &context(),
+        );
+        assert_eq!(normalized.action, RowAction::Create);
     }
 
     #[test]
