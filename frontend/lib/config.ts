@@ -19,8 +19,11 @@ export const config = {
   defaultBaseCurrency: 'CAD',
 
   // ── UI counts ────────────────────────────────────────────────────────────────
-  /** Number of top movers shown in the Dashboard panel. */
-  topMoversCount: 10,
+  /** Number of top movers (gainers/losers, each) shown in the Dashboard panel. */
+  topMoversCount: 6,
+
+  /** Number of holdings shown in the Dashboard Concentration panel. */
+  concentrationCount: 5,
 
   /** Minimum symbol length before SymbolSearch fires a query. */
   symbolSearchMinChars: 2,
