@@ -8,8 +8,10 @@ import { MOCK_SNAPSHOT } from '../../lib/mockData';
 // Initialize i18n (Performance uses useTranslation for locale-aware number formatting)
 import i18next from '../../lib/i18n';
 
+let mockIsTauri = false;
+
 vi.mock('../../lib/tauri', () => ({
-  isTauri: () => false,
+  isTauri: () => mockIsTauri,
   getErrorMessage: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   tauriInvoke: vi.fn().mockResolvedValue([]),
 }));
@@ -19,6 +21,7 @@ beforeEach(() => {
   delete (window as any).__TAURI_INTERNALS__;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (window as any).__TAURI__;
+  mockIsTauri = false;
   vi.clearAllMocks();
 });
 
@@ -83,6 +86,19 @@ describe('Performance component', () => {
     renderPerformance({ portfolio: null, onRefresh });
     // With null portfolio, renders the "No portfolio data" empty state (no action shown)
     expect(screen.getByText(/no portfolio data available/i)).toBeTruthy();
+  });
+
+  it('shows a first-snapshot state instead of a misleading chart when only one snapshot exists', async () => {
+    const { tauriInvoke } = await import('../../lib/tauri');
+    mockIsTauri = true;
+    vi.mocked(tauriInvoke).mockResolvedValue([{ date: '2026-08-08', value: 100_000 }]);
+
+    renderPerformance({ portfolio: MOCK_SNAPSHOT as PortfolioSnapshot });
+
+    // Wait for the async get_performance call to resolve.
+    await screen.findByText(/only one snapshot recorded/i);
+    // The misleading single-point chart (and its now-meaningless stats row) must not render.
+    expect(screen.queryByText('Total Return')).toBeNull();
   });
 
   it('renders Max Drawdown and Annualized Volatility with German locale separators', async () => {

@@ -249,6 +249,21 @@ export function Performance({ portfolio, onRefresh }: PerformanceProps) {
     );
   }
 
+  // A single snapshot (typically the first one, recorded right after an initial
+  // import + price refresh) can't produce a trend line or stats — Recharts draws
+  // nothing meaningful for a one-point area chart. Show an explicit "history is
+  // just starting" message instead of a chart that looks flat/broken.
+  if (data.length === 1) {
+    return (
+      <div style={{ ...PANEL }}>
+        <EmptyState
+          message="Only one snapshot recorded so far. Performance history will build up as prices are refreshed over time."
+          action={onRefresh ? { label: 'Refresh Prices', onClick: onRefresh } : undefined}
+        />
+      </div>
+    );
+  }
+
   if (filteredHoldings.length === 0) {
     return (
       <div style={{ ...PANEL }}>
