@@ -766,27 +766,30 @@ export function Holdings({ onOpenAddModal, onExportRef }: HoldingsProps) {
             <Download size={12} />
             {t('holdings.exportCsv')}
           </button>
-          <button
-            onClick={() => void handleExportPdf()}
-            disabled={isExportingPdf}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 12px',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-primary)',
-              color: 'var(--text-primary)',
-              borderRadius: '2px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              cursor: isExportingPdf ? 'not-allowed' : 'pointer',
-              opacity: isExportingPdf ? 0.6 : 1,
-            }}
-          >
-            <FileText size={12} />
-            {t('holdings.exportPdf')}
-          </button>
+          {/* TODO(#785): re-enable once the PDF table formatting is production-ready. */}
+          {import.meta.env.DEV && (
+            <button
+              onClick={() => void handleExportPdf()}
+              disabled={isExportingPdf}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '6px 12px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-primary)',
+                color: 'var(--text-primary)',
+                borderRadius: '2px',
+                fontFamily: 'var(--font-mono)',
+                fontSize: 11,
+                cursor: isExportingPdf ? 'not-allowed' : 'pointer',
+                opacity: isExportingPdf ? 0.6 : 1,
+              }}
+            >
+              <FileText size={12} />
+              {t('holdings.exportPdf')}
+            </button>
+          )}
           <button
             onClick={() => setImportOpen(true)}
             style={{
