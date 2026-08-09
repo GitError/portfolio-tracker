@@ -17,7 +17,7 @@ use super::{
     get_base_currency, normalize_cost_basis_method, DbState, HttpClient, RealizedGainsCacheState,
 };
 
-/// Fetch per-symbol sector/industry/country from Yahoo Finance's v11 quoteSummary
+/// Fetch per-symbol sector/industry/country from Yahoo Finance's v10 quoteSummary
 /// `assetProfile` module. Returns `None` for all three fields on any fetch/parse failure
 /// (failures are soft — they don't abort the whole analytics call).
 async fn fetch_asset_profile(
@@ -34,12 +34,7 @@ async fn fetch_asset_profile(
     let url = crate::config::YAHOO_QUOTE_SUMMARY_URL.replace("{}", &encoded_symbol);
 
     let json: Option<serde_json::Value> = async {
-        let resp = client
-            .get(&url)
-            .header("User-Agent", crate::config::USER_AGENT)
-            .send()
-            .await
-            .ok()?;
+        let resp = crate::yahoo_auth::get_with_crumb(client, &url).await?;
         if !resp.status().is_success() {
             return None;
         }
@@ -70,10 +65,15 @@ async fn fetch_asset_profile(
 /// Fetch enriched symbol metadata (sector, industry, country, market cap, etc.)
 /// for the given list of symbols.
 ///
-/// * Sector, industry, and country are fetched from the v11 `quoteSummary` / `assetProfile`
+/// * Sector, industry, and country are fetched from the v10 `quoteSummary` / `assetProfile`
 ///   endpoint, which reliably returns these fields (unlike the v7 quote endpoint).
 /// * Numeric fields (market cap, P/E, dividend yield, beta) continue to come from the
 ///   bulk v7 quote endpoint.
+///
+/// Both endpoints require a session cookie + crumb token, obtained via
+/// `yahoo_auth::get_with_crumb` (see #799 — these requests previously carried
+/// no auth at all and were silently rejected, leaving Analytics with
+/// symbol-only data).
 ///
 /// Both requests are issued concurrently. A failure on either is treated as a soft
 /// error so that partial data is still returned.
@@ -144,10 +144,7 @@ pub(crate) async fn get_symbol_metadata_with_cache(
         .join(",");
     let quote_url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
 
-    let quote_future = client
-        .get(&quote_url)
-        .header("User-Agent", crate::config::USER_AGENT)
-        .send();
+    let quote_future = crate::yahoo_auth::get_with_crumb(client, &quote_url);
 
     // ── 2. Per-symbol assetProfile requests for sector/industry/country ───────
     // Use buffer_unordered(5) to cap concurrent HTTP requests at 5 so we don't
@@ -171,7 +168,7 @@ pub(crate) async fn get_symbol_metadata_with_cache(
 
     // Parse bulk quote response (best-effort).
     let quote_json: Option<serde_json::Value> = async {
-        let resp = quote_response.ok()?;
+        let resp = quote_response?;
         if !resp.status().is_success() {
             return None;
         }
@@ -410,6 +407,173 @@ fn compute_portfolio_analytics(
         risk_metrics,
         sector_breakdown,
         country_breakdown,
+    }
+}
+
+#[cfg(test)]
+mod compute_portfolio_analytics_tests {
+    use super::compute_portfolio_analytics;
+    use crate::types::{
+        AccountType, AssetType, Holding, HoldingId, HoldingWithPrice, PortfolioSnapshot,
+        SymbolMetadata,
+    };
+
+    fn holding_with_price(
+        symbol: &str,
+        asset_type: AssetType,
+        market_value_cad: f64,
+        weight: f64,
+    ) -> HoldingWithPrice {
+        HoldingWithPrice {
+            holding: Holding {
+                id: HoldingId(symbol.to_string()),
+                symbol: symbol.to_string(),
+                name: symbol.to_string(),
+                asset_type,
+                account: AccountType::Taxable,
+                account_id: None,
+                account_name: None,
+                quantity: 1.0,
+                cost_basis: 1.0,
+                currency: "CAD".to_string(),
+                exchange: String::new(),
+                target_weight: None,
+                created_at: "2024-01-01T00:00:00Z".to_string(),
+                updated_at: "2024-01-01T00:00:00Z".to_string(),
+                indicated_annual_dividend: None,
+                indicated_annual_dividend_currency: None,
+                dividend_frequency: None,
+                maturity_date: None,
+            },
+            current_price: 1.0,
+            current_price_cad: 1.0,
+            market_value_cad,
+            cost_value_cad: market_value_cad,
+            gain_loss: 0.0,
+            gain_loss_percent: 0.0,
+            weight,
+            target_value: 0.0,
+            target_delta_value: 0.0,
+            target_delta_percent: 0.0,
+            daily_change_percent: 0.0,
+            fx_stale: false,
+            price_is_stale: false,
+        }
+    }
+
+    fn make_snapshot(holdings: Vec<HoldingWithPrice>, total_value: f64) -> PortfolioSnapshot {
+        PortfolioSnapshot {
+            holdings,
+            total_value,
+            total_cost: total_value,
+            total_gain_loss: 0.0,
+            total_gain_loss_percent: 0.0,
+            daily_pnl: 0.0,
+            last_updated: "2024-01-01T00:00:00Z".to_string(),
+            base_currency: "CAD".to_string(),
+            total_target_weight: 0.0,
+            target_cash_delta: 0.0,
+            realized_gains: 0.0,
+            annual_dividend_income: 0.0,
+            requires_cost_basis_selection: false,
+        }
+    }
+
+    fn full_metadata(symbol: &str, sector: &str, country: &str, beta: f64) -> SymbolMetadata {
+        SymbolMetadata {
+            symbol: symbol.to_string(),
+            sector: Some(sector.to_string()),
+            industry: Some("Some Industry".to_string()),
+            country: Some(country.to_string()),
+            market_cap: Some(1_000_000_000.0),
+            pe_ratio: Some(20.0),
+            dividend_yield: Some(0.01),
+            beta: Some(beta),
+            eps: Some(2.0),
+        }
+    }
+
+    /// Regression guard for #799: with Yahoo Finance metadata successfully
+    /// fetched (sector/country/beta populated), Analytics must derive real
+    /// sector/country breakdowns and a weighted beta — not just echo back
+    /// the bare symbol list that shipped when the fetch was silently 401ing.
+    #[test]
+    fn populated_metadata_produces_sector_country_and_risk_metrics() {
+        let holdings = vec![
+            holding_with_price("AAPL", AssetType::Stock, 6000.0, 60.0),
+            holding_with_price("SHOP", AssetType::Stock, 4000.0, 40.0),
+        ];
+        let snapshot = make_snapshot(holdings, 10_000.0);
+        let metadata = vec![
+            full_metadata("AAPL", "Technology", "United States", 1.2),
+            full_metadata("SHOP", "Technology", "Canada", 2.0),
+        ];
+
+        let analytics = compute_portfolio_analytics(&snapshot, &metadata);
+
+        assert_eq!(
+            analytics.sector_breakdown.len(),
+            1,
+            "both holdings share the Technology sector, expected one bucket"
+        );
+        assert_eq!(analytics.sector_breakdown[0].sector, "Technology");
+        assert!((analytics.sector_breakdown[0].weight_percent - 100.0).abs() < 1e-9);
+
+        assert_eq!(analytics.country_breakdown.len(), 2);
+        assert!(analytics
+            .country_breakdown
+            .iter()
+            .any(|c| c.country == "United States"));
+        assert!(analytics
+            .country_breakdown
+            .iter()
+            .any(|c| c.country == "Canada"));
+
+        let weighted_beta = analytics
+            .risk_metrics
+            .weighted_beta
+            .expect("weighted beta must be computed when metadata has beta values");
+        let expected_beta = 1.2 * 0.6 + 2.0 * 0.4;
+        assert!((weighted_beta - expected_beta).abs() < 1e-9);
+    }
+
+    /// When Yahoo Finance metadata can't be fetched at all (the exact
+    /// pre-fix symptom of #799 — every request 401ing/404ing), Analytics
+    /// must fall back to an explicit "Other"/"Unknown" bucket rather than
+    /// an empty or panicking breakdown.
+    #[test]
+    fn missing_metadata_falls_back_to_other_and_unknown() {
+        let holdings = vec![holding_with_price("XYZ", AssetType::Stock, 10_000.0, 100.0)];
+        let snapshot = make_snapshot(holdings, 10_000.0);
+
+        let analytics = compute_portfolio_analytics(&snapshot, &[]);
+
+        assert_eq!(analytics.sector_breakdown.len(), 1);
+        assert_eq!(analytics.sector_breakdown[0].sector, "Other");
+        assert_eq!(analytics.country_breakdown.len(), 1);
+        assert_eq!(analytics.country_breakdown[0].country, "Unknown");
+        assert!(analytics.risk_metrics.weighted_beta.is_none());
+    }
+
+    #[test]
+    fn cash_holdings_are_grouped_separately_from_other() {
+        let holdings = vec![
+            holding_with_price("CASH-CAD", AssetType::Cash, 5000.0, 50.0),
+            holding_with_price("AAPL", AssetType::Stock, 5000.0, 50.0),
+        ];
+        let snapshot = make_snapshot(holdings, 10_000.0);
+        let metadata = vec![full_metadata("AAPL", "Technology", "United States", 1.0)];
+
+        let analytics = compute_portfolio_analytics(&snapshot, &metadata);
+
+        assert!(analytics
+            .sector_breakdown
+            .iter()
+            .any(|s| s.sector == "Cash"));
+        assert!(analytics
+            .sector_breakdown
+            .iter()
+            .any(|s| s.sector == "Technology"));
     }
 }
 

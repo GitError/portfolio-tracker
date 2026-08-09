@@ -111,6 +111,50 @@ async fn fetch_yahoo_crumb(
     Ok(YahooCrumb { crumb, cookie })
 }
 
+/// GETs `base_url` (which may already contain its own query params, but not
+/// `crumb`) with the cached crumb + session cookie attached. On a 401 the
+/// cached crumb is discarded, a fresh one is fetched, and the request is
+/// retried once — the same retry-on-401 behavior `price::fetch_watchlist_snapshot`
+/// uses for the v7 quote endpoint, generalized for any crumb-gated Yahoo
+/// Finance endpoint (e.g. the v10 quoteSummary endpoint used for analytics
+/// metadata, see #799).
+///
+/// Returns `None` on any failure (crumb handshake failure, network error, or
+/// a second 401) so callers can treat the fetch as best-effort.
+pub async fn get_with_crumb(client: &Client, base_url: &str) -> Option<reqwest::Response> {
+    let crumb = get_yahoo_crumb(client).await.ok()?;
+    let response = send_with_crumb(client, base_url, &crumb).await?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        invalidate_yahoo_crumb().await;
+        let fresh_crumb = get_yahoo_crumb(client).await.ok()?;
+        return send_with_crumb(client, base_url, &fresh_crumb).await;
+    }
+
+    Some(response)
+}
+
+async fn send_with_crumb(
+    client: &Client,
+    base_url: &str,
+    crumb: &YahooCrumb,
+) -> Option<reqwest::Response> {
+    let separator = if base_url.contains('?') { "&" } else { "?" };
+    let url = format!(
+        "{}{}crumb={}",
+        base_url,
+        separator,
+        urlencoding::encode(&crumb.crumb)
+    );
+    client
+        .get(&url)
+        .header("User-Agent", USER_AGENT)
+        .header(reqwest::header::COOKIE, &crumb.cookie)
+        .send()
+        .await
+        .ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,4 +305,103 @@ mod tests {
 
         invalidate_yahoo_crumb().await;
     }
+
+    // ── send_with_crumb / get_with_crumb ────────────────────────────────────
+    //
+    // These target `send_with_crumb` directly (a stub crumb passed in,
+    // mirroring `fetch_watchlist_snapshot_internal`'s tests) rather than
+    // `get_with_crumb`, which reads/writes the process-wide `CRUMB_CACHE`.
+    // Tests run concurrently in the same binary, so asserting through the
+    // shared cache would be flaky; the crumb-attachment logic under test
+    // lives entirely in `send_with_crumb`.
+
+    fn stub_crumb() -> YahooCrumb {
+        YahooCrumb {
+            crumb: "test-crumb".to_string(),
+            cookie: "test-cookie".to_string(),
+        }
+    }
+
+    #[tokio::test]
+    async fn send_with_crumb_appends_crumb_with_ampersand_when_base_url_has_query() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock(
+                "GET",
+                "/v10/finance/quoteSummary/AAPL?modules=assetProfile&crumb=test-crumb",
+            )
+            .match_header("cookie", "test-cookie")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let base_url = format!(
+            "{}/v10/finance/quoteSummary/AAPL?modules=assetProfile",
+            server.url()
+        );
+        let resp = send_with_crumb(&client, &base_url, &stub_crumb()).await;
+
+        assert!(resp.is_some());
+        assert_eq!(resp.unwrap().status(), reqwest::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn send_with_crumb_appends_crumb_with_question_mark_when_base_url_has_no_query() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/no-query-endpoint?crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let base_url = format!("{}/no-query-endpoint", server.url());
+        let resp = send_with_crumb(&client, &base_url, &stub_crumb()).await;
+
+        assert!(resp.is_some());
+        assert_eq!(resp.unwrap().status(), reqwest::StatusCode::OK);
+    }
+
+    /// Regression guard for #799: the analytics metadata fetch (bulk quote +
+    /// per-symbol assetProfile) previously sent no crumb/cookie at all, so
+    /// Yahoo Finance rejected the requests and Analytics silently fell back
+    /// to symbol-only data. A request missing the crumb param or cookie
+    /// header must not match this mock, proving `send_with_crumb` actually
+    /// attaches both rather than the test passing vacuously.
+    #[tokio::test]
+    async fn send_with_crumb_omits_crumb_request_fails_to_match() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v10/finance/quoteSummary/AAPL?modules=assetProfile")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let base_url = format!(
+            "{}/v10/finance/quoteSummary/AAPL?modules=assetProfile",
+            server.url()
+        );
+        let resp = send_with_crumb(&client, &base_url, &stub_crumb()).await;
+
+        // No mock matches the crumb+cookie-bearing request, so mockito's
+        // server falls back to a 501, confirming both were sent.
+        assert!(resp.is_some());
+        assert_eq!(resp.unwrap().status().as_u16(), 501);
+    }
+
+    // `get_with_crumb` itself (as opposed to `send_with_crumb` above) isn't
+    // separately unit-tested: it reads/writes the process-wide `CRUMB_CACHE`,
+    // and this test binary runs `#[tokio::test]` functions concurrently, so
+    // asserting through that shared static is flaky (another test's
+    // invalidate/set can interleave). `send_with_crumb` — which carries all
+    // of the actual crumb-attachment logic under test — takes the crumb as a
+    // parameter and needs no shared state, matching the same tradeoff
+    // `price.rs` makes by testing `fetch_watchlist_snapshot_internal` rather
+    // than the outer `fetch_watchlist_snapshot` retry wrapper.
 }
