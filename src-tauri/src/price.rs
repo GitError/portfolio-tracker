@@ -3,6 +3,7 @@ use reqwest::Client;
 
 use crate::config::{USER_AGENT, YAHOO_CHART_URL, YAHOO_QUOTE_URL};
 use crate::types::PriceData;
+use crate::yahoo_auth::{get_yahoo_crumb, invalidate_yahoo_crumb, YahooCrumb};
 
 /// Validate a ticker symbol before it is interpolated into a Yahoo Finance URL.
 ///
@@ -184,27 +185,45 @@ pub struct WatchlistSnapshotData {
 }
 
 /// Fetch a single symbol's research-watchlist market data snapshot.
+///
+/// The v7 quote endpoint this hits requires a session cookie + crumb token
+/// (see #789); `yahoo_auth` caches that pair process-wide so most calls skip
+/// the handshake. If the cached crumb has gone stale (Yahoo rejects it with
+/// 401), it's refreshed once and the request retried before giving up.
 pub async fn fetch_watchlist_snapshot(
     client: &Client,
     symbol: &str,
 ) -> Result<WatchlistSnapshotData, String> {
-    fetch_watchlist_snapshot_internal(client, symbol, YAHOO_QUOTE_URL).await
+    let crumb = get_yahoo_crumb(client).await?;
+    match fetch_watchlist_snapshot_internal(client, symbol, YAHOO_QUOTE_URL, &crumb).await {
+        Err(e) if e.contains("HTTP 401") => {
+            invalidate_yahoo_crumb().await;
+            let fresh_crumb = get_yahoo_crumb(client).await?;
+            fetch_watchlist_snapshot_internal(client, symbol, YAHOO_QUOTE_URL, &fresh_crumb).await
+        }
+        other => other,
+    }
 }
 
 /// Internal implementation accepting a configurable URL template so tests can
-/// point it at a mock server, mirroring `fetch_price_internal`.
+/// point it at a mock server, mirroring `fetch_price_internal`. Takes an
+/// already-obtained crumb rather than fetching one itself, keeping request
+/// construction independently testable from the crumb handshake.
 async fn fetch_watchlist_snapshot_internal(
     client: &Client,
     symbol: &str,
     url_template: &str,
+    crumb: &YahooCrumb,
 ) -> Result<WatchlistSnapshotData, String> {
     validate_symbol(symbol)?;
     let encoded_symbol = urlencoding::encode(symbol);
-    let url = url_template.replace("{}", &encoded_symbol);
+    let base_url = url_template.replace("{}", &encoded_symbol);
+    let url = format!("{}&crumb={}", base_url, urlencoding::encode(&crumb.crumb));
 
     let response = client
         .get(&url)
         .header("User-Agent", USER_AGENT)
+        .header(reqwest::header::COOKIE, &crumb.cookie)
         .send()
         .await
         .map_err(|e| format!("Request failed for {}: {}", symbol, e))?;
@@ -245,6 +264,29 @@ async fn fetch_watchlist_snapshot_internal(
             .and_then(|v| v.as_f64()),
         pe_ratio: item.get("trailingPE").and_then(|v| v.as_f64()),
     })
+}
+
+/// Translates a raw watchlist snapshot fetch error (network failure, HTTP
+/// status, JSON parse failure) into a message safe to store and show
+/// directly to the user — no raw status codes or endpoint internals they
+/// can't act on. Callers should still log the raw error for diagnosis.
+pub fn user_safe_watchlist_error(symbol: &str, raw_error: &str) -> String {
+    if raw_error.contains("HTTP 401") || raw_error.contains("HTTP 403") {
+        format!(
+            "Unable to fetch market data for {}: the data provider rejected the request. Please try again later.",
+            symbol
+        )
+    } else if raw_error.starts_with("Request failed") {
+        format!(
+            "Unable to fetch market data for {}: network request failed. Check your connection and try again.",
+            symbol
+        )
+    } else {
+        format!(
+            "Unable to fetch market data for {}. Please try again later.",
+            symbol
+        )
+    }
 }
 
 #[cfg(test)]
@@ -548,6 +590,16 @@ mod tests {
         format!("{}/v7/finance/quote?symbols={{}}", server.url())
     }
 
+    /// Stub crumb used by tests that exercise request construction directly,
+    /// bypassing the real cookie/crumb handshake (covered separately in
+    /// `yahoo_auth`'s own tests).
+    fn stub_crumb() -> YahooCrumb {
+        YahooCrumb {
+            crumb: "test-crumb".to_string(),
+            cookie: "test-cookie".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn fetch_watchlist_snapshot_parses_all_fields() {
         let mut server = mockito::Server::new_async().await;
@@ -572,7 +624,8 @@ mod tests {
         .to_string();
 
         let _mock = server
-            .mock("GET", "/v7/finance/quote?symbols=AAPL")
+            .mock("GET", "/v7/finance/quote?symbols=AAPL&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(&body)
@@ -581,7 +634,8 @@ mod tests {
 
         let client = make_client();
         let url_template = mock_quote_url_template(&server);
-        let result = fetch_watchlist_snapshot_internal(&client, "AAPL", &url_template).await;
+        let result =
+            fetch_watchlist_snapshot_internal(&client, "AAPL", &url_template, &stub_crumb()).await;
 
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let snap = result.unwrap();
@@ -614,7 +668,8 @@ mod tests {
         .to_string();
 
         let _mock = server
-            .mock("GET", "/v7/finance/quote?symbols=VOO")
+            .mock("GET", "/v7/finance/quote?symbols=VOO&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(&body)
@@ -623,7 +678,8 @@ mod tests {
 
         let client = make_client();
         let url_template = mock_quote_url_template(&server);
-        let result = fetch_watchlist_snapshot_internal(&client, "VOO", &url_template).await;
+        let result =
+            fetch_watchlist_snapshot_internal(&client, "VOO", &url_template, &stub_crumb()).await;
 
         assert!(result.is_ok(), "expected Ok, got {:?}", result);
         let snap = result.unwrap();
@@ -642,7 +698,8 @@ mod tests {
         .to_string();
 
         let _mock = server
-            .mock("GET", "/v7/finance/quote?symbols=INVALID")
+            .mock("GET", "/v7/finance/quote?symbols=INVALID&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(&body)
@@ -651,7 +708,9 @@ mod tests {
 
         let client = make_client();
         let url_template = mock_quote_url_template(&server);
-        let result = fetch_watchlist_snapshot_internal(&client, "INVALID", &url_template).await;
+        let result =
+            fetch_watchlist_snapshot_internal(&client, "INVALID", &url_template, &stub_crumb())
+                .await;
 
         assert!(result.is_err(), "expected Err on empty result array");
     }
@@ -663,6 +722,7 @@ mod tests {
             &client,
             "../../etc/passwd",
             "https://example.invalid/{}",
+            &stub_crumb(),
         )
         .await;
         assert!(result.is_err());
@@ -673,7 +733,8 @@ mod tests {
     async fn fetch_watchlist_snapshot_http_error_returns_error() {
         let mut server = mockito::Server::new_async().await;
         let _mock = server
-            .mock("GET", "/v7/finance/quote?symbols=TSLA")
+            .mock("GET", "/v7/finance/quote?symbols=TSLA&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
             .with_status(403)
             .with_body("Forbidden")
             .create_async()
@@ -681,9 +742,84 @@ mod tests {
 
         let client = make_client();
         let url_template = mock_quote_url_template(&server);
-        let result = fetch_watchlist_snapshot_internal(&client, "TSLA", &url_template).await;
+        let result =
+            fetch_watchlist_snapshot_internal(&client, "TSLA", &url_template, &stub_crumb()).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("403"));
+    }
+
+    /// Regression test for #789: the quote request must carry the crumb as a
+    /// query parameter and the session cookie as a `Cookie` header, and a 401
+    /// response (the exact failure mode from the issue) must surface as a
+    /// clear "HTTP 401" error rather than a parse failure or panic.
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_401_response_returns_clear_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=AAPL&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
+            .with_status(401)
+            .with_body("Unauthorized")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result =
+            fetch_watchlist_snapshot_internal(&client, "AAPL", &url_template, &stub_crumb()).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.contains("401"), "expected 401 in error, got: {}", err);
+
+        // And that raw error maps to a user-safe message rather than being
+        // shown to the user verbatim.
+        let user_message = user_safe_watchlist_error("AAPL", &err);
+        assert!(!user_message.contains("401"));
+        assert!(user_message.contains("AAPL"));
+    }
+
+    #[tokio::test]
+    async fn fetch_watchlist_snapshot_omits_crumb_request_fails_auth_check() {
+        // A request missing the crumb param or cookie header must not match
+        // the mock, proving the real implementation actually sends both
+        // rather than the test passing vacuously.
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=AAPL")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result =
+            fetch_watchlist_snapshot_internal(&client, "AAPL", &url_template, &stub_crumb()).await;
+
+        // No mock matches "?symbols=AAPL&crumb=..." exactly, so mockito's
+        // server falls back to a 501, confirming the crumb is always sent.
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("501"));
+    }
+
+    // ── user_safe_watchlist_error ────────────────────────────────────────────
+
+    #[test]
+    fn user_safe_watchlist_error_maps_401_without_leaking_status_code() {
+        let msg = user_safe_watchlist_error("AAPL", "HTTP 401 for symbol AAPL");
+        assert!(msg.contains("AAPL"));
+        assert!(!msg.contains("401"));
+        assert!(!msg.to_lowercase().contains("http"));
+    }
+
+    #[test]
+    fn user_safe_watchlist_error_maps_network_failure() {
+        let msg = user_safe_watchlist_error("TSLA", "Request failed for TSLA: connect timeout");
+        assert!(msg.contains("TSLA"));
+        assert!(
+            msg.to_lowercase().contains("connection") || msg.to_lowercase().contains("network")
+        );
     }
 }
