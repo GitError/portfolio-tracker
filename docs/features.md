@@ -386,6 +386,8 @@ Open Settings from the sidebar or press `⌘,`.
 
 **Theme** — switch between dark and light themes. The preference is applied before React mounts so the app does not flash the wrong theme on startup.
 
+**Color Scheme** — pick an alternate palette beyond the default dark/light pair: **Dracula**, **SynthWave '84**, and **Nord** (all dark-mode), plus **Warm Light** (a warm light-mode palette). Each scheme applies instantly via a `[data-scheme="..."]` CSS override, no reload required, and is persisted (`app_color_scheme` config key). Because a non-default scheme fixes its own mode, the Theme toggle visually disables with an explanatory note while one is active — switch back to **Default** to re-enable it. All palettes are verified WCAG AA (≥4.5:1) for text and semantic colors against their backgrounds. A pre-mount script in `index.html` reads the cached scheme from `localStorage` to avoid a flash on launch.
+
 **Language** — choose the UI language. Translations are powered by i18next and the selected language is persisted across launches. Number, percent, and compact-currency formatting throughout the app (Dashboard, Holdings, Analytics, Performance, action-insight recommendations, etc.) follow the selected locale rather than the browser default, and a failed language switch rolls back to the previous language with an error surfaced instead of leaving the UI in a mixed state.
 
 ### Data
