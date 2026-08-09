@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, ChevronDown, AlertTriangle } from 'lucide-react';
+import { RefreshCw, ChevronDown, AlertTriangle, X } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { formatCurrency, formatPercent } from '../lib/format';
 import { pnlColor } from '../lib/colors';
@@ -178,13 +178,20 @@ export function TopBar({
   // Flash the countdown label in the last 10 seconds before refresh
   const isUrgent = !isBusy && countdown !== null && countdown < 10;
 
+  // Dismissing the failed-symbols banner only hides it — it must not clear `failedSymbols`
+  // (needed for diagnostics) or trigger a refresh (#786). Keyed on content so a *new*
+  // failure (even with the same symbols, since refresh always clears the list first) reopens it.
+  const [dismissedFailedSymbolsKey, setDismissedFailedSymbolsKey] = useState<string | null>(null);
+  const failedSymbolsKey = failedSymbols.length > 0 ? failedSymbols.join(',') : null;
+  const showFailedBanner =
+    failedSymbolsKey !== null && failedSymbolsKey !== dismissedFailedSymbolsKey;
+
   return (
     <div style={{ position: 'sticky', top: 0, zIndex: 5 }}>
       <div
         style={{
           background: 'var(--bg-primary)',
-          borderBottom:
-            failedSymbols.length > 0 || isOffline ? 'none' : '1px solid var(--border-primary)',
+          borderBottom: showFailedBanner || isOffline ? 'none' : '1px solid var(--border-primary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -277,7 +284,7 @@ export function TopBar({
         <div
           style={{
             background: 'rgba(59,130,246,0.08)',
-            borderBottom: failedSymbols.length > 0 ? 'none' : '1px solid var(--border-primary)',
+            borderBottom: showFailedBanner ? 'none' : '1px solid var(--border-primary)',
             borderTop: '1px solid rgba(59,130,246,0.3)',
             padding: '6px 24px',
             display: 'flex',
@@ -318,7 +325,7 @@ export function TopBar({
       )}
 
       {/* Failed symbols warning banner */}
-      {failedSymbols.length > 0 && (
+      {showFailedBanner && (
         <div
           style={{
             background: 'rgba(251,191,36,0.08)',
@@ -352,6 +359,23 @@ export function TopBar({
             }}
           >
             Retry
+          </button>
+          <button
+            onClick={() => setDismissedFailedSymbolsKey(failedSymbolsKey)}
+            aria-label="Dismiss"
+            title="Dismiss"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-warning)',
+              cursor: 'pointer',
+              padding: 2,
+              display: 'flex',
+              alignItems: 'center',
+              opacity: 0.8,
+            }}
+          >
+            <X size={12} />
           </button>
         </div>
       )}

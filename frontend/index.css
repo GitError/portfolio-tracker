@@ -167,6 +167,7 @@ body::after {
 .dashboard-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
+  grid-auto-flow: dense;
   gap: 1px;
   background: var(--border-primary);
   border: 1px solid var(--border-primary);
