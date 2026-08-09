@@ -16,6 +16,17 @@ pub const YAHOO_CHART_URL: &str =
 
 pub const YAHOO_QUOTE_URL: &str = "https://query1.finance.yahoo.com/v7/finance/quote?symbols={}";
 
+/// Endpoint hit once to obtain the session cookie Yahoo Finance requires
+/// before it will issue a crumb token. Any Yahoo Finance host works; this
+/// one returns quickly and needs no query parameters.
+pub const YAHOO_COOKIE_URL: &str = "https://fc.yahoo.com";
+
+/// Exchanges the session cookie from [`YAHOO_COOKIE_URL`] for a crumb token.
+/// The v7 quote endpoint has required a matching cookie + crumb pair since
+/// Yahoo tightened access to it (see #789); the v8 chart endpoint above is
+/// unaffected.
+pub const YAHOO_CRUMB_URL: &str = "https://query1.finance.yahoo.com/v1/test/getcrumb";
+
 /// Endpoint for per-symbol fundamental metadata (sector, industry, country).
 /// Replace `{}` with the symbol. Returns `quoteSummary.result[0].assetProfile`.
 pub const YAHOO_QUOTE_SUMMARY_URL: &str =

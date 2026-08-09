@@ -52,7 +52,8 @@ async fn fetch_and_store_snapshot(
         }
         Err(e) => {
             tracing::warn!("Failed to fetch watchlist snapshot for {}: {}", symbol, e);
-            db::upsert_watchlist_item_snapshot(pool, item_id, None, Some(&e)).await?
+            let user_message = crate::price::user_safe_watchlist_error(symbol, &e);
+            db::upsert_watchlist_item_snapshot(pool, item_id, None, Some(&user_message)).await?
         }
     }
     Ok(())

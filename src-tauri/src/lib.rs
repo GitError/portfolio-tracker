@@ -17,6 +17,7 @@ mod stress;
 #[cfg(test)]
 mod test_helpers;
 pub mod types;
+mod yahoo_auth;
 
 use commands::{
     BackupLockState, DbState, HttpClient, RateLimiterState, RealizedGainsCacheState,
