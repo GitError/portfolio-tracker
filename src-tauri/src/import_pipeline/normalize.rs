@@ -307,6 +307,26 @@ pub fn normalize_row(
     }
 }
 
+/// A Cash Details `Currency` value that isn't 3 alphabetic characters can
+/// never pass the shared holding-field validator's ISO-code check
+/// (`portfolio_core::validation::holdings::validate_holding_fields`) no
+/// matter how it's cased/trimmed.
+fn looks_like_currency_code(currency_raw: &str) -> bool {
+    let trimmed = currency_raw.trim();
+    trimmed.len() == 3 && trimmed.chars().all(|c| c.is_ascii_alphabetic())
+}
+
+/// Detects a Cash Details row whose `Currency` field is actually a broker
+/// subtotal/aggregate label (e.g. "TOTAL (IN CAD)") rather than a real
+/// currency code — these summary lines duplicate the individual currency
+/// balances already listed above them in the same section and must not be
+/// imported as a cash holding. Mirrors the "Total"-name heuristic applied to
+/// the Holding Details section by `detect_aggregate_cash_signal`. See #781.
+fn is_aggregate_cash_total_label(currency_raw: &str) -> bool {
+    let lower = currency_raw.to_lowercase();
+    lower.contains("total") || lower.contains("subtotal") || lower.contains("aggregate")
+}
+
 /// Normalizes one row from the Cash Details section
 /// (`Currency, Account Type, Settled Cash, Trade Cash`) into a synthetic cash
 /// holding candidate: symbol `{CURRENCY}-CASH`, cost basis fixed at 1.0.
@@ -329,13 +349,32 @@ pub fn normalize_cash_row(raw: &RawRow, context: &ImportContext) -> NormalizedIm
         .as_ref()
         .map(|c| format!("{}-CASH", c.to_uppercase()));
 
-    let action = if !errors.is_empty() {
+    let mut action = if !errors.is_empty() {
         RowAction::NeedsFix
     } else if !warnings.is_empty() {
         RowAction::Warning
     } else {
         RowAction::Create
     };
+
+    // A non-error currency value can still be an aggregate subtotal line or
+    // a malformed code; catch both here with an actionable message instead
+    // of letting the row reach the shared commit-time validator, whose
+    // generic "currency must be a 3-letter ISO currency code" error gives no
+    // indication of which row failed or why. See #781.
+    if let Some(currency_str) = currency.as_deref() {
+        if is_aggregate_cash_total_label(currency_str) {
+            action = RowAction::Skip;
+            warnings.push(format!(
+                "Skipped: looks like an aggregate cash subtotal row ('{currency_str}'), not an individual currency balance — already reflected in the balances above"
+            ));
+        } else if !looks_like_currency_code(currency_str) {
+            action = RowAction::NeedsFix;
+            errors.push(format!(
+                "Currency '{currency_str}' is not a recognizable 3-letter ISO currency code"
+            ));
+        }
+    }
 
     NormalizedImportRow {
         row_number: raw.row_number,
@@ -796,5 +835,80 @@ mod tests {
         let r = row(&[("Currency", "CAD"), ("Account Type", "CASH")], 5);
         let normalized = normalize_cash_row(&r, &context());
         assert_eq!(normalized.action, RowAction::NeedsFix);
+    }
+
+    #[test]
+    fn cash_row_with_total_in_currency_label_is_skipped() {
+        let r = row(
+            &[
+                ("Currency", "TOTAL (IN CAD)"),
+                ("Account Type", "CASH"),
+                ("Settled Cash", "15864.20"),
+                ("Trade Cash", "15864.20"),
+            ],
+            7,
+        );
+        let normalized = normalize_cash_row(&r, &context());
+        assert_eq!(normalized.action, RowAction::Skip);
+        assert!(normalized
+            .warnings
+            .iter()
+            .any(|w| w.contains("aggregate cash subtotal")));
+        // Skipped rows must never surface the generic commit-time currency
+        // error — that's the exact regression reported in #781.
+        assert!(!normalized
+            .errors
+            .iter()
+            .any(|e| e.contains("3-letter ISO currency code")));
+    }
+
+    #[test]
+    fn cash_row_with_total_no_spaces_in_currency_label_is_skipped() {
+        let r = row(
+            &[
+                ("Currency", "TOTAL(IN USD)"),
+                ("Account Type", "CASH"),
+                ("Settled Cash", "1200.00"),
+                ("Trade Cash", "1200.00"),
+            ],
+            8,
+        );
+        let normalized = normalize_cash_row(&r, &context());
+        assert_eq!(normalized.action, RowAction::Skip);
+        assert_eq!(normalized.symbol, Some("TOTAL(IN USD)-CASH".to_string()));
+    }
+
+    #[test]
+    fn cash_row_with_malformed_currency_is_needs_fix_with_actionable_message() {
+        let r = row(
+            &[
+                ("Currency", "CA$"),
+                ("Account Type", "CASH"),
+                ("Settled Cash", "500.00"),
+                ("Trade Cash", "500.00"),
+            ],
+            9,
+        );
+        let normalized = normalize_cash_row(&r, &context());
+        assert_eq!(normalized.action, RowAction::NeedsFix);
+        assert!(normalized
+            .errors
+            .iter()
+            .any(|e| e.contains("not a recognizable 3-letter ISO currency code")));
+    }
+
+    #[test]
+    fn cash_row_with_lowercase_valid_currency_is_not_flagged() {
+        let r = row(
+            &[
+                ("Currency", "usd"),
+                ("Account Type", "CASH"),
+                ("Settled Cash", "300.00"),
+                ("Trade Cash", "300.00"),
+            ],
+            10,
+        );
+        let normalized = normalize_cash_row(&r, &context());
+        assert_eq!(normalized.action, RowAction::Create);
     }
 }
