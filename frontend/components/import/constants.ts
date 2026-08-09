@@ -42,8 +42,7 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/** Non-standard Tauri v2 property present on File objects sourced from the webview
- * (both <input type="file"> selection and drag-drop), giving the real filesystem path. */
-export function extractFilePath(file: File): string | undefined {
-  return (file as File & { path?: string }).path;
+/** Last path segment, for display when all we have is a filesystem path (no File object). */
+export function fileNameFromPath(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
 }

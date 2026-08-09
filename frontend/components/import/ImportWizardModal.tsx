@@ -13,7 +13,7 @@ import { ColumnMappingStep } from './ColumnMappingStep';
 import { FilePickerStep } from './FilePickerStep';
 import { PreviewStep } from './PreviewStep';
 import { ResultStep } from './ResultStep';
-import { MONO } from './constants';
+import { fileNameFromPath, MONO } from './constants';
 
 type Step = 'file' | 'mapping' | 'preview' | 'result';
 
@@ -146,14 +146,11 @@ export function ImportWizardModal({ isOpen, onClose, onImported }: Props) {
     }
   }
 
-  function handleFileSelected(file: File) {
-    const path = (file as File & { path?: string }).path;
-    if (!path) {
-      setParseError(t('importWizard.file.noPath'));
-      return;
-    }
-    setFileName(file.name);
-    setFileSize(file.size);
+  function handleFileSelected(path: string) {
+    setFileName(fileNameFromPath(path));
+    // The dialog/drag-drop path only gives us a filesystem path, not a File
+    // object, so the size shown in Step 1 is unknown until the plan comes back.
+    setFileSize(null);
     setFilePath(path);
     void runParse(path, {});
   }

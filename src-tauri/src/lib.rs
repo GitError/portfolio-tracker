@@ -45,6 +45,7 @@ struct LogGuard(#[allow(dead_code)] tracing_appender::non_blocking::WorkerGuard)
 pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let log_dir = app.path().app_log_dir()?;
             std::fs::create_dir_all(&log_dir)?;
