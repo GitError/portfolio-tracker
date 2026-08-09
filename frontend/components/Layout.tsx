@@ -39,7 +39,7 @@ export function Layout({
         background: 'var(--bg-primary)',
       }}
     >
-      <Sidebar portfolio={portfolio} unseenAlertCount={unseenAlertCount} />
+      <Sidebar unseenAlertCount={unseenAlertCount} />
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <TopBar
           portfolio={portfolio}
