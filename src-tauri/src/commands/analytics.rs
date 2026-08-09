@@ -67,6 +67,77 @@ async fn fetch_asset_profile(
     )
 }
 
+/// Fetches the bulk v7 quote response for a pre-validated, comma-joined
+/// symbol list, attaching the crumb + cookie pair that endpoint has required
+/// since Yahoo tightened access to it (see #789) — the same handshake
+/// `price::fetch_watchlist_snapshot` already performs against this endpoint.
+/// This bulk caller was missed when that fix landed, leaving market cap,
+/// P/E, dividend yield, and beta silently empty for every symbol (#799).
+/// Retries once with a fresh crumb on a 401 (stale cached crumb); returns
+/// `None` on any failure so the caller can treat it as a soft error.
+async fn fetch_bulk_quote_json(
+    client: &reqwest::Client,
+    joined_symbols: &str,
+) -> Option<serde_json::Value> {
+    if joined_symbols.is_empty() {
+        return None;
+    }
+
+    let crumb = crate::yahoo_auth::get_yahoo_crumb(client).await.ok()?;
+    match fetch_bulk_quote_json_internal(
+        client,
+        joined_symbols,
+        crate::config::YAHOO_QUOTE_URL,
+        &crumb,
+    )
+    .await
+    {
+        Ok(json) => Some(json),
+        Err(e) if e.contains("HTTP 401") => {
+            crate::yahoo_auth::invalidate_yahoo_crumb().await;
+            let fresh_crumb = crate::yahoo_auth::get_yahoo_crumb(client).await.ok()?;
+            fetch_bulk_quote_json_internal(
+                client,
+                joined_symbols,
+                crate::config::YAHOO_QUOTE_URL,
+                &fresh_crumb,
+            )
+            .await
+            .ok()
+        }
+        Err(e) => {
+            tracing::warn!("Bulk quote fetch failed: {}", e);
+            None
+        }
+    }
+}
+
+/// Internal implementation accepting a configurable URL template and an
+/// already-obtained crumb, so tests can point this at a mock server and
+/// inject a stub crumb, mirroring `price::fetch_watchlist_snapshot_internal`.
+async fn fetch_bulk_quote_json_internal(
+    client: &reqwest::Client,
+    joined_symbols: &str,
+    url_template: &str,
+    crumb: &crate::yahoo_auth::YahooCrumb,
+) -> Result<serde_json::Value, String> {
+    let base_url = url_template.replace("{}", joined_symbols);
+    let url = format!("{}&crumb={}", base_url, urlencoding::encode(&crumb.crumb));
+    let resp = client
+        .get(&url)
+        .header("User-Agent", crate::config::USER_AGENT)
+        .header(reqwest::header::COOKIE, &crumb.cookie)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Fetch enriched symbol metadata (sector, industry, country, market cap, etc.)
 /// for the given list of symbols.
 ///
@@ -142,12 +213,6 @@ pub(crate) async fn get_symbol_metadata_with_cache(
         .map(|s| urlencoding::encode(s).into_owned())
         .collect::<Vec<_>>()
         .join(",");
-    let quote_url = crate::config::YAHOO_QUOTE_URL.replace("{}", &joined);
-
-    let quote_future = client
-        .get(&quote_url)
-        .header("User-Agent", crate::config::USER_AGENT)
-        .send();
 
     // ── 2. Per-symbol assetProfile requests for sector/industry/country ───────
     // Use buffer_unordered(5) to cap concurrent HTTP requests at 5 so we don't
@@ -165,19 +230,10 @@ pub(crate) async fn get_symbol_metadata_with_cache(
             .collect::<Vec<_>>()
     };
 
-    // Run bulk quote and bounded profile stream concurrently
-    let (quote_response, profile_results) =
-        futures::future::join(quote_future, profile_future).await;
-
-    // Parse bulk quote response (best-effort).
-    let quote_json: Option<serde_json::Value> = async {
-        let resp = quote_response.ok()?;
-        if !resp.status().is_success() {
-            return None;
-        }
-        resp.json::<serde_json::Value>().await.ok()
-    }
-    .await;
+    // Run the (crumb-authenticated) bulk quote fetch and the bounded profile
+    // stream concurrently.
+    let (quote_json, profile_results) =
+        futures::future::join(fetch_bulk_quote_json(client, &joined), profile_future).await;
 
     let quote_items: HashMap<String, serde_json::Value> = quote_json
         .and_then(|json| {
@@ -812,5 +868,120 @@ mod compute_rebalance_suggestions_tests {
         assert_eq!(suggestions.len(), 1);
         assert_eq!(suggestions[0].drift, -10.0);
         assert_eq!(suggestions[0].suggested_trade_cad, -1000.0);
+    }
+}
+
+#[cfg(test)]
+mod fetch_bulk_quote_json_tests {
+    use super::fetch_bulk_quote_json_internal;
+    use crate::yahoo_auth::YahooCrumb;
+
+    fn make_client() -> reqwest::Client {
+        reqwest::Client::new()
+    }
+
+    fn stub_crumb() -> YahooCrumb {
+        YahooCrumb {
+            crumb: "test-crumb".to_string(),
+            cookie: "test-cookie".to_string(),
+        }
+    }
+
+    fn mock_quote_url_template(server: &mockito::ServerGuard) -> String {
+        format!("{}/v7/finance/quote?symbols={{}}", server.url())
+    }
+
+    #[tokio::test]
+    async fn attaches_crumb_query_param_and_cookie_header() {
+        // Regression test for #799: the bulk quote fetch previously omitted
+        // the crumb + cookie pair the v7 quote endpoint requires (#789),
+        // silently failing and leaving market cap/P/E/dividend yield/beta
+        // empty for every symbol. mockito only matches the mock below if
+        // both are present on the request.
+        let mut server = mockito::Server::new_async().await;
+        let body = serde_json::json!({
+            "quoteResponse": {
+                "result": [{
+                    "symbol": "AAPL",
+                    "regularMarketPrice": 195.89_f64,
+                    "marketCap": 3_000_000_000_000_i64,
+                    "trailingPE": 32.1_f64,
+                    "trailingAnnualDividendYield": 0.005_f64,
+                    "beta": 1.2_f64
+                }],
+                "error": null
+            }
+        })
+        .to_string();
+
+        let _mock = server
+            .mock(
+                "GET",
+                "/v7/finance/quote?symbols=AAPL,MSFT&crumb=test-crumb",
+            )
+            .match_header("cookie", "test-cookie")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&body)
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result =
+            fetch_bulk_quote_json_internal(&client, "AAPL,MSFT", &url_template, &stub_crumb())
+                .await;
+
+        assert!(result.is_ok(), "expected Ok, got {:?}", result);
+        let json = result.unwrap();
+        assert_eq!(
+            json.pointer("/quoteResponse/result/0/marketCap")
+                .and_then(|v| v.as_f64()),
+            Some(3_000_000_000_000.0)
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_crumb_or_cookie_does_not_match_and_errors() {
+        // Without the crumb+cookie, mockito's mock (which requires both) never
+        // matches, so the request 404s — this is the exact failure mode #799
+        // hit against real Yahoo before the fix (silently empty metadata).
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=AAPL&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
+            .with_status(200)
+            .with_body("{}")
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let wrong_crumb = YahooCrumb {
+            crumb: "wrong-crumb".to_string(),
+            cookie: "test-cookie".to_string(),
+        };
+        let result =
+            fetch_bulk_quote_json_internal(&client, "AAPL", &url_template, &wrong_crumb).await;
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn non_success_status_returns_error() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/v7/finance/quote?symbols=AAPL&crumb=test-crumb")
+            .match_header("cookie", "test-cookie")
+            .with_status(401)
+            .create_async()
+            .await;
+
+        let client = make_client();
+        let url_template = mock_quote_url_template(&server);
+        let result =
+            fetch_bulk_quote_json_internal(&client, "AAPL", &url_template, &stub_crumb()).await;
+
+        assert!(result.unwrap_err().contains("401"));
     }
 }
