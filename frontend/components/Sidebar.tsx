@@ -17,14 +17,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
-import { formatCompact } from '../lib/format';
-import { pnlColor } from '../lib/colors';
-import type { PortfolioSnapshot } from '../types/portfolio';
 
 const STORAGE_KEY = 'sidebar-expanded';
 
 interface SidebarProps {
-  portfolio: PortfolioSnapshot | null;
   unseenAlertCount?: number | undefined;
 }
 
@@ -43,16 +39,13 @@ const NAV_ITEM_DEFS = [
   { to: '/help', key: 'nav.help', Icon: HelpCircle },
 ];
 
-export function Sidebar({ portfolio, unseenAlertCount = 0 }: SidebarProps) {
+export function Sidebar({ unseenAlertCount = 0 }: SidebarProps) {
   const { t } = useTranslation();
   const navItems = NAV_ITEM_DEFS.map((item) => ({ ...item, label: t(item.key) }));
   const [expanded, setExpanded] = useState(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored === null ? false : stored === 'true';
   });
-  const totalValue = portfolio?.totalValue ?? 0;
-  const dailyPnl = portfolio?.dailyPnl ?? 0;
-  const baseCurrency = portfolio?.baseCurrency ?? 'CAD';
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, String(expanded));
@@ -192,40 +185,6 @@ export function Sidebar({ portfolio, unseenAlertCount = 0 }: SidebarProps) {
             </NavLink>
           );
         })}
-      </div>
-
-      {/* Portfolio mini value */}
-      <div
-        style={{
-          padding: expanded ? '16px 20px' : '16px 0',
-          borderTop: '1px solid var(--border-subtle)',
-          textAlign: expanded ? 'left' : 'center',
-        }}
-      >
-        <div
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 13,
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {formatCompact(totalValue, baseCurrency)}
-        </div>
-        {expanded && (
-          <div
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: pnlColor(dailyPnl),
-              marginTop: 2,
-            }}
-          >
-            {dailyPnl >= 0 ? '+' : ''}
-            {formatCompact(Math.abs(dailyPnl), baseCurrency)} today
-          </div>
-        )}
       </div>
 
       {/* Toggle button */}
