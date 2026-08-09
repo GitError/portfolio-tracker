@@ -132,11 +132,21 @@ pub async fn commit_import_rows(
             continue;
         };
 
-        if quantity < 0.0 {
-            result.errors.push(format!(
-                "Row {}: negative quantity ({}) — short positions are not supported; skipped",
-                row.row_number, quantity
-            ));
+        // Runs the same field validation `add_holding`/`update_holding` enforce
+        // (portfolio_core::validation) so imported rows can't slip in data the
+        // regular holding forms would reject — see #779.
+        let currency = match portfolio_core::validation::validate_holding_fields(
+            quantity, cost_basis, &currency,
+        ) {
+            Ok(normalized) => normalized,
+            Err(e) => {
+                result.errors.push(format!("Row {}: {}", row.row_number, e));
+                result.skipped += 1;
+                continue;
+            }
+        };
+        if let Err(e) = portfolio_core::validation::validate_target_weight(row.target_weight) {
+            result.errors.push(format!("Row {}: {}", row.row_number, e));
             result.skipped += 1;
             continue;
         }
@@ -151,6 +161,37 @@ pub async fn commit_import_rows(
             continue;
         }
 
+        let existing_holding = existing_by_symbol.get(&symbol_key).copied();
+
+        if let Some(target_weight) = row.target_weight {
+            if target_weight > 0.0 {
+                let exclude_id = existing_holding.map(|h| h.id.0.as_str());
+                match db::sum_target_weights(pool, exclude_id).await {
+                    Ok(current_sum) => {
+                        if portfolio_core::validation::exceeds_target_weight_budget(
+                            target_weight,
+                            current_sum,
+                        ) {
+                            result.errors.push(format!(
+                                "Row {}: total target weight would exceed 100% (currently {:.1}%); skipped",
+                                row.row_number, current_sum
+                            ));
+                            result.skipped += 1;
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        result.errors.push(format!(
+                            "Row {}: failed to check target weight budget: {}",
+                            row.row_number, e
+                        ));
+                        result.skipped += 1;
+                        continue;
+                    }
+                }
+            }
+        }
+
         let name = row
             .name
             .clone()
@@ -159,7 +200,7 @@ pub async fn commit_import_rows(
         let account =
             AccountType::from_str(&row.account_type.to_lowercase()).unwrap_or(AccountType::Other);
 
-        if let Some(existing) = existing_by_symbol.get(&symbol_key) {
+        if let Some(existing) = existing_holding {
             let quantity_changed = (existing.quantity - quantity).abs() > f64::EPSILON;
             let cost_basis_changed = (existing.cost_basis - cost_basis).abs() > f64::EPSILON;
             let updated = Holding {
@@ -609,7 +650,199 @@ mod tests {
         assert!(result
             .errors
             .iter()
-            .any(|e| e.contains("negative quantity") && !e.contains("CHECK")));
+            .any(|e| e.contains("positive finite number") && !e.contains("CHECK")));
+    }
+
+    // The following cases mirror `commands_tests.rs`'s coverage of
+    // `validate_holding_fields`/`validate_target_weight` for add_holding and
+    // update_holding — see #779: the import commit path must reject the same
+    // invalid data the regular holding forms reject, not just negative
+    // quantity.
+
+    #[tokio::test]
+    async fn commit_rejects_zero_quantity() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.quantity = Some(0.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("positive finite number")));
+        assert!(db::get_all_holdings(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_non_finite_quantity() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.quantity = Some(f64::NAN);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("positive finite number")));
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_negative_cost_basis() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.cost_basis = Some(-150.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("costBasis must be a non-negative finite number")));
+        assert!(db::get_all_holdings(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_malformed_currency() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.currency = Some("US".to_string());
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result
+            .errors
+            .iter()
+            .any(|e| e.contains("3-letter ISO currency code")));
+        assert!(db::get_all_holdings(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn commit_normalizes_currency_case_and_whitespace() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.currency = Some(" usd ".to_string());
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 1);
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(holdings[0].currency, "USD");
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_out_of_range_target_weight() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+
+        let mut row = base_row(8);
+        row.target_weight = Some(150.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(db::get_all_holdings(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn commit_rejects_target_weight_that_would_exceed_the_100_percent_budget() {
+        let pool = db::open_test_db().await;
+        db::insert_account(&pool, "acct-1", "Taxable", "taxable", None)
+            .await
+            .unwrap();
+        db::insert_holding(
+            &pool,
+            HoldingInput {
+                symbol: "MSFT".to_string(),
+                name: "Microsoft".to_string(),
+                asset_type: AssetType::Stock,
+                account: AccountType::Taxable,
+                account_id: Some("acct-1".to_string()),
+                quantity: 5.0,
+                cost_basis: 200.0,
+                currency: "USD".to_string(),
+                exchange: String::new(),
+                target_weight: Some(90.0),
+                indicated_annual_dividend: None,
+                indicated_annual_dividend_currency: None,
+                dividend_frequency: None,
+                maturity_date: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut row = base_row(8);
+        row.target_weight = Some(20.0);
+        let request = ImportCommitRequest {
+            plan_rows: vec![row],
+            account_id: "acct-1".to_string(),
+            include_cash: false,
+        };
+        let result = commit_import_rows(&pool, &request).await.expect("commit");
+
+        assert_eq!(result.created, 0);
+        assert_eq!(result.skipped, 1);
+        assert!(result.errors.iter().any(|e| e.contains("exceed 100%")));
+
+        let holdings = db::get_all_holdings(&pool).await.unwrap();
+        assert_eq!(holdings.len(), 1, "only the pre-existing MSFT holding");
     }
 
     #[tokio::test]
