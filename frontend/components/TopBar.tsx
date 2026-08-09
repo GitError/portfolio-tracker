@@ -186,12 +186,29 @@ export function TopBar({
   const showFailedBanner =
     failedSymbolsKey !== null && failedSymbolsKey !== dismissedFailedSymbolsKey;
 
+  // Offline banner dismiss — resets when connectivity is restored so the banner
+  // reappears on the next offline period (#798).
+  const [dismissedOffline, setDismissedOffline] = useState(false);
+  useEffect(() => {
+    if (!isOffline) setDismissedOffline(false);
+  }, [isOffline]);
+  const showOfflineBanner = isOffline && !dismissedOffline;
+
+  // Stale-price banner dismiss — keyed on lastUpdated so a completed refresh
+  // resets the key and the banner reappears if prices remain stale (#798).
+  const hasStaleHoldings =
+    !isOffline && !isRefreshing && (portfolio?.holdings.some((h) => h.priceIsStale) ?? false);
+  const stalePriceKey = hasStaleHoldings ? (portfolio?.lastUpdated ?? 'stale') : null;
+  const [dismissedStalePriceKey, setDismissedStalePriceKey] = useState<string | null>(null);
+  const showStalePriceBanner = stalePriceKey !== null && stalePriceKey !== dismissedStalePriceKey;
+
   return (
     <div style={{ position: 'sticky', top: 0, zIndex: 5 }}>
       <div
         style={{
           background: 'var(--bg-primary)',
-          borderBottom: showFailedBanner || isOffline ? 'none' : '1px solid var(--border-primary)',
+          borderBottom:
+            showFailedBanner || showOfflineBanner ? 'none' : '1px solid var(--border-primary)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -280,7 +297,7 @@ export function TopBar({
       </div>
 
       {/* Offline banner */}
-      {isOffline && (
+      {showOfflineBanner && (
         <div
           style={{
             background: 'rgba(59,130,246,0.08)',
@@ -320,6 +337,23 @@ export function TopBar({
             }}
           >
             Retry
+          </button>
+          <button
+            onClick={() => setDismissedOffline(true)}
+            aria-label="Dismiss"
+            title="Dismiss"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-accent)',
+              cursor: 'pointer',
+              padding: 2,
+              display: 'flex',
+              alignItems: 'center',
+              opacity: 0.8,
+            }}
+          >
+            <X size={12} />
           </button>
         </div>
       )}
@@ -380,8 +414,9 @@ export function TopBar({
         </div>
       )}
 
-      {/* Stale price warning banner — shown when any holding has a price older than 24h */}
-      {!isOffline && !isRefreshing && portfolio?.holdings.some((h) => h.priceIsStale) && (
+      {/* Stale price warning banner — shown when any holding has a price older than 24h.
+           Keyed on lastUpdated so a completed refresh resets dismissal (#798). */}
+      {showStalePriceBanner && (
         <div
           style={{
             background: 'rgba(251,191,36,0.06)',
@@ -398,6 +433,41 @@ export function TopBar({
         >
           <AlertTriangle size={12} />
           <span>Some prices may be outdated (&gt;24h old) — click Refresh to update</span>
+          <button
+            onClick={onRefresh}
+            disabled={isBusy}
+            style={{
+              marginLeft: 'auto',
+              background: 'none',
+              border: '1px solid var(--color-warning)',
+              color: 'var(--color-warning)',
+              fontSize: 10,
+              fontFamily: 'var(--font-mono)',
+              padding: '2px 8px',
+              cursor: 'pointer',
+              borderRadius: '2px',
+              opacity: isBusy ? 0.5 : 1,
+            }}
+          >
+            Refresh
+          </button>
+          <button
+            onClick={() => setDismissedStalePriceKey(stalePriceKey)}
+            aria-label="Dismiss"
+            title="Dismiss"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'var(--color-warning)',
+              cursor: 'pointer',
+              padding: 2,
+              display: 'flex',
+              alignItems: 'center',
+              opacity: 0.8,
+            }}
+          >
+            <X size={12} />
+          </button>
         </div>
       )}
     </div>
