@@ -33,13 +33,35 @@ async fn fetch_asset_profile(
     let encoded_symbol = urlencoding::encode(symbol);
     let url = crate::config::YAHOO_QUOTE_SUMMARY_URL.replace("{}", &encoded_symbol);
 
+    // quoteSummary requires crumb+cookie auth (same as the v7 bulk quote endpoint).
+    // Retry once on 401 in case the cached crumb has gone stale.
     let json: Option<serde_json::Value> = async {
+        let crumb = crate::yahoo_auth::get_yahoo_crumb(client).await.ok()?;
+        let authed_url = format!("{}&crumb={}", url, urlencoding::encode(&crumb.crumb));
         let resp = client
-            .get(&url)
+            .get(&authed_url)
             .header("User-Agent", crate::config::USER_AGENT)
+            .header(reqwest::header::COOKIE, &crumb.cookie)
             .send()
             .await
             .ok()?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            // Crumb may have expired — invalidate and retry once.
+            crate::yahoo_auth::invalidate_yahoo_crumb().await;
+            let fresh = crate::yahoo_auth::get_yahoo_crumb(client).await.ok()?;
+            let retry_url = format!("{}&crumb={}", url, urlencoding::encode(&fresh.crumb));
+            let retry_resp = client
+                .get(&retry_url)
+                .header("User-Agent", crate::config::USER_AGENT)
+                .header(reqwest::header::COOKIE, &fresh.cookie)
+                .send()
+                .await
+                .ok()?;
+            if !retry_resp.status().is_success() {
+                return None;
+            }
+            return retry_resp.json::<serde_json::Value>().await.ok();
+        }
         if !resp.status().is_success() {
             return None;
         }
