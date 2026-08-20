@@ -34,7 +34,7 @@ tracing-appender = "0.2"
 ts-rs = { version = "12", features = ["serde-compat"] }
 urlencoding = "2"
 genpdf = "0.2"
-dirs = "5"
+dirs = "6"
 
 [dev-dependencies]
 mockito = "1"
